@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { saveAlertPreferences } from './actions'
+import { createClient } from '@/lib/supabase/client'
 
 type Prefs = {
   rsi_oversold_threshold:   number
@@ -160,6 +161,9 @@ export default function SettingsForm({ prefs }: { prefs: Prefs }) {
         </div>
       </section>
 
+      {/* Change Password */}
+      <ChangePassword />
+
       {/* Save button */}
       <div className="flex items-center gap-4">
         <button
@@ -177,6 +181,61 @@ export default function SettingsForm({ prefs }: { prefs: Prefs }) {
         )}
       </div>
     </form>
+  )
+}
+
+function ChangePassword() {
+  const [open, setOpen]         = useState(false)
+  const [password, setPassword] = useState('')
+  const [confirm, setConfirm]   = useState('')
+  const [status, setStatus]     = useState<'idle' | 'saving' | 'done' | 'error'>('idle')
+  const [error, setError]       = useState('')
+  const supabase = createClient()
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (password !== confirm) { setError('Passwords do not match'); return }
+    if (password.length < 8)  { setError('Must be at least 8 characters'); return }
+    setStatus('saving')
+    setError('')
+    const { error } = await supabase.auth.updateUser({ password })
+    if (error) { setError(error.message); setStatus('error') }
+    else { setStatus('done'); setPassword(''); setConfirm('') }
+  }
+
+  return (
+    <section>
+      <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">Security</h2>
+      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+        {!open ? (
+          <button type="button" onClick={() => setOpen(true)}
+            className="text-sm text-blue-600 hover:text-blue-500 font-medium">
+            Change password
+          </button>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-3 max-w-sm">
+            <input type="password" required placeholder="New password" value={password}
+              onChange={e => setPassword(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-lg bg-white text-gray-900 border border-gray-300 focus:outline-none focus:border-blue-500 text-sm" />
+            <input type="password" required placeholder="Confirm password" value={confirm}
+              onChange={e => setConfirm(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-lg bg-white text-gray-900 border border-gray-300 focus:outline-none focus:border-blue-500 text-sm" />
+            {error && <p className="text-red-500 text-xs">{error}</p>}
+            {status === 'done' && <p className="text-emerald-600 text-xs">✓ Password updated</p>}
+            <div className="flex gap-3">
+              <button type="submit" disabled={status === 'saving'}
+                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium disabled:opacity-50 transition-colors">
+                {status === 'saving' ? 'Saving...' : 'Update password'}
+              </button>
+              <button type="button" onClick={() => { setOpen(false); setError(''); setStatus('idle') }}
+                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-600 text-sm hover:border-gray-400 transition-colors">
+                Cancel
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </section>
   )
 }
 
