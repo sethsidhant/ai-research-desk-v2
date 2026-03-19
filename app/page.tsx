@@ -148,7 +148,7 @@ export default async function DashboardPage() {
 
         {totalInvested > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
-            <StatCard label="Invested"     value={`₹${totalInvested.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
+            <StatCard label="Interested"   value={`₹${totalInvested.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
             <StatCard label="Current Value" value={`₹${totalCurrent.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
             <StatCard
               label="Total P&L"

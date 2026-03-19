@@ -277,7 +277,7 @@ function StockRow({
           </p>
           {!stock.inWatchlist && (
             <div className="mb-4">
-              <label className="block text-xs text-gray-500 mb-1">Investment amount (₹) <span className="text-gray-400 font-normal">— optional, to track hypothetical P&amp;L</span></label>
+              <label className="block text-xs text-gray-500 mb-1">Interested amount (₹) <span className="text-gray-400 font-normal">— optional, to track hypothetical P&amp;L</span></label>
               <div className="relative max-w-xs">
                 <span className="absolute left-3 top-2.5 text-gray-400 text-sm">₹</span>
                 <input
