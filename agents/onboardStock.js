@@ -105,6 +105,16 @@ async function runFundamentals(stock) {
     dma50Value: raw.dma50Value, dma200Value: raw.dma200Value,
   } : null;
 
+  // Always use Kite for price data — more accurate, real-time, and works for ETFs
+  if (raw?.currentPrice) {
+    await upsertStock(ticker, {
+      current_price:     raw.currentPrice,
+      high_52w:          raw.high52w    ?? null,
+      low_52w:           raw.low52w     ?? null,
+      pct_from_52w_high: raw.pctFromHigh ?? null,
+    });
+  }
+
   const [stockReturns, niftyReturns] = await Promise.all([
     stock.instrument_token ? getReturns(stock.instrument_token) : Promise.resolve({ r6m: null, r1y: null }),
     getReturns(NIFTY50_TOKEN),

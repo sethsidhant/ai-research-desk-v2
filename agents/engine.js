@@ -137,19 +137,7 @@ async function runDailyScoring() {
         ? parseFloat(((stockPE - industryPE) / industryPE * 100).toFixed(2))
         : null;
 
-      const pctFromHigh = (livePrice && stock.high_52w)
-        ? parseFloat(((livePrice - stock.high_52w) / stock.high_52w * 100).toFixed(2))
-        : stock.pct_from_52w_high;
-
-      // Update only price-driven fields in stocks table
-      await upsertStock(ticker, {
-        current_price:     livePrice,
-        stock_pe:          stockPE,
-        industry_pe:       industryPE,
-        pct_from_52w_high: pctFromHigh,
-      });
-
-      // Technicals from Kite
+      // Technicals from Kite (fetch before upsert so we can use 52W H/L as fallback)
       const raw  = instrument_token ? await getTechnicals(instrument_token) : null;
       const tech = raw ? {
         rsi:         raw.rsi,
@@ -158,6 +146,23 @@ async function runDailyScoring() {
         dma50Value:  raw.dma50Value,
         dma200Value: raw.dma200Value,
       } : null;
+
+      // Always use Kite candle data for 52W H/L — works for ETFs, more accurate than Screener
+      const high52w     = raw?.high52w  ?? null;
+      const low52w      = raw?.low52w   ?? null;
+      const pctFromHigh = (livePrice && high52w)
+        ? parseFloat(((livePrice - high52w) / high52w * 100).toFixed(2))
+        : null;
+
+      // Update price-driven fields in stocks table
+      await upsertStock(ticker, {
+        current_price:     livePrice,
+        stock_pe:          stockPE,
+        industry_pe:       industryPE,
+        pct_from_52w_high: pctFromHigh,
+        high_52w:          high52w,
+        low_52w:           low52w,
+      });
 
       const stockReturns = instrument_token ? await getReturns(instrument_token) : { r6m: null, r1y: null };
 

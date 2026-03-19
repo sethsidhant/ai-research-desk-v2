@@ -48,13 +48,22 @@ async function getTechnicals(instrumentToken) {
     const sma200       = closes.slice(-200).reduce((a, b) => a + b, 0) / 200;
     const rsi          = calculateRSI(closes);
 
+    // 52W high/low from last 252 candles (useful for ETFs not on Screener)
+    const last252      = candles.slice(-252);
+    const high52w      = Math.max(...last252.map(c => c.high));
+    const low52w       = Math.min(...last252.map(c => c.low));
+    const pctFromHigh  = high52w ? +((currentPrice - high52w) / high52w * 100).toFixed(2) : null;
+
     return {
       currentPrice,
       sma50,
       sma200,
       rsi,
-      dma50Value:  Math.round(sma50  * 100) / 100,
-      dma200Value: Math.round(sma200 * 100) / 100,
+      dma50Value:   Math.round(sma50  * 100) / 100,
+      dma200Value:  Math.round(sma200 * 100) / 100,
+      high52w:      Math.round(high52w  * 100) / 100,
+      low52w:       Math.round(low52w   * 100) / 100,
+      pctFromHigh,
     };
   } catch (err) {
     console.error(`  Technical fetch error for ${instrumentToken}:`, err.message);
