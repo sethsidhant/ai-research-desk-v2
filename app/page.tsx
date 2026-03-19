@@ -98,45 +98,58 @@ export default async function DashboardPage() {
   const totalPnlPct   = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0
 
   // Portfolio chart — % return over time for stocks with invested_amount
+  // Only use daily_history from each stock's added_at date onwards
   let chartData: ChartPoint[] = []
   const portfolioRowsWithHistory = rows.filter(r => r.invested_amount && r.entry_price)
   if (portfolioRowsWithHistory.length > 0) {
-    const historyStockIds = portfolioRowsWithHistory.map(r => r.stock_id)
+    // Fetch added_at per stock for this user
+    const { data: userStocksMeta } = await supabase
+      .from('user_stocks')
+      .select('stock_id, added_at')
+      .eq('user_id', user.id)
+      .in('stock_id', portfolioRowsWithHistory.map(r => r.stock_id))
+
+    const addedAtMap: Record<string, string> = {}
+    for (const us of userStocksMeta ?? []) {
+      addedAtMap[us.stock_id] = us.added_at?.slice(0, 10) ?? '2000-01-01'
+    }
+
+    // Earliest date we care about
+    const earliestDate = Object.values(addedAtMap).sort()[0] ?? '2000-01-01'
+
     const { data: history } = await supabase
       .from('daily_history')
       .select('stock_id, date, closing_price')
-      .in('stock_id', historyStockIds)
+      .in('stock_id', portfolioRowsWithHistory.map(r => r.stock_id))
       .not('closing_price', 'is', null)
+      .gte('date', earliestDate)
       .order('date', { ascending: true })
 
     if (history && history.length > 0) {
-      // Group closing prices by date
+      // Group closing prices by date, only from each stock's added_at onwards
       const byDate: Record<string, Record<string, number>> = {}
       for (const h of history) {
+        const addedAt = addedAtMap[h.stock_id] ?? '2000-01-01'
+        if (h.date < addedAt) continue   // skip history before user added this stock
         if (!byDate[h.date]) byDate[h.date] = {}
         byDate[h.date][h.stock_id] = h.closing_price
       }
 
-      // Build a lookup for entry prices
-      const entryMap: Record<string, { entry_price: number; invested_amount: number }> = {}
-      for (const r of portfolioRowsWithHistory) {
-        entryMap[r.stock_id] = { entry_price: r.entry_price!, invested_amount: r.invested_amount! }
-      }
-
-      // For each date calculate total portfolio value vs total invested
-      const totalInvestedBase = portfolioRowsWithHistory.reduce((s, r) => s + r.invested_amount!, 0)
-
+      // For each date, only include stocks that were already added by that date
       chartData = Object.entries(byDate)
+        .sort(([a], [b]) => a.localeCompare(b))
         .map(([date, prices]) => {
-          let currentVal = 0, counted = 0
+          let currentVal = 0, investedOnDay = 0
           for (const r of portfolioRowsWithHistory) {
+            const addedAt = addedAtMap[r.stock_id] ?? '2000-01-01'
+            if (date < addedAt) continue    // stock not yet added on this date
             const price = prices[r.stock_id]
             if (!price) continue
-            currentVal += (price / r.entry_price!) * r.invested_amount!
-            counted++
+            currentVal    += (price / r.entry_price!) * r.invested_amount!
+            investedOnDay += r.invested_amount!
           }
-          if (counted === 0) return null
-          const returnPct = ((currentVal - totalInvestedBase) / totalInvestedBase) * 100
+          if (investedOnDay === 0) return null
+          const returnPct = ((currentVal - investedOnDay) / investedOnDay) * 100
           const d = new Date(date)
           const label = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
           return { date: label, returnPct: parseFloat(returnPct.toFixed(2)) }
