@@ -11,8 +11,22 @@ const supabase = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
 
-const FROM_NUMBER   = process.env.TWILIO_WHATSAPP_FROM || "whatsapp:+14155238886";
-const DASHBOARD_URL = process.env.DASHBOARD_URL || "https://your-app.vercel.app";
+const FROM_NUMBER    = process.env.TWILIO_WHATSAPP_FROM || "whatsapp:+14155238886";
+const DASHBOARD_URL  = process.env.DASHBOARD_URL || "https://your-app.vercel.app";
+const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+
+async function sendTelegram(chatId, text) {
+  if (!TELEGRAM_TOKEN || !chatId) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: "Markdown" }),
+    });
+  } catch (err) {
+    console.error(`  [telegram] Send error:`, err.message);
+  }
+}
 
 if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
   console.error("❌ Missing TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN");
@@ -133,7 +147,7 @@ async function main() {
   // Get all users who have configured alerts (any channel)
   const { data: allPrefs, error: prefsError } = await supabase
     .from("user_alert_preferences")
-    .select("user_id, whatsapp_number, alert_channel, rsi_oversold_threshold, rsi_overbought_threshold, pl_alert_daily, pl_alert_weekly, pl_alert_monthly");
+    .select("user_id, whatsapp_number, alert_channel, rsi_oversold_threshold, rsi_overbought_threshold, pl_alert_daily, pl_alert_weekly, pl_alert_monthly, telegram_chat_id");
 
   if (prefsError) { console.error("DB error:", prefsError.message); process.exit(1); }
   if (!allPrefs?.length) { console.log("No users with alert preferences configured."); process.exit(0); }
@@ -196,16 +210,22 @@ async function main() {
       ? prefs.whatsapp_number
       : `whatsapp:${prefs.whatsapp_number}`;
 
-    async function sendWhatsApp(body) {
+    async function send(body) {
+      // WhatsApp
       if ((channel === "whatsapp" || channel === "both") && prefs.whatsapp_number) {
         const msg = await twilioClient.messages.create({ from: FROM_NUMBER, to: recipient, body });
         console.log(`  ✓ WhatsApp sent — SID: ${msg.sid}`);
+      }
+      // Telegram
+      if ((channel === "telegram" || channel === "both") && prefs.telegram_chat_id) {
+        await sendTelegram(prefs.telegram_chat_id, body);
+        console.log(`  ✓ Telegram sent → chat_id ${prefs.telegram_chat_id}`);
       }
     }
 
     // ── 1. Main RSI/DMA digest ────────────────────────────────────────────────
     const message = buildDigest(digestStocks, prefs);
-    await sendWhatsApp(message);
+    await send(message);
 
     // ── 2. P&L digest (if user opted in and has interested stocks) ────────────
     const plStocks = userStocks
@@ -226,15 +246,15 @@ async function main() {
       if (prefs.pl_alert_daily) {
         const label = now.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
         const plMsg = buildPlDigest(plStocks, label);
-        if (plMsg) { await sendWhatsApp(plMsg); console.log(`  ✓ Daily P&L digest sent`); }
+        if (plMsg) { await send(plMsg); console.log(`  ✓ Daily P&L digest sent`); }
       }
       if (prefs.pl_alert_weekly && isMonday) {
         const plMsg = buildPlDigest(plStocks, "This Week");
-        if (plMsg) { await sendWhatsApp(plMsg); console.log(`  ✓ Weekly P&L digest sent`); }
+        if (plMsg) { await send(plMsg); console.log(`  ✓ Weekly P&L digest sent`); }
       }
       if (prefs.pl_alert_monthly && isFirst) {
         const plMsg = buildPlDigest(plStocks, now.toLocaleDateString("en-IN", { month: "long", year: "numeric" }));
-        if (plMsg) { await sendWhatsApp(plMsg); console.log(`  ✓ Monthly P&L digest sent`); }
+        if (plMsg) { await send(plMsg); console.log(`  ✓ Monthly P&L digest sent`); }
       }
     }
 

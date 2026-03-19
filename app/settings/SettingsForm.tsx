@@ -16,6 +16,7 @@ type Prefs = {
   pl_alert_daily:           boolean
   pl_alert_weekly:          boolean
   pl_alert_monthly:         boolean
+  telegram_chat_id:         string | null
 }
 
 export default function SettingsForm({ prefs }: { prefs: Prefs }) {
@@ -49,8 +50,8 @@ export default function SettingsForm({ prefs }: { prefs: Prefs }) {
           <div>
             <label className="block text-sm text-gray-600 mb-3">Alert channel</label>
             <input type="hidden" name="alert_channel" value={channel} />
-            <div className="flex gap-3">
-              {(['email', 'whatsapp', 'both'] as const).map(opt => (
+            <div className="flex flex-wrap gap-2">
+              {(['email', 'whatsapp', 'telegram', 'both'] as const).map(opt => (
                 <button
                   key={opt}
                   type="button"
@@ -61,14 +62,15 @@ export default function SettingsForm({ prefs }: { prefs: Prefs }) {
                       : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
                   }`}
                 >
-                  {opt === 'both' ? 'Both' : opt.charAt(0).toUpperCase() + opt.slice(1)}
+                  {opt === 'both' ? 'All channels' : opt.charAt(0).toUpperCase() + opt.slice(1)}
                 </button>
               ))}
             </div>
             <p className="text-xs text-gray-400 mt-2">
-              {channel === 'email' && 'Alerts sent to your login email address.'}
+              {channel === 'email'    && 'Alerts sent to your login email address.'}
               {channel === 'whatsapp' && 'Alerts sent via WhatsApp. Enter your number below.'}
-              {channel === 'both' && 'Alerts sent to both email and WhatsApp.'}
+              {channel === 'telegram' && 'Alerts sent via Telegram. Connect your account below.'}
+              {channel === 'both'     && 'Alerts sent via WhatsApp, Telegram, and email.'}
             </p>
           </div>
 
@@ -84,6 +86,37 @@ export default function SettingsForm({ prefs }: { prefs: Prefs }) {
                 className="w-full px-4 py-2.5 rounded-lg bg-white text-gray-900 border border-gray-300 focus:outline-none focus:border-blue-500 text-sm"
               />
               <p className="text-xs text-gray-400 mt-1">Include country code. E.g. +919876543210</p>
+            </div>
+          )}
+
+          {/* Telegram connect — shown only when telegram or both */}
+          {(channel === 'telegram' || channel === 'both') && (
+            <div className="rounded-lg border border-gray-200 p-4 bg-gray-50">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-sm font-medium text-gray-700">Telegram</div>
+                  {prefs.telegram_chat_id ? (
+                    <div className="text-xs text-emerald-600 mt-0.5">✓ Connected (chat ID: {prefs.telegram_chat_id})</div>
+                  ) : (
+                    <div className="text-xs text-gray-500 mt-0.5">Not connected — open the bot and send your email to link your account</div>
+                  )}
+                </div>
+                <a
+                  href={`https://t.me/${process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? 'airesearchdesk_bot'}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 px-4 py-2 rounded-lg bg-blue-500 hover:bg-blue-400 text-white text-sm font-medium transition-colors"
+                >
+                  {prefs.telegram_chat_id ? 'Open bot' : 'Connect Telegram'}
+                </a>
+              </div>
+              {!prefs.telegram_chat_id && (
+                <ol className="mt-3 text-xs text-gray-400 space-y-1 list-decimal list-inside">
+                  <li>Click "Connect Telegram" to open the bot</li>
+                  <li>Send <code className="bg-gray-200 px-1 rounded">/start</code> then your login email</li>
+                  <li>Refresh this page — status will update to Connected</li>
+                </ol>
+              )}
             </div>
           )}
 
@@ -168,7 +201,7 @@ export default function SettingsForm({ prefs }: { prefs: Prefs }) {
       <section>
         <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">Interested Amount P&amp;L Alerts</h2>
         <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm space-y-4">
-          <p className="text-xs text-gray-400">Receive a WhatsApp summary of how your interested stocks are performing vs your entry price.</p>
+          <p className="text-xs text-gray-400">Receive a summary of how your interested stocks are performing vs your entry price, via your selected alert channel.</p>
           <Toggle
             name="pl_alert_daily"
             label="Daily P&L digest"
