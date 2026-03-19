@@ -180,7 +180,7 @@ export default function WatchlistTable({
                 {/* Stock name — mobile shows compact badges inline */}
                 <td className="px-4 py-3">
                   <a
-                    href={`https://www.screener.in/company/${r.ticker}/`}
+                    href={`https://www.screener.in/company/${r.ticker}/consolidated/`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className={`font-semibold hover:underline ${nameColor}`}
