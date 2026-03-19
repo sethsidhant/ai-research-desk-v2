@@ -31,6 +31,8 @@ export type WatchlistRow = {
   nifty50_6m: number | null
   nifty50_1y: number | null
   score_date: string | null
+  invested_amount: number | null
+  entry_price: number | null
 }
 
 function fmt(n: number | null, decimals = 1) {
@@ -222,6 +224,19 @@ export default function WatchlistTable({
                           {up ? '+' : ''}{dayChange.change.toFixed(2)} ({up ? '+' : ''}{dayChange.changePct.toFixed(2)}%)
                         </div>
                       )}
+                      {(() => {
+                        const livePrice = r.current_price
+                        if (!r.invested_amount || !r.entry_price || !livePrice) return null
+                        const currentVal = (livePrice / r.entry_price) * r.invested_amount
+                        const pnl        = currentVal - r.invested_amount
+                        const pnlPct     = ((livePrice - r.entry_price) / r.entry_price) * 100
+                        const gain       = pnl >= 0
+                        return (
+                          <div className={`text-xs font-mono mt-0.5 ${gain ? 'text-emerald-600' : 'text-red-600'}`}>
+                            {gain ? '+' : ''}₹{Math.abs(pnl).toLocaleString('en-IN', { maximumFractionDigits: 0 })} ({gain ? '+' : ''}{pnlPct.toFixed(1)}%)
+                          </div>
+                        )
+                      })()}
                     </td>
                   )
                 })()}

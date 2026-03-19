@@ -13,10 +13,19 @@ export type AlertPrefs = {
   new_filing_alert:         boolean
 }
 
-export async function addToWatchlist(stockId: string, alerts: AlertPrefs) {
+export async function addToWatchlist(stockId: string, alerts: AlertPrefs, investedAmount?: number) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Not authenticated' }
+
+  // Fetch current price to use as entry price
+  const { data: stockData } = await supabase
+    .from('stocks')
+    .select('current_price')
+    .eq('id', stockId)
+    .single()
+
+  const entryPrice = stockData?.current_price ?? null
 
   const { error } = await supabase
     .from('user_stocks')
@@ -28,6 +37,8 @@ export async function addToWatchlist(stockId: string, alerts: AlertPrefs) {
       dma_cross_alert:          alerts.dma_cross_alert,
       pct_from_high_threshold:  alerts.pct_from_high_threshold,
       new_filing_alert:         alerts.new_filing_alert,
+      invested_amount: investedAmount && investedAmount > 0 ? investedAmount : null,
+      entry_price:     investedAmount && investedAmount > 0 ? entryPrice : null,
     })
 
   if (error) return { error: error.message }

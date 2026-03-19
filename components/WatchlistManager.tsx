@@ -37,6 +37,7 @@ export default function WatchlistManager({ stocks: initialStocks }: { stocks: St
   const [message, setMessage]           = useState('')
   const [expandedId, setExpandedId]     = useState<string | null>(null)
   const [alertForms, setAlertForms]     = useState<Record<string, AlertPrefs>>({})
+  const [investedAmounts, setInvestedAmounts] = useState<Record<string, string>>({})
   const debounceRef                     = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -80,7 +81,8 @@ export default function WatchlistManager({ stocks: initialStocks }: { stocks: St
 
   function handleConfirmAdd(stock: Stock) {
     startTransition(async () => {
-      const result = await addToWatchlist(stock.id, getAlerts(stock.id, stock.alerts))
+      const amt = parseFloat(investedAmounts[stock.id] ?? '')
+      const result = await addToWatchlist(stock.id, getAlerts(stock.id, stock.alerts), isNaN(amt) ? undefined : amt)
       if (result.error) {
         setMessage(`Error: ${result.error}`)
       } else {
@@ -178,6 +180,8 @@ export default function WatchlistManager({ stocks: initialStocks }: { stocks: St
           stock={stock}
           isExpanded={expandedId === stock.id}
           alerts={getAlerts(stock.id, stock.alerts)}
+          investedAmount={investedAmounts[stock.id] ?? ''}
+          onInvestedAmountChange={val => setInvestedAmounts(prev => ({ ...prev, [stock.id]: val }))}
           pending={pending}
           onToggleExpand={() => setExpandedId(expandedId === stock.id ? null : stock.id)}
           onConfirmAdd={() => handleConfirmAdd(stock)}
@@ -199,6 +203,8 @@ export default function WatchlistManager({ stocks: initialStocks }: { stocks: St
           stock={stock}
           isExpanded={expandedId === stock.id}
           alerts={getAlerts(stock.id, stock.alerts)}
+          investedAmount=""
+          onInvestedAmountChange={() => {}}
           pending={pending}
           onToggleExpand={() => setExpandedId(expandedId === stock.id ? null : stock.id)}
           onConfirmAdd={() => handleConfirmAdd(stock)}
@@ -212,12 +218,14 @@ export default function WatchlistManager({ stocks: initialStocks }: { stocks: St
 }
 
 function StockRow({
-  stock, isExpanded, alerts, pending,
+  stock, isExpanded, alerts, investedAmount, onInvestedAmountChange, pending,
   onToggleExpand, onConfirmAdd, onRemove, onUpdateAlerts, onAlertChange,
 }: {
   stock: Stock
   isExpanded: boolean
   alerts: AlertPrefs
+  investedAmount: string
+  onInvestedAmountChange: (val: string) => void
   pending: boolean
   onToggleExpand: () => void
   onConfirmAdd: () => void
@@ -267,6 +275,20 @@ function StockRow({
           <p className="text-xs text-gray-400 mb-4 font-medium uppercase tracking-wide">
             Configure alerts for {stock.ticker}
           </p>
+          {!stock.inWatchlist && (
+            <div className="mb-4">
+              <label className="block text-xs text-gray-500 mb-1">Investment amount (₹) <span className="text-gray-400 font-normal">— optional, to track hypothetical P&amp;L</span></label>
+              <div className="relative max-w-xs">
+                <span className="absolute left-3 top-2.5 text-gray-400 text-sm">₹</span>
+                <input
+                  type="number" min="0" placeholder="e.g. 50000"
+                  value={investedAmount}
+                  onChange={e => onInvestedAmountChange(e.target.value)}
+                  className="w-full pl-7 pr-4 py-2 rounded-lg bg-white text-gray-900 border border-gray-300 focus:outline-none focus:border-blue-500 text-sm"
+                />
+              </div>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-4 mb-4">
             <div>
               <label className="block text-xs text-gray-500 mb-1">RSI oversold below</label>

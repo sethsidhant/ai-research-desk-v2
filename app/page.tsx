@@ -16,6 +16,8 @@ export default async function DashboardPage() {
     .from('user_stocks')
     .select(`
       stock_id,
+      invested_amount,
+      entry_price,
       stocks (
         ticker,
         stock_name,
@@ -76,6 +78,8 @@ export default async function DashboardPage() {
       nifty50_6m:        score?.nifty50_6m ?? null,
       nifty50_1y:        score?.nifty50_1y ?? null,
       score_date:        score?.date ?? null,
+      invested_amount:   w.invested_amount ?? null,
+      entry_price:       w.entry_price ?? null,
     }
   }).sort((a, b) => {
     // Group by industry, then by stock name within industry
@@ -84,6 +88,13 @@ export default async function DashboardPage() {
     if (ia !== ib) return ia.localeCompare(ib)
     return a.stock_name.localeCompare(b.stock_name)
   })
+
+  // Portfolio P&L calculation
+  const portfolioRows = rows.filter(r => r.invested_amount && r.entry_price && r.current_price)
+  const totalInvested = portfolioRows.reduce((s, r) => s + r.invested_amount!, 0)
+  const totalCurrent  = portfolioRows.reduce((s, r) => s + (r.current_price! / r.entry_price!) * r.invested_amount!, 0)
+  const totalPnl      = totalCurrent - totalInvested
+  const totalPnlPct   = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0
 
   const today = new Date().toLocaleDateString('en-IN', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
@@ -134,6 +145,23 @@ export default async function DashboardPage() {
           <StatCard label="Expensive"  value={rows.filter(r => r.pe_deviation != null && r.pe_deviation > 30).length.toString()}                                    highlight="red" />
           <StatCard label="Oversold"   value={rows.filter(r => r.rsi != null && r.rsi < 30).length.toString()}                                                     highlight="green" />
         </div>
+
+        {totalInvested > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
+            <StatCard label="Invested"     value={`₹${totalInvested.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
+            <StatCard label="Current Value" value={`₹${totalCurrent.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
+            <StatCard
+              label="Total P&L"
+              value={`${totalPnl >= 0 ? '+' : ''}₹${Math.abs(totalPnl).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`}
+              highlight={totalPnl >= 0 ? 'green' : 'red'}
+            />
+            <StatCard
+              label="Return"
+              value={`${totalPnlPct >= 0 ? '+' : ''}${totalPnlPct.toFixed(1)}%`}
+              highlight={totalPnlPct >= 0 ? 'green' : 'red'}
+            />
+          </div>
+        )}
 
         <LivePriceTable initialRows={rows} />
       </main>
