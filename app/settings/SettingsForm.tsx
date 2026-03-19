@@ -13,6 +13,9 @@ type Prefs = {
   digest_time:              string
   whatsapp_number:          string | null
   alert_channel:            string | null
+  pl_alert_daily:           boolean
+  pl_alert_weekly:          boolean
+  pl_alert_monthly:         boolean
 }
 
 export default function SettingsForm({ prefs }: { prefs: Prefs }) {
@@ -157,6 +160,32 @@ export default function SettingsForm({ prefs }: { prefs: Prefs }) {
             label="New BSE filing alert"
             description="Alert when a new corporate announcement is filed on BSE"
             defaultChecked={prefs.new_filing_alert}
+          />
+        </div>
+      </section>
+
+      {/* P&L Alerts */}
+      <section>
+        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">Interested Amount P&amp;L Alerts</h2>
+        <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm space-y-4">
+          <p className="text-xs text-gray-400">Receive a WhatsApp summary of how your interested stocks are performing vs your entry price.</p>
+          <Toggle
+            name="pl_alert_daily"
+            label="Daily P&L digest"
+            description="Sent every morning with today's P&L for all your interested stocks"
+            defaultChecked={prefs.pl_alert_daily}
+          />
+          <Toggle
+            name="pl_alert_weekly"
+            label="Weekly P&L digest"
+            description="Sent every Monday with week's performance"
+            defaultChecked={prefs.pl_alert_weekly}
+          />
+          <Toggle
+            name="pl_alert_monthly"
+            label="Monthly P&L digest"
+            description="Sent on the 1st of each month with month's performance"
+            defaultChecked={prefs.pl_alert_monthly}
           />
         </div>
       </section>

@@ -13,6 +13,9 @@ const DEFAULT_PREFS = {
   digest_time:              '19:00',
   whatsapp_number:          null,
   alert_channel:            'whatsapp',
+  pl_alert_daily:           false,
+  pl_alert_weekly:          false,
+  pl_alert_monthly:         false,
 }
 
 export default async function SettingsPage() {

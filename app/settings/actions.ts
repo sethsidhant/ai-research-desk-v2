@@ -18,6 +18,9 @@ export async function saveAlertPreferences(formData: FormData) {
     digest_time:              formData.get('digest_time') as string || '19:00',
     whatsapp_number:          (formData.get('whatsapp_number') as string)?.trim() || null,
     alert_channel:            formData.get('alert_channel') as string || 'whatsapp',
+    pl_alert_daily:           formData.get('pl_alert_daily')   === 'on',
+    pl_alert_weekly:          formData.get('pl_alert_weekly')  === 'on',
+    pl_alert_monthly:         formData.get('pl_alert_monthly') === 'on',
   }
 
   const { error } = await supabase

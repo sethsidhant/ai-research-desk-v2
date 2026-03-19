@@ -29,6 +29,39 @@ function peEmoji(dev) {
   return "🔴";
 }
 
+// ── P&L digest section ────────────────────────────────────────────────────────
+function buildPlDigest(plStocks, label) {
+  if (!plStocks.length) return null;
+
+  const lines = [];
+  lines.push(`💰 *Interested Amount P&L — ${label}*`);
+  lines.push("");
+
+  let totalInvested = 0, totalCurrent = 0;
+
+  for (const s of plStocks) {
+    const currentVal = (s.current_price / s.entry_price) * s.invested_amount;
+    const pnl        = currentVal - s.invested_amount;
+    const pnlPct     = ((s.current_price - s.entry_price) / s.entry_price) * 100;
+    const gain       = pnl >= 0;
+    const emoji      = gain ? "✅" : "🔴";
+    const sign       = gain ? "+" : "";
+    totalInvested   += s.invested_amount;
+    totalCurrent    += currentVal;
+
+    lines.push(`${emoji} *${s.stock_name}*`);
+    lines.push(`   ₹${s.invested_amount.toLocaleString("en-IN")} → ₹${Math.round(currentVal).toLocaleString("en-IN")} (${sign}${pnlPct.toFixed(1)}%)`);
+  }
+
+  lines.push("");
+  const totalPnl    = totalCurrent - totalInvested;
+  const totalPnlPct = (totalPnl / totalInvested) * 100;
+  const totalGain   = totalPnl >= 0;
+  lines.push(`💼 *Total: ₹${Math.round(totalInvested).toLocaleString("en-IN")} → ₹${Math.round(totalCurrent).toLocaleString("en-IN")} (${totalGain ? "+" : ""}${totalPnlPct.toFixed(1)}%)*`);
+
+  return lines.join("\n");
+}
+
 // ── Build digest for one user ─────────────────────────────────────────────────
 function buildDigest(stocks, prefs) {
   const oversoldThreshold    = prefs?.rsi_oversold_threshold    ?? 30;
@@ -93,10 +126,14 @@ function buildDigest(stocks, prefs) {
 async function main() {
   console.log("📊 WhatsApp Notifier V2 — per-user digest\n");
 
+  const now       = new Date();
+  const isMonday  = now.getDay() === 1;
+  const isFirst   = now.getDate() === 1;
+
   // Get all users who have configured alerts (any channel)
   const { data: allPrefs, error: prefsError } = await supabase
     .from("user_alert_preferences")
-    .select("user_id, whatsapp_number, alert_channel, rsi_oversold_threshold, rsi_overbought_threshold");
+    .select("user_id, whatsapp_number, alert_channel, rsi_oversold_threshold, rsi_overbought_threshold, pl_alert_daily, pl_alert_weekly, pl_alert_monthly");
 
   if (prefsError) { console.error("DB error:", prefsError.message); process.exit(1); }
   if (!allPrefs?.length) { console.log("No users with alert preferences configured."); process.exit(0); }
@@ -106,10 +143,10 @@ async function main() {
   for (const prefs of allPrefs) {
     console.log(`Processing user ${prefs.user_id}...`);
 
-    // Get this user's watchlist
+    // Get this user's watchlist (including P&L fields)
     const { data: userStocks } = await supabase
       .from("user_stocks")
-      .select("stock_id")
+      .select("stock_id, invested_amount, entry_price")
       .eq("user_id", prefs.user_id);
 
     if (!userStocks?.length) { console.log("  No stocks in watchlist — skipping"); continue; }
@@ -154,16 +191,51 @@ async function main() {
       })
       .filter(Boolean);
 
-    const message = buildDigest(digestStocks, prefs);
-    const channel = prefs.alert_channel ?? "whatsapp";
+    const channel   = prefs.alert_channel ?? "whatsapp";
+    const recipient = prefs.whatsapp_number?.startsWith("whatsapp:")
+      ? prefs.whatsapp_number
+      : `whatsapp:${prefs.whatsapp_number}`;
 
-    // WhatsApp send
-    if ((channel === "whatsapp" || channel === "both") && prefs.whatsapp_number) {
-      const recipient = prefs.whatsapp_number.startsWith("whatsapp:")
-        ? prefs.whatsapp_number
-        : `whatsapp:${prefs.whatsapp_number}`;
-      const msg = await twilioClient.messages.create({ from: FROM_NUMBER, to: recipient, body: message });
-      console.log(`  ✓ WhatsApp sent to ${prefs.whatsapp_number} — SID: ${msg.sid}`);
+    async function sendWhatsApp(body) {
+      if ((channel === "whatsapp" || channel === "both") && prefs.whatsapp_number) {
+        const msg = await twilioClient.messages.create({ from: FROM_NUMBER, to: recipient, body });
+        console.log(`  ✓ WhatsApp sent — SID: ${msg.sid}`);
+      }
+    }
+
+    // ── 1. Main RSI/DMA digest ────────────────────────────────────────────────
+    const message = buildDigest(digestStocks, prefs);
+    await sendWhatsApp(message);
+
+    // ── 2. P&L digest (if user opted in and has interested stocks) ────────────
+    const plStocks = userStocks
+      .filter(s => s.invested_amount && s.entry_price)
+      .map(s => {
+        const stock = stockMap[s.stock_id];
+        if (!stock?.current_price) return null;
+        return {
+          stock_name:      stock.stock_name,
+          current_price:   stock.current_price,
+          invested_amount: s.invested_amount,
+          entry_price:     s.entry_price,
+        };
+      })
+      .filter(Boolean);
+
+    if (plStocks.length > 0) {
+      if (prefs.pl_alert_daily) {
+        const label = now.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
+        const plMsg = buildPlDigest(plStocks, label);
+        if (plMsg) { await sendWhatsApp(plMsg); console.log(`  ✓ Daily P&L digest sent`); }
+      }
+      if (prefs.pl_alert_weekly && isMonday) {
+        const plMsg = buildPlDigest(plStocks, "This Week");
+        if (plMsg) { await sendWhatsApp(plMsg); console.log(`  ✓ Weekly P&L digest sent`); }
+      }
+      if (prefs.pl_alert_monthly && isFirst) {
+        const plMsg = buildPlDigest(plStocks, now.toLocaleDateString("en-IN", { month: "long", year: "numeric" }));
+        if (plMsg) { await sendWhatsApp(plMsg); console.log(`  ✓ Monthly P&L digest sent`); }
+      }
     }
 
     // Email send via Twilio SendGrid (if configured)
@@ -177,7 +249,7 @@ async function main() {
           body: JSON.stringify({
             personalizations: [{ to: [{ email }] }],
             from: { email: process.env.SENDGRID_FROM_EMAIL || "alerts@yourdomain.com" },
-            subject: `📊 Research Desk — ${new Date().toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })}`,
+            subject: `📊 Research Desk — ${now.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })}`,
             content: [{ type: "text/plain", value: message }],
           }),
         });
