@@ -139,6 +139,8 @@ export default function WatchlistTable({
             const prevIndustry = i > 0 ? rows[i - 1].industry : null
             const showDivider  = i === 0 || r.industry !== prevIndustry
 
+              const isPending = !r.composite_score && !r.rsi && !r.dma_50
+
             return (
               <React.Fragment key={r.stock_id}>
               {showDivider && (
@@ -151,6 +153,17 @@ export default function WatchlistTable({
                   </td>
                 </tr>
               )}
+              {isPending ? (
+                <tr className={`border-b border-gray-100 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                  <td className="px-4 py-3">
+                    <div className="font-semibold text-gray-400">{r.stock_name}</div>
+                    <div className="text-gray-400 text-xs font-mono">{r.ticker}</div>
+                  </td>
+                  <td colSpan={12} className="px-3 py-3 text-xs text-amber-600 bg-amber-50/50">
+                    ⏳ Data pending — will be available after next morning run (~3 AM IST)
+                  </td>
+                </tr>
+              ) : (
               <tr
                 className={`border-b border-gray-100 hover:bg-blue-50/40 transition-colors ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
               >
@@ -277,6 +290,7 @@ export default function WatchlistTable({
                   </div>
                 </td>
               </tr>
+              )}
               </React.Fragment>
             )
           })}
