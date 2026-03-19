@@ -63,4 +63,15 @@ async function closePool() {
   // No-op — Supabase JS client has no pool to close
 }
 
-module.exports = { getAllStocks, getWatchlistedStocks, upsertStock, upsertDailyScore, insertHistory, closePool };
+const PRICE_INPUT  = 3.00   // $ per 1M input tokens (claude-sonnet-4-6)
+const PRICE_OUTPUT = 15.00  // $ per 1M output tokens
+
+async function logApiUsage(agent, ticker, inputTokens, outputTokens) {
+  const costUsd = (inputTokens / 1_000_000) * PRICE_INPUT + (outputTokens / 1_000_000) * PRICE_OUTPUT
+  const { error } = await supabase.from('api_usage_log').insert({
+    agent, ticker: ticker ?? null, input_tokens: inputTokens, output_tokens: outputTokens, cost_usd: costUsd,
+  })
+  if (error) console.error('[logApiUsage] Failed:', error.message)
+}
+
+module.exports = { getAllStocks, getWatchlistedStocks, upsertStock, upsertDailyScore, insertHistory, closePool, logApiUsage };

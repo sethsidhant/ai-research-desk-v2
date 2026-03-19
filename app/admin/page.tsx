@@ -75,8 +75,32 @@ export default async function AdminPage() {
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
   const recentAdds   = entries.filter(r => r.added_at && r.added_at > sevenDaysAgo).length
 
-  // ── 4. Unique stocks per user (for cost calc — engine runs per unique stock)
-  // Daily Claude cost
+  // ── 4. Real API usage from log ─────────────────────────────────────────────
+  const thirtyDaysAgoISO = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+  const todayISO         = new Date().toISOString().slice(0, 10)
+
+  const { data: usageRows } = await adminSupabase
+    .from('api_usage_log')
+    .select('agent, input_tokens, output_tokens, cost_usd, created_at')
+    .gte('created_at', thirtyDaysAgoISO)
+    .order('created_at', { ascending: false })
+
+  const usage = usageRows ?? []
+
+  // Totals
+  const totalCost30d = usage.reduce((s, r) => s + Number(r.cost_usd), 0)
+  const todayUsage   = usage.filter(r => r.created_at.slice(0, 10) === todayISO)
+  const totalCostToday = todayUsage.reduce((s, r) => s + Number(r.cost_usd), 0)
+
+  // By agent (last 30d)
+  const byAgent: Record<string, { calls: number; cost: number }> = {}
+  for (const r of usage) {
+    if (!byAgent[r.agent]) byAgent[r.agent] = { calls: 0, cost: 0 }
+    byAgent[r.agent].calls++
+    byAgent[r.agent].cost += Number(r.cost_usd)
+  }
+
+  // Estimated (for projection — still useful when log is empty)
   const dailyCost    = costUsd(uniqueStocks * DAILY_INPUT_PER_STOCK, uniqueStocks * DAILY_OUTPUT_PER_STOCK)
   const monthlyCost  = dailyCost * 30
   const onboardCost  = costUsd(recentAdds * ONBOARD_INPUT, recentAdds * ONBOARD_OUTPUT)
@@ -94,8 +118,7 @@ export default async function AdminPage() {
   })
 
   // ── 6. User join trend (last 30 days) ────────────────────────────────────
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-  const recentUsers   = allUsers.filter(u => u.created_at && new Date(u.created_at) > thirtyDaysAgo).length
+  const recentUsers = allUsers.filter(u => u.created_at && new Date(u.created_at) > new Date(thirtyDaysAgoISO)).length
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -171,17 +194,46 @@ export default async function AdminPage() {
 
         {/* ── API Costs ─────────────────────────────────────────── */}
         <section>
-          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Claude API Cost (claude-sonnet-4-6)</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
-            <AdminCard label="Daily Cost"          value={usd(dailyCost)} />
-            <AdminCard label="Monthly Estimate"    value={usd(monthlyCost)} highlight={monthlyCost > 5 ? 'amber' : undefined} />
-            <AdminCard label="Per Unique Stock/mo" value={usd(costUsd(DAILY_INPUT_PER_STOCK, DAILY_OUTPUT_PER_STOCK) * 30)} />
-            <AdminCard label="Unique Stocks Now"   value={uniqueStocks.toString()} />
+          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Claude API Cost (claude-sonnet-4-6) — Actual</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+            <AdminCard label="Today's Spend"      value={usd(totalCostToday)} highlight={totalCostToday > 1 ? 'amber' : undefined} />
+            <AdminCard label="Last 30 Days"       value={usd(totalCost30d)}   highlight={totalCost30d > 10 ? 'amber' : undefined} />
+            <AdminCard label="Est. Monthly"       value={usd(monthlyCost)}    />
+            <AdminCard label="Total API Calls"    value={usage.length.toString()} />
           </div>
+
+          {/* Per-agent breakdown */}
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden mb-4">
+            <div className="px-5 py-3 border-b border-gray-100 text-xs font-semibold text-gray-400 uppercase tracking-widest">
+              Breakdown by Agent (last 30 days)
+            </div>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs text-gray-400 border-b border-gray-100">
+                  <th className="text-left px-5 py-2">Agent</th>
+                  <th className="text-right px-5 py-2">Calls</th>
+                  <th className="text-right px-5 py-2">Total Cost</th>
+                  <th className="text-right px-5 py-2">Avg / Call</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(byAgent).sort((a, b) => b[1].cost - a[1].cost).map(([agent, d], i) => (
+                  <tr key={agent} className={`border-b border-gray-50 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}>
+                    <td className="px-5 py-2.5 font-mono text-gray-900">{agent}</td>
+                    <td className="px-5 py-2.5 text-right text-gray-700">{d.calls}</td>
+                    <td className="px-5 py-2.5 text-right font-semibold text-gray-900">{usd(d.cost)}</td>
+                    <td className="px-5 py-2.5 text-right text-gray-500 text-xs">{usd(d.cost / d.calls)}</td>
+                  </tr>
+                ))}
+                {Object.keys(byAgent).length === 0 && (
+                  <tr><td colSpan={4} className="px-5 py-6 text-center text-gray-400 text-sm">No usage logged yet — will populate from tomorrow's pipeline run</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
           <div className="bg-white border border-gray-200 rounded-xl shadow-sm px-5 py-4 text-xs text-gray-400 space-y-1">
             <p>Pricing: <span className="text-gray-600">$3.00/M input · $15.00/M output</span></p>
-            <p>Daily per stock: <span className="text-gray-600">~{DAILY_INPUT_PER_STOCK.toLocaleString()} input + {DAILY_OUTPUT_PER_STOCK.toLocaleString()} output tokens (engine + summary)</span></p>
-            <p>Onboarding: <span className="text-gray-600">~{ONBOARD_INPUT.toLocaleString()} input + {ONBOARD_OUTPUT.toLocaleString()} output tokens per stock (one-time)</span></p>
             <p>Cost scales with <span className="text-gray-600 font-medium">unique stocks</span>, not users — if 10 users all watch RELIANCE, it only costs once.</p>
           </div>
         </section>

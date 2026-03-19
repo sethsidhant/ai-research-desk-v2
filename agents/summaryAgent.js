@@ -7,6 +7,7 @@ const Anthropic = require("@anthropic-ai/sdk");
 const { createClient } = require("@supabase/supabase-js");
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const { logApiUsage } = require("./pgHelper");
 const supabase  = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY,
@@ -75,6 +76,7 @@ Keep each section to 3-4 sentences. Be direct and opinionated.`;
         max_tokens: 800,
         messages:   [{ role: "user", content: prompt }],
       });
+      await logApiUsage('summary', stock.ticker, response.usage.input_tokens, response.usage.output_tokens);
       return response.content[0].text;
     } catch (err) {
       if (err.status === 529 || err.status === 429) {

@@ -17,7 +17,7 @@ const { execSync } = require("child_process");
 const fs           = require("fs");
 const path         = require("path");
 const { getTechnicals, getReturns, NIFTY50_TOKEN } = require("./technicalService");
-const { getWatchlistedStocks, upsertStock, upsertDailyScore, insertHistory, closePool } = require("./pgHelper");
+const { getWatchlistedStocks, upsertStock, upsertDailyScore, insertHistory, closePool, logApiUsage } = require("./pgHelper");
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const sleep     = ms => new Promise(r => setTimeout(r, ms));
@@ -193,6 +193,7 @@ Return ONLY valid JSON:
         model: "claude-sonnet-4-6", max_tokens: 150, temperature: 0.2,
         messages: [{ role: "user", content: prompt }],
       });
+      await logApiUsage('engine', ticker, response.usage.input_tokens, response.usage.output_tokens);
       const m = response.content[0].text.match(/\{[\s\S]*\}/);
       if (!m) { console.log("  Invalid JSON from Claude — skipping"); continue; }
       const result = JSON.parse(m[0]);

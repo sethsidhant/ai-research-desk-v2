@@ -10,7 +10,7 @@ const { execSync } = require("child_process");
 const RSSParser    = require("rss-parser");
 const axios        = require("axios");
 const { getTechnicals, getReturns, NIFTY50_TOKEN } = require("./technicalService");
-const { upsertStock, upsertDailyScore, insertHistory } = require("./pgHelper");
+const { upsertStock, upsertDailyScore, insertHistory, logApiUsage } = require("./pgHelper");
 const { createClient } = require("@supabase/supabase-js");
 
 const ticker = process.argv[2];
@@ -121,6 +121,7 @@ Return ONLY valid JSON: {"composite_score":<1-10>,"classification":"<Undervalued
     model: "claude-sonnet-4-6", max_tokens: 150, temperature: 0.2,
     messages: [{ role: "user", content: prompt }],
   });
+  await logApiUsage('onboard_score', ticker, response.usage.input_tokens, response.usage.output_tokens);
   const m = response.content[0].text.match(/\{[\s\S]*\}/);
   if (!m) { console.log("  Invalid JSON from Claude"); return false; }
   const result = JSON.parse(m[0]);
@@ -333,6 +334,7 @@ Write using exactly these headers:
         model: "claude-sonnet-4-6", max_tokens: 800,
         messages: [{ role: "user", content: prompt }],
       });
+      await logApiUsage('onboard_summary', ticker, response.usage.input_tokens, response.usage.output_tokens);
       const summary = response.content[0].text;
       const today   = new Date().toISOString().split("T")[0];
       await supabase.from("stocks").update({ ai_summary: summary, summary_date: today }).eq("id", stock.id);
