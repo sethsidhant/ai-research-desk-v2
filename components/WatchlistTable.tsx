@@ -104,8 +104,16 @@ export default function WatchlistTable({
 
   if (rows.length === 0) {
     return (
-      <div className="text-center py-20 text-gray-500">
-        No stocks in your watchlist yet. <a href="/watchlist" className="text-blue-400 hover:underline">Add some →</a>
+      <div className="flex flex-col items-center justify-center py-24 text-center">
+        <div className="text-5xl mb-4">📈</div>
+        <h2 className="text-xl font-bold text-gray-900 mb-2">Your watchlist is empty</h2>
+        <p className="text-gray-500 text-sm mb-6 max-w-xs">Add stocks you want to track and our AI will research them for you within minutes.</p>
+        <a
+          href="/watchlist"
+          className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-xl transition-colors text-sm"
+        >
+          Add stocks to watchlist →
+        </a>
       </div>
     )
   }

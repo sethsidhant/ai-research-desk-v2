@@ -111,7 +111,7 @@ export default async function DashboardPage() {
               href="/settings"
               className="text-xs sm:text-sm text-gray-500 hover:text-gray-900 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-gray-100"
             >
-              Alerts
+              Settings
             </Link>
             <SignOutButton />
           </div>
