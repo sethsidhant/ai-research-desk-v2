@@ -112,6 +112,14 @@ export default async function DashboardPage() {
           </div>
           <div className="flex items-center gap-2 sm:gap-4">
             <span className="text-xs sm:text-sm text-gray-500 hidden sm:block">{user.email}</span>
+            {user.email === process.env.ADMIN_EMAIL && (
+              <Link
+                href="/admin"
+                className="text-xs sm:text-sm text-gray-500 hover:text-gray-900 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-gray-100"
+              >
+                Admin
+              </Link>
+            )}
             <Link
               href="/watchlist"
               className="text-xs sm:text-sm text-gray-500 hover:text-gray-900 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-gray-100"
