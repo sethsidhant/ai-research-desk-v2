@@ -71,7 +71,12 @@ async function runFundamentals(stock) {
   console.log(`\n[1/3] Fundamentals + Score for ${ticker}...`);
 
   const f = getScreenerFundamentals(ticker);
-  if (!f) { console.log("  No Screener data — skipping fundamentals"); return false; }
+  if (!f) {
+    // No Screener data — treat as ETF, mark industry and proceed to technicals
+    console.log("  No Screener data — treating as ETF");
+    await upsertStock(ticker, { industry: 'ETF', fundamentals_updated_at: new Date().toISOString() });
+    return true;
+  }
 
   let industryPE = stock.industry_pe ?? null;
   if (f.industry_hierarchy) {
