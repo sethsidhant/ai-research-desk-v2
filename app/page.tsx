@@ -4,6 +4,7 @@ import Link from 'next/link'
 import SignOutButton from '@/components/SignOutButton'
 import LivePriceTable from '@/components/LivePriceTable'
 import MarketIndicesBar from '@/components/MarketIndicesBar'
+import PortfolioChart, { type ChartPoint } from '@/components/PortfolioChart'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -96,6 +97,54 @@ export default async function DashboardPage() {
   const totalPnl      = totalCurrent - totalInvested
   const totalPnlPct   = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0
 
+  // Portfolio chart — % return over time for stocks with invested_amount
+  let chartData: ChartPoint[] = []
+  const portfolioRowsWithHistory = rows.filter(r => r.invested_amount && r.entry_price)
+  if (portfolioRowsWithHistory.length > 0) {
+    const historyStockIds = portfolioRowsWithHistory.map(r => r.stock_id)
+    const { data: history } = await supabase
+      .from('daily_history')
+      .select('stock_id, date, closing_price')
+      .in('stock_id', historyStockIds)
+      .not('closing_price', 'is', null)
+      .order('date', { ascending: true })
+
+    if (history && history.length > 0) {
+      // Group closing prices by date
+      const byDate: Record<string, Record<string, number>> = {}
+      for (const h of history) {
+        if (!byDate[h.date]) byDate[h.date] = {}
+        byDate[h.date][h.stock_id] = h.closing_price
+      }
+
+      // Build a lookup for entry prices
+      const entryMap: Record<string, { entry_price: number; invested_amount: number }> = {}
+      for (const r of portfolioRowsWithHistory) {
+        entryMap[r.stock_id] = { entry_price: r.entry_price!, invested_amount: r.invested_amount! }
+      }
+
+      // For each date calculate total portfolio value vs total invested
+      const totalInvestedBase = portfolioRowsWithHistory.reduce((s, r) => s + r.invested_amount!, 0)
+
+      chartData = Object.entries(byDate)
+        .map(([date, prices]) => {
+          let currentVal = 0, counted = 0
+          for (const r of portfolioRowsWithHistory) {
+            const price = prices[r.stock_id]
+            if (!price) continue
+            currentVal += (price / r.entry_price!) * r.invested_amount!
+            counted++
+          }
+          if (counted === 0) return null
+          const returnPct = ((currentVal - totalInvestedBase) / totalInvestedBase) * 100
+          const d = new Date(date)
+          const label = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+          return { date: label, returnPct: parseFloat(returnPct.toFixed(2)) }
+        })
+        .filter(Boolean) as ChartPoint[]
+    }
+  }
+
   const today = new Date().toLocaleDateString('en-IN', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
   })
@@ -155,20 +204,28 @@ export default async function DashboardPage() {
         </div>
 
         {totalInvested > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
-            <StatCard label="Interested"   value={`₹${totalInvested.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
-            <StatCard label="Current Value" value={`₹${totalCurrent.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
-            <StatCard
-              label="Total P&L"
-              value={`${totalPnl >= 0 ? '+' : ''}₹${Math.abs(totalPnl).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`}
-              highlight={totalPnl >= 0 ? 'green' : 'red'}
-            />
-            <StatCard
-              label="Return"
-              value={`${totalPnlPct >= 0 ? '+' : ''}${totalPnlPct.toFixed(1)}%`}
-              highlight={totalPnlPct >= 0 ? 'green' : 'red'}
-            />
-          </div>
+          <>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+              <StatCard label="Interested"   value={`₹${totalInvested.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
+              <StatCard label="Current Value" value={`₹${totalCurrent.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
+              <StatCard
+                label="Total P&L"
+                value={`${totalPnl >= 0 ? '+' : ''}₹${Math.abs(totalPnl).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`}
+                highlight={totalPnl >= 0 ? 'green' : 'red'}
+              />
+              <StatCard
+                label="Return"
+                value={`${totalPnlPct >= 0 ? '+' : ''}${totalPnlPct.toFixed(1)}%`}
+                highlight={totalPnlPct >= 0 ? 'green' : 'red'}
+              />
+            </div>
+            {chartData.length >= 2 && (
+              <div className="bg-white border border-gray-200 rounded-xl px-4 sm:px-6 py-4 shadow-sm mb-8">
+                <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Interested Portfolio Return</div>
+                <PortfolioChart data={chartData} />
+              </div>
+            )}
+          </>
         )}
 
         <LivePriceTable initialRows={rows} />
