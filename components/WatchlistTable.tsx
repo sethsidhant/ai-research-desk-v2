@@ -160,7 +160,7 @@ export default function WatchlistTable({
                     <div className="text-gray-400 text-xs font-mono">{r.ticker}</div>
                   </td>
                   <td colSpan={12} className="px-3 py-3 text-xs text-amber-600 bg-amber-50/50">
-                    ⏳ Data pending — will be available after next morning run (~3 AM IST)
+                    🤓 Our AI is doing its homework on this one — data coming up in a few minutes!
                   </td>
                 </tr>
               ) : (
