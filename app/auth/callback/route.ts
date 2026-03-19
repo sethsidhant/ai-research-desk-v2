@@ -27,10 +27,5 @@ export async function GET(request: NextRequest) {
     await supabase.auth.exchangeCodeForSession(code)
   }
 
-  // Password reset / invite — send to set-password page
-  if (type === 'recovery' || type === 'invite') {
-    return NextResponse.redirect(`${origin}/set-password`)
-  }
-
-  return NextResponse.redirect(`${origin}/`)
+  return NextResponse.redirect(`${origin}/set-password`)
 }
