@@ -277,25 +277,25 @@ function StockRow({
           </p>
           {!stock.inWatchlist && (
             <div className="mb-4">
-              <label className="block text-xs text-gray-500 mb-1">Interested amount (₹) <span className="text-gray-400 font-normal">— optional, to track hypothetical P&amp;L</span></label>
-              <div className="relative max-w-xs">
+              <label className="block text-xs text-gray-500 mb-1">Interested amount (₹) <span className="text-gray-400 font-normal">— optional, to track P&amp;L</span></label>
+              <div className="relative">
                 <span className="absolute left-3 top-2.5 text-gray-400 text-sm">₹</span>
                 <input
                   type="number" min="0" placeholder="e.g. 50000"
                   value={investedAmount}
                   onChange={e => onInvestedAmountChange(e.target.value)}
-                  className="w-full pl-7 pr-4 py-2 rounded-lg bg-white text-gray-900 border border-gray-300 focus:outline-none focus:border-blue-500 text-sm"
+                  className="w-full pl-7 pr-4 py-2.5 rounded-lg bg-white text-gray-900 border border-gray-300 focus:outline-none focus:border-blue-500 text-sm"
                 />
               </div>
             </div>
           )}
-          <div className="grid grid-cols-2 gap-4 mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
             <div>
               <label className="block text-xs text-gray-500 mb-1">RSI oversold below</label>
               <input type="number" value={alerts.rsi_oversold_threshold}
                 onChange={e => onAlertChange('rsi_oversold_threshold', Number(e.target.value))}
                 min={1} max={50}
-                className="w-full px-3 py-2 rounded-lg bg-white text-gray-900 border border-gray-300 focus:outline-none focus:border-blue-500 text-sm"
+                className="w-full px-3 py-2.5 rounded-lg bg-white text-gray-900 border border-gray-300 focus:outline-none focus:border-blue-500 text-sm"
               />
             </div>
             <div>
@@ -303,30 +303,37 @@ function StockRow({
               <input type="number" value={alerts.rsi_overbought_threshold}
                 onChange={e => onAlertChange('rsi_overbought_threshold', Number(e.target.value))}
                 min={50} max={99}
-                className="w-full px-3 py-2 rounded-lg bg-white text-gray-900 border border-gray-300 focus:outline-none focus:border-blue-500 text-sm"
+                className="w-full px-3 py-2.5 rounded-lg bg-white text-gray-900 border border-gray-300 focus:outline-none focus:border-blue-500 text-sm"
               />
             </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">Alert below 52W high (%)</label>
-              <input type="number" value={alerts.pct_from_high_threshold}
-                onChange={e => onAlertChange('pct_from_high_threshold', Number(e.target.value))}
-                min={-80} max={0}
-                className="w-full px-3 py-2 rounded-lg bg-white text-gray-900 border border-gray-300 focus:outline-none focus:border-blue-500 text-sm"
+            <div className="sm:col-span-2">
+              <label className="block text-xs text-gray-500 mb-1">
+                Alert when stock is below 52W high (%) <span className="text-gray-400">— enter a negative number e.g. -20</span>
+              </label>
+              <input type="text" inputMode="numeric"
+                value={alerts.pct_from_high_threshold}
+                onChange={e => {
+                  const val = parseFloat(e.target.value)
+                  if (!isNaN(val)) onAlertChange('pct_from_high_threshold', val)
+                  else if (e.target.value === '-' || e.target.value === '') onAlertChange('pct_from_high_threshold', e.target.value as any)
+                }}
+                placeholder="-20"
+                className="w-full sm:w-48 px-3 py-2.5 rounded-lg bg-white text-gray-900 border border-gray-300 focus:outline-none focus:border-blue-500 text-sm"
               />
             </div>
           </div>
-          <div className="flex gap-6 mb-5">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-6 mb-5">
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" checked={alerts.dma_cross_alert}
                 onChange={e => onAlertChange('dma_cross_alert', e.target.checked)}
-                className="w-4 h-4 rounded accent-blue-500"
+                className="w-4 h-4 rounded accent-blue-500 shrink-0"
               />
               <span className="text-sm text-gray-700">DMA crossover alert</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" checked={alerts.new_filing_alert}
                 onChange={e => onAlertChange('new_filing_alert', e.target.checked)}
-                className="w-4 h-4 rounded accent-blue-500"
+                className="w-4 h-4 rounded accent-blue-500 shrink-0"
               />
               <span className="text-sm text-gray-700">New BSE filing alert</span>
             </label>
