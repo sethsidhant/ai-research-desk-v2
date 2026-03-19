@@ -1,6 +1,6 @@
 // summaryAgent.js — V2
 // Generates AI research notes per stock using Claude, writes to stocks table.
-// Skips stocks with no news or a summary already written today.
+// Only regenerates when news has changed since the last summary (last_news_update > summary_date).
 
 require("dotenv").config({ path: "../.env.local" });
 const Anthropic = require("@anthropic-ai/sdk");
@@ -15,7 +15,7 @@ const supabase  = createClient(
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function generateSummary(stock, score) {
+async function generateSummary(stock) {
   const prompt = `You are a senior Indian equity research analyst. Write a concise research note.
 
 Stock: ${stock.stock_name} (${stock.ticker})
@@ -24,8 +24,8 @@ Industry: ${stock.industry || "N/A"}
 📊 VALUATION
 - Stock PE: ${stock.stock_pe || "N/A"}
 - Industry PE: ${stock.industry_pe || "N/A"}
-- PE Deviation: ${score?.pe_deviation != null ? score.pe_deviation + "%" : "N/A"}
-- Classification: ${score?.classification || "N/A"}
+- PE Deviation: ${stock.pe_deviation != null ? stock.pe_deviation + "%" : "N/A"}
+- Classification: ${stock.classification || "N/A"}
 - Price to Book: ${stock.pb || "N/A"}
 - Current Price: ₹${stock.current_price || "N/A"}
 - 52W High: ₹${stock.high_52w || "N/A"} | 52W Low: ₹${stock.low_52w || "N/A"}
@@ -56,20 +56,12 @@ Industry: ${stock.industry || "N/A"}
 - FII Holding: ${stock.fii_holding != null ? stock.fii_holding + "%" : "N/A"}
 - DII Holding: ${stock.dii_holding != null ? stock.dii_holding + "%" : "N/A"}
 
-📉 TECHNICALS
-- RSI (14): ${score?.rsi || "N/A"}
-- RSI Signal: ${score?.rsi_signal || "N/A"}
-- 50 DMA: ${score?.dma_50 || "N/A"} (stock is ${stock.current_price && score?.dma_50 && parseFloat(stock.current_price) > parseFloat(score.dma_50) ? "ABOVE" : "BELOW"})
-- 200 DMA: ${score?.dma_200 || "N/A"} (stock is ${stock.current_price && score?.dma_200 && parseFloat(stock.current_price) > parseFloat(score.dma_200) ? "ABOVE" : "BELOW"})
-- Suggested Action: ${score?.suggested_action || "N/A"}
-
 📰 NEWS & SENTIMENT
 ${stock.latest_headlines ? stock.latest_headlines.substring(0, 1500) : "No recent news available."}
 
-Write a 5-section research note using exactly these headers:
+Write a 4-section research note using exactly these headers:
 📊 VALUATION
 🏭 BUSINESS QUALITY
-📉 TECHNICALS
 📰 NEWS & SENTIMENT
 ✅ SUGGESTED ACTION
 
@@ -112,11 +104,11 @@ async function main() {
 
   if (error) { console.error("DB error:", error.message); process.exit(1); }
 
-  // Fetch latest daily_scores for each stock
+  // Fetch latest daily_scores for context (pe_deviation, classification)
   const stockIds = stocks.map(s => s.id);
   const { data: scores } = await supabase
     .from("daily_scores")
-    .select("stock_id, pe_deviation, rsi, rsi_signal, dma_50, dma_200, classification, suggested_action, date")
+    .select("stock_id, pe_deviation, classification, date")
     .in("stock_id", stockIds)
     .order("date", { ascending: false });
 
@@ -129,20 +121,24 @@ async function main() {
     const stock = stocks[i];
     console.log(`\n[${i + 1}/${stocks.length}] ${stock.stock_name}`);
 
-    // Skip if no news updated today
+    // Skip if no news fetched yet
     if (!stock.last_news_update) {
       console.log("  Skipping — no news fetched yet (run newsAgent first)");
       continue;
     }
 
-    // Skip if summary already written today
-    if (stock.summary_date === today) {
-      console.log("  Skipping — summary already written today");
+    // Skip if summary is already up-to-date with latest news
+    // (only regenerate when news has changed since last summary)
+    if (stock.summary_date && stock.summary_date >= stock.last_news_update.split("T")[0]) {
+      console.log(`  Skipping — summary (${stock.summary_date}) is current with news (${stock.last_news_update.split("T")[0]})`);
       continue;
     }
 
+    // Merge latest score fields into stock for the prompt
     const score = latestScore[stock.id] ?? null;
-    const summary = await generateSummary(stock, score);
+    const stockWithScore = { ...stock, pe_deviation: score?.pe_deviation, classification: score?.classification };
+
+    const summary = await generateSummary(stockWithScore);
     if (!summary) { console.log("  Failed to generate summary"); continue; }
 
     const { error: updateError } = await supabase
