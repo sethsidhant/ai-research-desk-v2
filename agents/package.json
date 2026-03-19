@@ -1,0 +1,24 @@
+{
+  "name": "ai-research-desk-v2-agents",
+  "version": "2.0.0",
+  "description": "V2 agent pipeline — writes to Postgres instead of Google Sheets",
+  "main": "engine.js",
+  "type": "commonjs",
+  "scripts": {
+    "engine": "node engine.js",
+    "news": "node newsAgent.js",
+    "summary": "node summaryAgent.js",
+    "notify": "node whatsappNotifier.js",
+    "all": "node engine.js && node newsAgent.js && node summaryAgent.js && node whatsappNotifier.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.78.0",
+    "@supabase/supabase-js": "^2.99.2",
+    "dotenv": "^17.3.1",
+    "kiteconnect": "^5.1.0",
+    "otplib": "^13.3.0",
+    "pg": "^8.13.0",
+    "rss-parser": "^3.13.0",
+    "twilio": "^5.13.0"
+  }
+}

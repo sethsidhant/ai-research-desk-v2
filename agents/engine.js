@@ -1,0 +1,253 @@
+// engine.js — Daily scoring (no Screener)
+// Uses stored fundamentals from DB. Fetches live prices + technicals from Kite.
+// Screener scraping moved to fundamentalsAgent.js (runs bi-weekly).
+//
+// What runs daily:
+//   - Live price from Kite (batch, one call for all stocks)
+//   - Industry PE via fetchIndustryPE.py (once per unique industry)
+//   - stock_pe = livePrice / stored_eps
+//   - RSI + DMA technicals from Kite
+//   - Returns (6m, 1y) from Kite
+//   - Claude composite score
+//   - Upsert daily_scores + insert daily_history (no OHLC/volume/returns stored)
+
+require("dotenv").config({ path: "../.env.local" });
+const Anthropic    = require("@anthropic-ai/sdk");
+const { execSync } = require("child_process");
+const fs           = require("fs");
+const path         = require("path");
+const { getTechnicals, getReturns, NIFTY50_TOKEN } = require("./technicalService");
+const { getWatchlistedStocks, upsertStock, upsertDailyScore, insertHistory, closePool } = require("./pgHelper");
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const sleep     = ms => new Promise(r => setTimeout(r, ms));
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function getRSISignal(rsi) {
+  if (rsi == null) return null;
+  if (rsi < 30) return "Oversold";
+  if (rsi < 45) return "Weakening";
+  if (rsi < 55) return "Neutral";
+  if (rsi < 70) return "Strengthening";
+  return "Overbought";
+}
+
+function getKiteAccessToken() {
+  try { return fs.readFileSync(path.join(__dirname, "../.kite_token"), "utf8").trim(); }
+  catch { return process.env.KITE_ACCESS_TOKEN; }
+}
+
+// Batch fetch live prices for all stocks in one Kite call
+async function fetchAllPrices(stocks) {
+  const withTokens = stocks.filter(s => s.instrument_token);
+  if (!withTokens.length) return {};
+  const apiKey      = process.env.KITE_API_KEY;
+  const accessToken = getKiteAccessToken();
+  const tokens      = withTokens.map(s => s.instrument_token).join("&i=");
+  try {
+    const res  = await fetch(`https://api.kite.trade/quote?i=${tokens}`, {
+      headers: { "X-Kite-Version": "3", "Authorization": `token ${apiKey}:${accessToken}` },
+      signal: AbortSignal.timeout(10000),
+    });
+    const json = await res.json();
+    const prices = {};
+    for (const val of Object.values(json.data ?? {})) {
+      const stock = withTokens.find(s => s.instrument_token === val.instrument_token);
+      if (stock) prices[stock.ticker] = val.last_price;
+    }
+    return prices;
+  } catch { return {}; }
+}
+
+// Fetch industry PE — cached per industry name to avoid duplicate scrapes
+function fetchIndustryPE(industryName) {
+  try {
+    const out = execSync(`python fetchIndustryPE.py "${industryName}"`, {
+      encoding: "utf8", cwd: __dirname,
+      env: { ...process.env, PYTHONIOENCODING: "utf-8" },
+    });
+    const m = out.match(/Median: ([\d.]+)/);
+    return m ? parseFloat(m[1]) : null;
+  } catch { return null; }
+}
+
+function getDateDimensions(dateStr) {
+  const d      = new Date(dateStr + "T12:00:00Z");
+  const year   = d.getUTCFullYear();
+  const jan1   = new Date(Date.UTC(year, 0, 1));
+  const weekNum = Math.ceil(((d - jan1) / 86400000 + jan1.getUTCDay() + 1) / 7);
+  const days   = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+  return {
+    week:      weekNum,
+    month:     d.getUTCMonth() + 1,
+    quarter:   Math.ceil((d.getUTCMonth() + 1) / 3),
+    dayOfWeek: days[d.getUTCDay()],
+  };
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+
+async function runDailyScoring() {
+  try {
+    const stocks   = await getWatchlistedStocks();
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const dim      = getDateDimensions(todayStr);
+
+    console.log(`\n[engine] Daily scoring — ${todayStr} (${dim.dayOfWeek})`);
+    console.log(`Processing ${stocks.length} stocks (no Screener — using stored fundamentals)\n`);
+
+    // 1. Batch price fetch — one Kite call for all stocks
+    console.log("Fetching live prices from Kite...");
+    const allPrices = await fetchAllPrices(stocks);
+    console.log(`  Got prices for ${Object.keys(allPrices).length}/${stocks.length} stocks\n`);
+
+    // 2. Industry PE — fetch once per unique industry
+    const industryPECache = {};
+    const uniqueIndustries = [...new Set(stocks.map(s => s.industry).filter(Boolean))];
+    console.log(`Fetching industry PEs for ${uniqueIndustries.length} industries...`);
+    for (const industry of uniqueIndustries) {
+      const pe = fetchIndustryPE(industry);
+      industryPECache[industry] = pe;
+      console.log(`  ${industry}: ${pe ?? "N/A"}`);
+    }
+
+    // 3. Benchmark returns — one call
+    const niftyReturns = await getReturns(NIFTY50_TOKEN);
+
+    // 4. Per-stock scoring
+    for (const stock of stocks) {
+      const { id: stockId, ticker, stock_name, instrument_token } = stock;
+      if (!ticker) continue;
+
+      console.log(`\n[${ticker}] ${stock_name}`);
+
+      // Live price (fall back to stored)
+      const livePrice = allPrices[ticker] ?? stock.current_price;
+
+      // Recalculate price-dependent values
+      const industryPE = stock.industry ? (industryPECache[stock.industry] ?? stock.industry_pe) : stock.industry_pe;
+
+      // stock_pe = price / stored EPS (quarterly EPS doesn't change daily)
+      const stockPE = (livePrice && stock.eps && stock.eps > 0)
+        ? parseFloat((livePrice / stock.eps).toFixed(2))
+        : stock.stock_pe;
+
+      const peDeviation = (stockPE && industryPE)
+        ? parseFloat(((stockPE - industryPE) / industryPE * 100).toFixed(2))
+        : null;
+
+      const pctFromHigh = (livePrice && stock.high_52w)
+        ? parseFloat(((livePrice - stock.high_52w) / stock.high_52w * 100).toFixed(2))
+        : stock.pct_from_52w_high;
+
+      // Update only price-driven fields in stocks table
+      await upsertStock(ticker, {
+        current_price:     livePrice,
+        stock_pe:          stockPE,
+        industry_pe:       industryPE,
+        pct_from_52w_high: pctFromHigh,
+      });
+
+      // Technicals from Kite
+      const raw  = instrument_token ? await getTechnicals(instrument_token) : null;
+      const tech = raw ? {
+        rsi:         raw.rsi,
+        above50DMA:  raw.currentPrice > raw.sma50,
+        above200DMA: raw.currentPrice > raw.sma200,
+        dma50Value:  raw.dma50Value,
+        dma200Value: raw.dma200Value,
+      } : null;
+
+      const stockReturns = instrument_token ? await getReturns(instrument_token) : { r6m: null, r1y: null };
+
+      console.log(`  PE: ${stockPE ?? "N/A"} | IndPE: ${industryPE ?? "N/A"} | Dev: ${peDeviation ?? "N/A"}% | RSI: ${tech?.rsi ?? "N/A"}`);
+
+      // Claude scoring — uses STORED fundamentals (roe, roce, debt_to_equity, etc.)
+      const prompt = `You are a senior Indian equity research analyst.
+
+Stock: ${stock_name} (${ticker})
+Industry: ${stock.industry ?? "N/A"}
+
+VALUATION:
+- Stock PE: ${stockPE ?? "N/A"} | Industry PE: ${industryPE ?? "N/A"} | PE Deviation: ${peDeviation != null ? peDeviation.toFixed(1) + "%" : "N/A"}
+- P/B: ${stock.pb ?? "N/A"} | EPS: ${stock.eps ?? "N/A"}
+
+QUALITY:
+- ROE: ${stock.roe ?? "N/A"}% | ROCE: ${stock.roce ?? "N/A"}% | D/E: ${stock.debt_to_equity ?? "N/A"}
+- Interest Coverage: ${stock.interest_coverage ?? "N/A"}x | Current Ratio: ${stock.current_ratio ?? "N/A"}
+
+GROWTH:
+- Revenue 3Y CAGR: ${stock.revenue_growth_3y ?? "N/A"}% | Profit 3Y CAGR: ${stock.profit_growth_3y ?? "N/A"}%
+
+OWNERSHIP:
+- Promoter: ${stock.promoter_holding ?? "N/A"}% | Pledged: ${stock.pledged_pct ?? "N/A"}% | FII: ${stock.fii_holding ?? "N/A"}%
+
+TECHNICALS:
+- RSI: ${tech?.rsi ?? "N/A"} | 50DMA: ${tech?.dma50Value ?? "N/A"} (${tech ? (tech.above50DMA ? "ABOVE" : "BELOW") : "N/A"}) | 200DMA: ${tech?.dma200Value ?? "N/A"} (${tech ? (tech.above200DMA ? "ABOVE" : "BELOW") : "N/A"})
+
+Return ONLY valid JSON:
+{"composite_score":<1-10>,"classification":"<Undervalued|Fairly Valued|Overvalued|High Quality|Speculative>","suggested_action":"<Strong Buy|Buy|Accumulate|Hold|Reduce|Avoid>"}`;
+
+      const response = await anthropic.messages.create({
+        model: "claude-sonnet-4-6", max_tokens: 150, temperature: 0.2,
+        messages: [{ role: "user", content: prompt }],
+      });
+      const m = response.content[0].text.match(/\{[\s\S]*\}/);
+      if (!m) { console.log("  Invalid JSON from Claude — skipping"); continue; }
+      const result = JSON.parse(m[0]);
+
+      // Upsert daily_scores (keep 6m/1y for dashboard display)
+      await upsertDailyScore(stockId, todayStr, {
+        pe_deviation:     peDeviation,
+        rsi:              tech?.rsi ?? null,
+        rsi_signal:       getRSISignal(tech?.rsi),
+        dma_50:           tech?.dma50Value ?? null,
+        dma_200:          tech?.dma200Value ?? null,
+        above_50_dma:     tech?.above50DMA ?? null,
+        above_200_dma:    tech?.above200DMA ?? null,
+        composite_score:  result.composite_score,
+        classification:   result.classification,
+        suggested_action: result.suggested_action,
+        stock_6m:         stockReturns.r6m,
+        stock_1y:         stockReturns.r1y,
+        nifty50_6m:       niftyReturns.r6m,
+        nifty50_1y:       niftyReturns.r1y,
+      });
+
+      // Insert history — no OHLC/volume (fetch from Kite on demand for charts)
+      // no stock_6m/nifty returns (derivable from Kite history anytime)
+      await insertHistory(stockId, todayStr, {
+        week:             dim.week,
+        month:            dim.month,
+        quarter:          dim.quarter,
+        day_of_week:      dim.dayOfWeek,
+        closing_price:    livePrice,
+        stock_pe:         stockPE ?? null,
+        industry_pe:      industryPE ?? null,
+        pe_deviation:     peDeviation,
+        pct_from_52w_high: pctFromHigh,
+        rsi:              tech?.rsi ?? null,
+        rsi_signal:       getRSISignal(tech?.rsi),
+        dma_50:           tech?.dma50Value ?? null,
+        dma_200:          tech?.dma200Value ?? null,
+        composite_score:  result.composite_score,
+        classification:   result.classification,
+        suggested_action: result.suggested_action,
+      });
+
+      console.log(`  ✓ ${result.classification} | ${result.suggested_action} | Score: ${result.composite_score}`);
+      await sleep(1000);
+    }
+
+    console.log("\n✅ Daily scoring complete.");
+    await closePool();
+    process.exit(0);
+  } catch (err) {
+    console.error("Fatal error:", err);
+    await closePool();
+    process.exit(1);
+  }
+}
+
+runDailyScoring();
