@@ -1,37 +1,23 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { exec } from 'child_process'
 import path from 'path'
-import fs from 'fs'
 
+// Use the most recent close from index_history — same source as stocks.current_price.
+// This ensures stock entry price and index baseline are always from the same date.
 async function fetchIndexBaseline(): Promise<{ nifty50: number | null; nifty500: number | null }> {
   try {
-    const apiKey = process.env.KITE_API_KEY
-    if (!apiKey) return { nifty50: null, nifty500: null }
-
-    let accessToken: string | undefined
-    try {
-      accessToken = fs.readFileSync(path.join(process.cwd(), '.kite_token'), 'utf8').trim()
-    } catch {
-      accessToken = process.env.KITE_ACCESS_TOKEN
-    }
-    if (!accessToken) return { nifty50: null, nifty500: null }
-
-    const res = await fetch(
-      'https://api.kite.trade/quote?i=NSE%3ANIFTY+50&i=NSE%3ANIFTY+500',
-      {
-        headers: { 'X-Kite-Version': '3', 'Authorization': `token ${apiKey}:${accessToken}` },
-        signal: AbortSignal.timeout(5000),
-      }
-    )
-    if (!res.ok) return { nifty50: null, nifty500: null }
-    const json = await res.json()
-    return {
-      nifty50:  json.data?.['NSE:NIFTY 50']?.last_price  ?? null,
-      nifty500: json.data?.['NSE:NIFTY 500']?.last_price ?? null,
-    }
+    const admin = createAdminClient()
+    const { data } = await admin
+      .from('index_history')
+      .select('nifty50_close, nifty500_close')
+      .order('date', { ascending: false })
+      .limit(1)
+      .single()
+    return { nifty50: data?.nifty50_close ?? null, nifty500: data?.nifty500_close ?? null }
   } catch {
     return { nifty50: null, nifty500: null }
   }
