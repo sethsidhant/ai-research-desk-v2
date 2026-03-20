@@ -62,7 +62,9 @@ export default function PortfolioChart({ data }: { data: ChartPoint[] }) {
         <div className="flex items-center gap-4 mb-3 flex-wrap">
           <div className="flex items-center gap-1.5">
             <span className="inline-block w-3 h-0.5 bg-red-500 rounded" />
-            <span className="text-xs text-gray-500">Portfolio</span>
+            <span className="text-xs text-gray-500">
+              Portfolio ({latest.returnPct >= 0 ? '+' : ''}{latest.returnPct.toFixed(2)}%)
+            </span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="inline-block w-3 h-0.5 bg-blue-500 rounded" />
@@ -71,7 +73,7 @@ export default function PortfolioChart({ data }: { data: ChartPoint[] }) {
             </span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="inline-block w-3 h-0.5 bg-purple-500 rounded" />
+            <svg width="12" height="2" className="shrink-0"><line x1="0" y1="1" x2="12" y2="1" stroke="#a855f7" strokeWidth="2" strokeDasharray="3 2" /></svg>
             <span className="text-xs text-gray-500">
               Nifty 500 {latest.nifty500Pct != null ? `(${latest.nifty500Pct >= 0 ? '+' : ''}${latest.nifty500Pct.toFixed(2)}%)` : ''}
             </span>
@@ -121,6 +123,7 @@ export default function PortfolioChart({ data }: { data: ChartPoint[] }) {
               dataKey="nifty500Pct"
               stroke="#a855f7"
               strokeWidth={2}
+              strokeDasharray="5 3"
               dot={false}
               activeDot={{ r: 3, strokeWidth: 0 }}
             />
