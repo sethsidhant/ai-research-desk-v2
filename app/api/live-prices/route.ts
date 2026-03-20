@@ -1,9 +1,10 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
 
-async function getKiteToken(supabaseClient: any): Promise<{ apiKey: string; accessToken: string } | null> {
+async function getKiteToken(): Promise<{ apiKey: string; accessToken: string } | null> {
   const apiKey = process.env.KITE_API_KEY
   if (!apiKey) return null
 
@@ -13,9 +14,10 @@ async function getKiteToken(supabaseClient: any): Promise<{ apiKey: string; acce
     if (accessToken) return { apiKey, accessToken }
   } catch {}
 
-  // 2. Vercel: read from Supabase app_settings (updated nightly by scheduler)
+  // 2. Vercel: read from Supabase app_settings via service role (bypasses RLS)
   try {
-    const { data } = await supabaseClient.from('app_settings').select('value').eq('key', 'kite_access_token').single()
+    const admin = createAdminClient()
+    const { data } = await admin.from('app_settings').select('value').eq('key', 'kite_access_token').single()
     if (data?.value) return { apiKey, accessToken: data.value }
   } catch {}
 
@@ -54,7 +56,7 @@ export async function GET() {
     return NextResponse.json({ marketOpen: true, prices: cache.data, cached: true })
   }
 
-  const kite = await getKiteToken(supabase)
+  const kite = await getKiteToken()
   if (!kite) return NextResponse.json({ error: 'Kite credentials not configured' }, { status: 500 })
   const { apiKey, accessToken } = kite
 
