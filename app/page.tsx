@@ -216,29 +216,11 @@ export default async function DashboardPage() {
           <StatCard label="Oversold"   value={rows.filter(r => r.rsi != null && r.rsi < 30).length.toString()}                                                     highlight="green" />
         </div>
 
-        {totalInvested > 0 && (
-          <>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-              <StatCard label="Interested"   value={`₹${totalInvested.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
-              <StatCard label="Current Value" value={`₹${totalCurrent.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
-              <StatCard
-                label="Total P&L"
-                value={`${totalPnl >= 0 ? '+' : ''}₹${Math.abs(totalPnl).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`}
-                highlight={totalPnl >= 0 ? 'green' : 'red'}
-              />
-              <StatCard
-                label="Return"
-                value={`${totalPnlPct >= 0 ? '+' : ''}${totalPnlPct.toFixed(1)}%`}
-                highlight={totalPnlPct >= 0 ? 'green' : 'red'}
-              />
-            </div>
-            {chartData.length >= 2 && (
-              <div className="bg-white border border-gray-200 rounded-xl px-4 sm:px-6 py-4 shadow-sm mb-8">
-                <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Interested Portfolio Return</div>
-                <PortfolioChart data={chartData} />
-              </div>
-            )}
-          </>
+        {chartData.length >= 2 && (
+          <div className="bg-white border border-gray-200 rounded-xl px-4 sm:px-6 py-4 shadow-sm mb-8">
+            <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Interested Portfolio Return</div>
+            <PortfolioChart data={chartData} />
+          </div>
         )}
 
         <LivePriceTable initialRows={rows} />

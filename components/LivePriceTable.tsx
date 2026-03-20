@@ -10,12 +10,19 @@ type PriceFlash    = 'up' | 'down' | null
 type PriceChange   = { change: number; changePct: number }
 
 export default function LivePriceTable({ initialRows }: { initialRows: WatchlistRow[] }) {
-  const [rows, setRows]           = useState<WatchlistRow[]>(initialRows)
+  const [rows, setRows]             = useState<WatchlistRow[]>(initialRows)
   const [marketOpen, setMarketOpen] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
-  const [flashes, setFlashes]     = useState<Record<string, PriceFlash>>({})
-  const [changes, setChanges]     = useState<Record<string, PriceChange>>({})
-  const prevPrices                = useRef<Record<string, number>>({})
+  const [flashes, setFlashes]       = useState<Record<string, PriceFlash>>({})
+  const [changes, setChanges]       = useState<Record<string, PriceChange>>({})
+  const prevPrices                  = useRef<Record<string, number>>({})
+
+  // Live portfolio P&L — recomputes whenever rows update with new prices
+  const portfolioRows = rows.filter(r => r.invested_amount && r.entry_price && r.current_price)
+  const totalInvested = portfolioRows.reduce((s, r) => s + r.invested_amount!, 0)
+  const totalCurrent  = portfolioRows.reduce((s, r) => s + (r.current_price! / r.entry_price!) * r.invested_amount!, 0)
+  const totalPnl      = totalCurrent - totalInvested
+  const totalPnlPct   = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0
 
   async function fetchPrices() {
     try {
@@ -61,6 +68,23 @@ export default function LivePriceTable({ initialRows }: { initialRows: Watchlist
 
   return (
     <div>
+      {totalInvested > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+          <PLCard label="Interested"   value={`₹${totalInvested.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
+          <PLCard label="Current Value" value={`₹${totalCurrent.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
+          <PLCard
+            label="Total P&L"
+            value={`${totalPnl >= 0 ? '+' : ''}₹${Math.abs(totalPnl).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`}
+            highlight={totalPnl >= 0 ? 'green' : 'red'}
+          />
+          <PLCard
+            label="Return"
+            value={`${totalPnlPct >= 0 ? '+' : ''}${totalPnlPct.toFixed(1)}%`}
+            highlight={totalPnlPct >= 0 ? 'green' : 'red'}
+          />
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-gray-900">Watchlist</h2>
         <div className="flex items-center gap-3">
@@ -83,6 +107,16 @@ export default function LivePriceTable({ initialRows }: { initialRows: Watchlist
         </div>
       </div>
       <WatchlistTable rows={rows} priceFlashes={flashes} priceChanges={changes} />
+    </div>
+  )
+}
+
+function PLCard({ label, value, highlight }: { label: string; value: string; highlight?: 'green' | 'red' }) {
+  const valueColor = highlight === 'green' ? 'text-emerald-600' : highlight === 'red' ? 'text-red-600' : 'text-gray-900'
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl px-4 py-4 shadow-sm">
+      <div className={`text-2xl font-bold ${valueColor}`}>{value}</div>
+      <div className="text-xs text-gray-400 mt-1">{label}</div>
     </div>
   )
 }
