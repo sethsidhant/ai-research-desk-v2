@@ -320,37 +320,34 @@ async function runSummary(stock) {
 Stock: ${s.stock_name} (${ticker})
 Industry: ${s.industry || "N/A"}
 
-📊 VALUATION
+📊 VALUATION CONTEXT
 - Stock PE: ${s.stock_pe || "N/A"} | Industry PE: ${s.industry_pe || "N/A"} | PE Dev: ${score?.pe_deviation != null ? score.pe_deviation + "%" : "N/A"}
-- Price: ₹${s.current_price || "N/A"} | 52W High: ₹${s.high_52w || "N/A"} | 52W Low: ₹${s.low_52w || "N/A"}
-- P/B: ${s.pb || "N/A"} | EPS: ₹${s.eps || "N/A"} | Div Yield: ${s.dividend_yield != null ? s.dividend_yield + "%" : "N/A"}
-
-🏭 BUSINESS QUALITY
+- Classification: ${score?.classification || "N/A"} | P/B: ${s.pb || "N/A"}
 - ROE: ${s.roe || "N/A"}% | ROCE: ${s.roce || "N/A"}% | D/E: ${s.debt_to_equity || "N/A"}
 - Profit 3Y CAGR: ${s.profit_growth_3y != null ? s.profit_growth_3y + "%" : "N/A"} | Rev 3Y CAGR: ${s.revenue_growth_3y != null ? s.revenue_growth_3y + "%" : "N/A"}
-- Promoter: ${s.promoter_holding != null ? s.promoter_holding + "%" : "N/A"} | Pledged: ${s.pledged_pct != null ? s.pledged_pct + "%" : "N/A"}
-
-📉 TECHNICALS
-- RSI: ${score?.rsi || "N/A"} (${score?.rsi_signal || "N/A"}) | 50DMA: ${score?.dma_50 || "N/A"} | 200DMA: ${score?.dma_200 || "N/A"}
-- Action: ${score?.suggested_action || "N/A"}
+- RSI: ${score?.rsi || "N/A"} (${score?.rsi_signal || "N/A"}) | vs 50DMA: ${score?.above_50_dma != null ? (score.above_50_dma ? "Above" : "Below") : "N/A"} | vs 200DMA: ${score?.above_200_dma != null ? (score.above_200_dma ? "Above" : "Below") : "N/A"}
 
 📰 NEWS & SENTIMENT
-${s.latest_headlines ? s.latest_headlines.substring(0, 1000) : "No recent news."}
+${s.latest_headlines ? s.latest_headlines.substring(0, 1500) : "No recent news."}
 
-Write using exactly these headers:
-📊 VALUATION
-🏭 BUSINESS QUALITY
-📉 TECHNICALS
+The user can already see all raw numbers in their dashboard — do NOT repeat them.
+
+Write a 3-section research note using exactly these headers:
+
 📰 NEWS & SENTIMENT
+🔍 ANALYST TAKE
 ✅ SUGGESTED ACTION
 
-3-4 sentences per section. Be direct and opinionated.`;
+Guidelines:
+- NEWS & SENTIMENT (3-4 sentences): Summarise what's actually happening with this company right now based on the headlines. What is the market reacting to?
+- ANALYST TAKE (3-4 sentences): Qualitative view only — business moat, management quality, sector tailwinds/headwinds, key risks. No number repetition.
+- SUGGESTED ACTION (2-3 sentences): Clear, opinionated recommendation. Mention valuation context (cheap/fair/expensive vs industry) and price action (above/below key DMAs) without quoting the numbers directly.`;
 
   let attempt = 0;
   while (attempt < 3) {
     try {
       const response = await anthropic.messages.create({
-        model: "claude-sonnet-4-6", max_tokens: 800,
+        model: "claude-sonnet-4-6", max_tokens: 550,
         messages: [{ role: "user", content: prompt }],
       });
       await logApiUsage('onboard_summary', ticker, response.usage.input_tokens, response.usage.output_tokens);
