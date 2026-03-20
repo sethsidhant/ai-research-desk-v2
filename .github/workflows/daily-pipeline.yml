@@ -1,0 +1,61 @@
+name: Daily Pipeline
+
+on:
+  schedule:
+    - cron: '40 21 * * 1-5'   # 9:40 PM UTC = 3:10 AM IST, Mon–Fri
+  workflow_dispatch:            # manual trigger from GitHub UI
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: agents/package-lock.json
+
+      - name: Install agent dependencies
+        run: npm ci
+        working-directory: agents
+
+      - name: Create .env.local
+        run: |
+          cat > .env.local << 'EOF'
+          NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_KEY=${{ secrets.SUPABASE_SERVICE_KEY }}
+          KITE_API_KEY=${{ secrets.KITE_API_KEY }}
+          KITE_API_SECRET=${{ secrets.KITE_API_SECRET }}
+          KITE_ACCESS_TOKEN=${{ secrets.KITE_ACCESS_TOKEN }}
+          KITE_USER_ID=${{ secrets.KITE_USER_ID }}
+          KITE_PASSWORD=${{ secrets.KITE_PASSWORD }}
+          KITE_TOTP_SECRET=${{ secrets.KITE_TOTP_SECRET }}
+          ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+          TWILIO_ACCOUNT_SID=${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN=${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_WHATSAPP_FROM=${{ secrets.TWILIO_WHATSAPP_FROM }}
+          TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+          DASHBOARD_URL=${{ secrets.DASHBOARD_URL }}
+          ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
+          EOF
+
+      - name: Refresh Kite token
+        run: node refreshKiteToken.js
+        working-directory: agents
+
+      - name: Run engine (scores + prices)
+        run: node engine.js
+        working-directory: agents
+
+      - name: Run news agent
+        run: node newsAgent.js
+        working-directory: agents
+
+      - name: Run summary agent
+        run: node summaryAgent.js
+        working-directory: agents

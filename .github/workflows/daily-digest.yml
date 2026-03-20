@@ -1,0 +1,40 @@
+name: Daily Digest
+
+on:
+  schedule:
+    - cron: '30 11 * * 1-5'   # 11:30 AM UTC = 5:00 PM IST, Mon–Fri
+  workflow_dispatch:            # manual trigger from GitHub UI
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: agents/package-lock.json
+
+      - name: Install agent dependencies
+        run: npm ci
+        working-directory: agents
+
+      - name: Create .env.local
+        run: |
+          cat > .env.local << 'EOF'
+          NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY=${{ secrets.SUPABASE_SERVICE_KEY }}
+          TWILIO_ACCOUNT_SID=${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN=${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_WHATSAPP_FROM=${{ secrets.TWILIO_WHATSAPP_FROM }}
+          TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+          DASHBOARD_URL=${{ secrets.DASHBOARD_URL }}
+          EOF
+
+      - name: Send daily digest
+        run: node whatsappNotifier.js
+        working-directory: agents
