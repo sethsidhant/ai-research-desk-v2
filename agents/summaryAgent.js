@@ -60,20 +60,25 @@ Industry: ${stock.industry || "N/A"}
 📰 NEWS & SENTIMENT
 ${stock.latest_headlines ? stock.latest_headlines.substring(0, 1500) : "No recent news available."}
 
-Write a 4-section research note using exactly these headers:
-📊 VALUATION
-🏭 BUSINESS QUALITY
+The user can already see all the raw numbers (PE, ROE, ROCE, debt, growth rates, DMA, RSI) in their dashboard — do NOT repeat them.
+
+Write a 3-section research note using exactly these headers:
+
 📰 NEWS & SENTIMENT
+🔍 ANALYST TAKE
 ✅ SUGGESTED ACTION
 
-Keep each section to 3-4 sentences. Be direct and opinionated.`;
+Guidelines:
+- NEWS & SENTIMENT (3-4 sentences): Summarise what's actually happening with this company right now based on the headlines. What is the market reacting to?
+- ANALYST TAKE (3-4 sentences): Qualitative view only — business moat, management quality, sector tailwinds/headwinds, key risks. No number repetition.
+- SUGGESTED ACTION (2-3 sentences): Clear, opinionated recommendation. Mention valuation context (cheap/fair/expensive vs industry) and price action (above/below key DMAs) without quoting the numbers directly.`;
 
   let attempt = 0;
   while (attempt < 3) {
     try {
       const response = await anthropic.messages.create({
         model:      "claude-sonnet-4-6",
-        max_tokens: 800,
+        max_tokens: 550,
         messages:   [{ role: "user", content: prompt }],
       });
       await logApiUsage('summary', stock.ticker, response.usage.input_tokens, response.usage.output_tokens);
