@@ -3,13 +3,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { type WatchlistRow } from './WatchlistTable'
 import WatchlistTable from './WatchlistTable'
+import PortfolioChart, { type ChartPoint } from './PortfolioChart'
 
 const POLL_INTERVAL = 15000
 
 type PriceFlash    = 'up' | 'down' | null
 type PriceChange   = { change: number; changePct: number }
 
-export default function LivePriceTable({ initialRows }: { initialRows: WatchlistRow[] }) {
+export default function LivePriceTable({ initialRows, chartData }: { initialRows: WatchlistRow[]; chartData: ChartPoint[] }) {
   const [rows, setRows]             = useState<WatchlistRow[]>(initialRows)
   const [marketOpen, setMarketOpen] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
@@ -23,6 +24,18 @@ export default function LivePriceTable({ initialRows }: { initialRows: Watchlist
   const totalCurrent  = portfolioRows.reduce((s, r) => s + (r.current_price! / r.entry_price!) * r.invested_amount!, 0)
   const totalPnl      = totalCurrent - totalInvested
   const totalPnlPct   = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0
+
+  // Append live "today" point to historical chart data
+  const liveChartData: ChartPoint[] = (() => {
+    if (totalInvested === 0 || chartData.length === 0) return chartData
+    const todayLabel = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+    const todayPct   = parseFloat(((totalCurrent - totalInvested) / totalInvested * 100).toFixed(2))
+    const todayPoint: ChartPoint = { date: todayLabel, returnPct: todayPct }
+    // Replace last point if it's already today, otherwise append
+    const last = chartData[chartData.length - 1]
+    if (last.date === todayLabel) return [...chartData.slice(0, -1), todayPoint]
+    return [...chartData, todayPoint]
+  })()
 
   async function fetchPrices() {
     try {
@@ -70,6 +83,13 @@ export default function LivePriceTable({ initialRows }: { initialRows: Watchlist
 
   return (
     <div>
+      {liveChartData.length >= 2 && (
+        <div className="bg-white border border-gray-200 rounded-xl px-4 sm:px-6 py-4 shadow-sm mb-8">
+          <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Invested Portfolio Return</div>
+          <PortfolioChart data={liveChartData} />
+        </div>
+      )}
+
       {totalInvested > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
           <PLCard label="Interested"   value={`₹${totalInvested.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />

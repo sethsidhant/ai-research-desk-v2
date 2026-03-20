@@ -4,7 +4,7 @@ import Link from 'next/link'
 import SignOutButton from '@/components/SignOutButton'
 import LivePriceTable from '@/components/LivePriceTable'
 import MarketIndicesBar from '@/components/MarketIndicesBar'
-import PortfolioChart, { type ChartPoint } from '@/components/PortfolioChart'
+import { type ChartPoint } from '@/components/PortfolioChart'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -258,14 +258,7 @@ export default async function DashboardPage() {
           <StatCard label="Oversold"   value={rows.filter(r => r.rsi != null && r.rsi < 30).length.toString()}                                                     highlight="green" />
         </div>
 
-        {chartData.length >= 2 && (
-          <div className="bg-white border border-gray-200 rounded-xl px-4 sm:px-6 py-4 shadow-sm mb-8">
-            <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Interested Portfolio Return</div>
-            <PortfolioChart data={chartData} />
-          </div>
-        )}
-
-        <LivePriceTable initialRows={rows} />
+        <LivePriceTable initialRows={rows} chartData={chartData} />
       </main>
     </div>
   )
