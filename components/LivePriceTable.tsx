@@ -85,7 +85,7 @@ export default function LivePriceTable({ initialRows, chartData }: { initialRows
     <div>
       {liveChartData.length >= 2 && (
         <div className="bg-white border border-gray-200 rounded-xl px-4 sm:px-6 py-4 shadow-sm mb-8">
-          <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Invested Portfolio Return</div>
+          <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Interested Portfolio Return</div>
           <PortfolioChart data={liveChartData} />
         </div>
       )}

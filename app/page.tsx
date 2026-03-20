@@ -19,6 +19,7 @@ export default async function DashboardPage() {
       stock_id,
       invested_amount,
       entry_price,
+      notes,
       stocks (
         ticker,
         stock_name,
@@ -123,6 +124,7 @@ export default async function DashboardPage() {
       dii_holding:       stock?.dii_holding ?? null,
       nifty500_6m:       score?.nifty500_6m ?? null,
       nifty500_1y:       score?.nifty500_1y ?? null,
+      notes:             w.notes ?? null,
     }
   }).sort((a, b) => {
     // Group by industry, then by stock name within industry

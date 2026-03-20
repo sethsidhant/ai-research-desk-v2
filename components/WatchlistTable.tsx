@@ -5,6 +5,7 @@ import ClassificationBadge, { getValuationBand, peDeviationColor } from './Class
 import StockSummaryPanel from './StockSummaryPanel'
 import FundamentalsDrawer from './FundamentalsDrawer'
 import StockChartPanel from './StockChartPanel'
+import StockNotePanel from './StockNotePanel'
 
 export type WatchlistRow = {
   stock_id: string
@@ -59,6 +60,8 @@ export type WatchlistRow = {
   // nifty 500 comparison
   nifty500_6m: number | null
   nifty500_1y: number | null
+  // personal notes
+  notes: string | null
 }
 
 function fmt(n: number | null, decimals = 1) {
@@ -126,6 +129,10 @@ export default function WatchlistTable({
   const [panelMode, setPanelMode] = useState<'summary' | 'filings'>('summary')
   const [fundamentalsRow, setFundamentalsRow] = useState<WatchlistRow | null>(null)
   const [chartRow, setChartRow] = useState<WatchlistRow | null>(null)
+  const [noteRow, setNoteRow] = useState<WatchlistRow | null>(null)
+  const [notes, setNotes] = useState<Record<string, string>>(() =>
+    Object.fromEntries(rows.filter(r => r.notes).map(r => [r.stock_id, r.notes!]))
+  )
 
   function openPanel(ticker: string, mode: 'summary' | 'filings') {
     setSelectedTicker(ticker)
@@ -153,6 +160,14 @@ export default function WatchlistTable({
     <StockSummaryPanel ticker={selectedTicker} mode={panelMode} onClose={() => setSelectedTicker(null)} />
     <FundamentalsDrawer row={fundamentalsRow} onClose={() => setFundamentalsRow(null)} />
     <StockChartPanel ticker={chartRow?.ticker ?? null} stockName={chartRow?.stock_name} onClose={() => setChartRow(null)} />
+    <StockNotePanel
+      stockId={noteRow?.stock_id ?? null}
+      stockName={noteRow?.stock_name}
+      ticker={noteRow?.ticker}
+      initialNote={noteRow ? (notes[noteRow.stock_id] ?? '') : ''}
+      onClose={() => setNoteRow(null)}
+      onSaved={(id, text) => setNotes(prev => ({ ...prev, [id]: text }))}
+    />
     <div className="overflow-x-auto rounded-xl border border-gray-200 shadow-sm">
       <table className="w-full text-sm">
         <thead>
@@ -320,6 +335,13 @@ export default function WatchlistTable({
                       className="text-base hover:scale-110 transition-transform leading-none"
                     >
                       📊
+                    </button>
+                    <button
+                      onClick={() => setNoteRow(r)}
+                      title="My notes"
+                      className="text-base hover:scale-110 transition-transform leading-none relative"
+                    >
+                      {notes[r.stock_id] ? '🗒️' : '📝'}
                     </button>
                     <button
                       onClick={() => setChartRow(r)}
