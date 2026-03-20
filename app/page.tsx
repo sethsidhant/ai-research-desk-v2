@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import SignOutButton from '@/components/SignOutButton'
@@ -7,7 +8,8 @@ import MarketIndicesBar from '@/components/MarketIndicesBar'
 import { type ChartPoint } from '@/components/PortfolioChart'
 
 export default async function DashboardPage() {
-  const supabase = await createClient()
+  const supabase      = await createClient()
+  const adminSupabase = createAdminClient()
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -173,7 +175,7 @@ export default async function DashboardPage() {
         .not('closing_price', 'is', null)
         .gte('date', earliestDate)
         .order('date', { ascending: true }),
-      supabase
+      adminSupabase
         .from('index_history')
         .select('date, nifty50_close, nifty500_close')
         .gte('date', earliestDate)
