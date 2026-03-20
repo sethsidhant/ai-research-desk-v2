@@ -1,0 +1,38 @@
+name: Fundamentals Refresh
+
+on:
+  schedule:
+    - cron: '30 20 1,15 * *'  # 8:30 PM UTC = 2:00 AM IST, on 1st and 15th of each month
+  workflow_dispatch:           # manual trigger from GitHub UI
+
+jobs:
+  fundamentals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: agents/package-lock.json
+
+      - name: Install agent dependencies
+        run: npm ci
+        working-directory: agents
+
+      - name: Create .env.local
+        run: |
+          cat > .env.local << 'EOF'
+          NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY=${{ secrets.SUPABASE_SERVICE_KEY }}
+          KITE_API_KEY=${{ secrets.KITE_API_KEY }}
+          KITE_ACCESS_TOKEN=${{ secrets.KITE_ACCESS_TOKEN }}
+          ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
+          EOF
+
+      - name: Run fundamentals agent
+        run: node fundamentalsAgent.js
+        working-directory: agents
