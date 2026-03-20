@@ -69,30 +69,26 @@ export default function PortfolioChart({ data: rawData }: { data: ChartPoint[] }
 
   return (
     <div>
-      <div className="flex items-baseline gap-4 mb-3 flex-wrap">
-        <div>
-          <span className={`text-2xl font-bold ${gain ? 'text-emerald-600' : 'text-red-500'}`}>
-            {gain ? '+' : ''}{latest.returnPct.toFixed(2)}%
-          </span>
-          <span className="text-xs text-gray-400 ml-2">portfolio</span>
+      {hasBenchmark && (
+        <div className="flex items-center gap-4 mb-3 flex-wrap">
+          <div className="flex items-center gap-1.5">
+            <span className="inline-block w-3 h-0.5 bg-red-500 rounded" />
+            <span className="text-xs text-gray-500">Portfolio</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="inline-block w-3 h-0.5 bg-blue-500 rounded" />
+            <span className="text-xs text-gray-500">
+              Nifty 50 {latest.nifty50Pct != null ? `(${latest.nifty50Pct >= 0 ? '+' : ''}${latest.nifty50Pct.toFixed(2)}%)` : ''}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="inline-block w-3 h-0.5 bg-purple-500 rounded" />
+            <span className="text-xs text-gray-500">
+              Nifty 500 {latest.nifty500Pct != null ? `(${latest.nifty500Pct >= 0 ? '+' : ''}${latest.nifty500Pct.toFixed(2)}%)` : ''}
+            </span>
+          </div>
         </div>
-        {hasBenchmark && latest.nifty50Pct != null && (
-          <div>
-            <span className={`text-sm font-semibold text-blue-500`}>
-              {latest.nifty50Pct >= 0 ? '+' : ''}{latest.nifty50Pct.toFixed(2)}%
-            </span>
-            <span className="text-xs text-gray-400 ml-1">Nifty 50</span>
-          </div>
-        )}
-        {hasBenchmark && latest.nifty500Pct != null && (
-          <div>
-            <span className={`text-sm font-semibold text-purple-500`}>
-              {latest.nifty500Pct >= 0 ? '+' : ''}{latest.nifty500Pct.toFixed(2)}%
-            </span>
-            <span className="text-xs text-gray-400 ml-1">Nifty 500</span>
-          </div>
-        )}
-      </div>
+      )}
       <ResponsiveContainer width="100%" height={160}>
         <LineChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
           <XAxis
