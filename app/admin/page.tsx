@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
+import BudgetForm from '@/components/BudgetForm'
 
 // ── Claude claude-sonnet-4-6 pricing (USD per 1M tokens) ────────────────────────────
 const PRICE_INPUT  = 3.00   // $3/M input tokens
@@ -87,17 +88,36 @@ export default async function AdminPage() {
 
   const usage = usageRows ?? []
 
-  // Totals
-  const totalCost30d = usage.reduce((s, r) => s + Number(r.cost_usd), 0)
-  const todayUsage   = usage.filter(r => r.created_at.slice(0, 10) === todayISO)
+  // Totals (30d)
+  const totalCost30d   = usage.reduce((s, r) => s + Number(r.cost_usd), 0)
+  const todayUsage     = usage.filter(r => r.created_at.slice(0, 10) === todayISO)
   const totalCostToday = todayUsage.reduce((s, r) => s + Number(r.cost_usd), 0)
 
+  // All-time totals
+  const { data: allTimeRows } = await adminSupabase
+    .from('api_usage_log')
+    .select('input_tokens, output_tokens, cost_usd')
+
+  const allTime            = allTimeRows ?? []
+  const allTimeCost        = allTime.reduce((s, r) => s + Number(r.cost_usd), 0)
+  const allTimeInputTokens = allTime.reduce((s, r) => s + Number(r.input_tokens), 0)
+  const allTimeOutputTokens= allTime.reduce((s, r) => s + Number(r.output_tokens), 0)
+
+  // Credit budget from app_settings
+  const { data: budgetRow } = await adminSupabase
+    .from('app_settings').select('value').eq('key', 'anthropic_credit_budget').single()
+  const creditBudget    = budgetRow?.value ? parseFloat(budgetRow.value) : null
+  const creditRemaining = creditBudget != null ? Math.max(0, creditBudget - allTimeCost) : null
+  const spentPct        = creditBudget != null ? Math.min((allTimeCost / creditBudget) * 100, 100) : null
+
   // By agent (last 30d)
-  const byAgent: Record<string, { calls: number; cost: number }> = {}
+  const byAgent: Record<string, { calls: number; inputTokens: number; outputTokens: number; cost: number }> = {}
   for (const r of usage) {
-    if (!byAgent[r.agent]) byAgent[r.agent] = { calls: 0, cost: 0 }
+    if (!byAgent[r.agent]) byAgent[r.agent] = { calls: 0, inputTokens: 0, outputTokens: 0, cost: 0 }
     byAgent[r.agent].calls++
-    byAgent[r.agent].cost += Number(r.cost_usd)
+    byAgent[r.agent].inputTokens  += Number(r.input_tokens)
+    byAgent[r.agent].outputTokens += Number(r.output_tokens)
+    byAgent[r.agent].cost         += Number(r.cost_usd)
   }
 
   // Estimated (for projection — still useful when log is empty)
@@ -192,6 +212,43 @@ export default async function AdminPage() {
           </div>
         </section>
 
+        {/* ── Anthropic Credit ──────────────────────────────────── */}
+        <section>
+          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Anthropic Credit</h2>
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm px-5 py-5">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-5">
+              <AdminCard label="All-Time Spend"     value={usd(allTimeCost)} highlight={allTimeCost > (creditBudget ?? 999) * 0.8 ? 'red' : undefined} />
+              <AdminCard label="Credit Remaining"   value={creditRemaining != null ? usd(creditRemaining) : '—'} highlight={creditRemaining != null ? (creditRemaining < 2 ? 'red' : creditRemaining < 5 ? 'amber' : 'green') : undefined} />
+              <AdminCard label="Input Tokens (all)" value={`${(allTimeInputTokens / 1000).toFixed(1)}K`} />
+              <AdminCard label="Output Tokens (all)"value={`${(allTimeOutputTokens / 1000).toFixed(1)}K`} />
+            </div>
+
+            {/* Progress bar */}
+            {spentPct != null && (
+              <div className="mb-4">
+                <div className="flex justify-between text-xs text-gray-400 mb-1.5">
+                  <span>Spent {usd(allTimeCost)} of {usd(creditBudget!)}</span>
+                  <span className={spentPct > 80 ? 'text-red-600 font-semibold' : 'text-gray-500'}>{spentPct.toFixed(1)}% used</span>
+                </div>
+                <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${spentPct > 80 ? 'bg-red-500' : spentPct > 50 ? 'bg-amber-400' : 'bg-emerald-500'}`}
+                    style={{ width: `${spentPct}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="text-xs text-gray-400 border-t border-gray-100 pt-3">
+              Anthropic has no API to read your live balance — enter it manually when you top up.
+              <a href="https://console.anthropic.com/settings/billing" target="_blank" rel="noopener noreferrer" className="ml-2 text-blue-500 hover:underline">
+                View on Anthropic Console →
+              </a>
+              <BudgetForm current={creditBudget} />
+            </div>
+          </div>
+        </section>
+
         {/* ── API Costs ─────────────────────────────────────────── */}
         <section>
           <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Claude API Cost (claude-sonnet-4-6) — Actual</h2>
@@ -212,6 +269,8 @@ export default async function AdminPage() {
                 <tr className="text-xs text-gray-400 border-b border-gray-100">
                   <th className="text-left px-5 py-2">Agent</th>
                   <th className="text-right px-5 py-2">Calls</th>
+                  <th className="text-right px-5 py-2">Input Tokens</th>
+                  <th className="text-right px-5 py-2">Output Tokens</th>
                   <th className="text-right px-5 py-2">Total Cost</th>
                   <th className="text-right px-5 py-2">Avg / Call</th>
                 </tr>
@@ -221,12 +280,14 @@ export default async function AdminPage() {
                   <tr key={agent} className={`border-b border-gray-50 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}>
                     <td className="px-5 py-2.5 font-mono text-gray-900">{agent}</td>
                     <td className="px-5 py-2.5 text-right text-gray-700">{d.calls}</td>
+                    <td className="px-5 py-2.5 text-right font-mono text-xs text-gray-500">{(d.inputTokens / 1000).toFixed(1)}K</td>
+                    <td className="px-5 py-2.5 text-right font-mono text-xs text-gray-500">{(d.outputTokens / 1000).toFixed(1)}K</td>
                     <td className="px-5 py-2.5 text-right font-semibold text-gray-900">{usd(d.cost)}</td>
                     <td className="px-5 py-2.5 text-right text-gray-500 text-xs">{usd(d.cost / d.calls)}</td>
                   </tr>
                 ))}
                 {Object.keys(byAgent).length === 0 && (
-                  <tr><td colSpan={4} className="px-5 py-6 text-center text-gray-400 text-sm">No usage logged yet — will populate from tomorrow's pipeline run</td></tr>
+                  <tr><td colSpan={6} className="px-5 py-6 text-center text-gray-400 text-sm">No usage logged yet — will populate from tomorrow's pipeline run</td></tr>
                 )}
               </tbody>
             </table>
