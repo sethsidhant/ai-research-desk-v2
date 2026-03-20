@@ -1,9 +1,10 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
 
-async function getKiteToken(supabaseClient: any): Promise<{ apiKey: string; accessToken: string } | null> {
+async function getKiteToken(): Promise<{ apiKey: string; accessToken: string } | null> {
   const apiKey = process.env.KITE_API_KEY
   if (!apiKey) return null
   try {
@@ -11,7 +12,8 @@ async function getKiteToken(supabaseClient: any): Promise<{ apiKey: string; acce
     if (accessToken) return { apiKey, accessToken }
   } catch {}
   try {
-    const { data } = await supabaseClient.from('app_settings').select('value').eq('key', 'kite_access_token').single()
+    const admin = createAdminClient()
+    const { data } = await admin.from('app_settings').select('value').eq('key', 'kite_access_token').single()
     if (data?.value) return { apiKey, accessToken: data.value }
   } catch {}
   const accessToken = process.env.KITE_ACCESS_TOKEN
@@ -44,7 +46,7 @@ export async function GET() {
     return NextResponse.json({ indices: cache.data, cached: true })
   }
 
-  const kite = await getKiteToken(supabase)
+  const kite = await getKiteToken()
   if (!kite) {
     return NextResponse.json({ error: 'Kite credentials not configured' }, { status: 500 })
   }
