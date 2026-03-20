@@ -36,9 +36,6 @@ jobs:
           KITE_PASSWORD=${{ secrets.KITE_PASSWORD }}
           KITE_TOTP_SECRET=${{ secrets.KITE_TOTP_SECRET }}
           ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}
-          TWILIO_ACCOUNT_SID=${{ secrets.TWILIO_ACCOUNT_SID }}
-          TWILIO_AUTH_TOKEN=${{ secrets.TWILIO_AUTH_TOKEN }}
-          TWILIO_WHATSAPP_FROM=${{ secrets.TWILIO_WHATSAPP_FROM }}
           TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
           DASHBOARD_URL=${{ secrets.DASHBOARD_URL }}
           ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}

@@ -28,11 +28,9 @@ async function sendTelegram(chatId, text) {
   }
 }
 
-if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
-  console.error("❌ Missing TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN");
-  process.exit(1);
-}
-const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+const twilioClient = (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN)
+  ? twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
+  : null;
 
 // ── PE colour emoji ───────────────────────────────────────────────────────────
 function peEmoji(dev) {
@@ -212,7 +210,7 @@ async function main() {
 
     async function send(body) {
       // WhatsApp
-      if ((channel === "whatsapp" || channel === "both") && prefs.whatsapp_number) {
+      if ((channel === "whatsapp" || channel === "both") && prefs.whatsapp_number && twilioClient) {
         const msg = await twilioClient.messages.create({ from: FROM_NUMBER, to: recipient, body });
         console.log(`  ✓ WhatsApp sent — SID: ${msg.sid}`);
       }
