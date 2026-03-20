@@ -44,18 +44,23 @@ export async function GET(request: Request) {
   if (!kite) return NextResponse.json({ error: 'Kite not configured' }, { status: 500 })
 
   // Calculate date range
-  const to   = new Date()
-  const from = new Date()
+  const to      = new Date()
+  const from    = new Date()
   if (period === '1m')       from.setMonth(from.getMonth() - 1)
   else if (period === '3m')  from.setMonth(from.getMonth() - 3)
   else if (period === '6m')  from.setMonth(from.getMonth() - 6)
-  else                       from.setFullYear(from.getFullYear() - 1)   // 1y
+  else                       from.setFullYear(from.getFullYear() - 1)
 
-  const fmt = (d: Date) => d.toISOString().slice(0, 10)
+  const fmt         = (d: Date) => d.toISOString().slice(0, 10)
+  const displayFrom = fmt(from)
+
+  // Fetch extra 280 calendar days of lookback so 200 DMA is available for any period
+  const lookback = new Date(from)
+  lookback.setDate(lookback.getDate() - 280)
 
   try {
     const res = await fetch(
-      `https://api.kite.trade/instruments/historical/${stock.instrument_token}/day?from=${fmt(from)}&to=${fmt(to)}`,
+      `https://api.kite.trade/instruments/historical/${stock.instrument_token}/day?from=${fmt(lookback)}&to=${fmt(to)}`,
       {
         headers: { 'X-Kite-Version': '3', 'Authorization': `token ${kite.apiKey}:${kite.accessToken}` },
         signal: AbortSignal.timeout(10000),
@@ -73,7 +78,7 @@ export async function GET(request: Request) {
       volume: c[5],
     }))
 
-    return NextResponse.json({ ticker, candles })
+    return NextResponse.json({ ticker, candles, displayFrom })
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 502 })
   }
