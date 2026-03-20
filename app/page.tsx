@@ -229,6 +229,19 @@ export default async function DashboardPage() {
           return { date: label, returnPct: parseFloat(returnPct.toFixed(2)), nifty50Pct, nifty500Pct }
         })
         .filter(Boolean) as ChartPoint[]
+
+      // Normalize so chart always starts at 0%
+      if (chartData.length > 0) {
+        const offset     = chartData[0].returnPct
+        const n50Offset  = chartData[0].nifty50Pct  ?? 0
+        const n500Offset = chartData[0].nifty500Pct ?? 0
+        chartData = chartData.map(p => ({
+          ...p,
+          returnPct:   parseFloat((p.returnPct   - offset).toFixed(2)),
+          nifty50Pct:  p.nifty50Pct  != null ? parseFloat((p.nifty50Pct  - n50Offset).toFixed(2))  : undefined,
+          nifty500Pct: p.nifty500Pct != null ? parseFloat((p.nifty500Pct - n500Offset).toFixed(2)) : undefined,
+        }))
+      }
     }
   }
 

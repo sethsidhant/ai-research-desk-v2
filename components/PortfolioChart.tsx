@@ -114,8 +114,7 @@ export default function PortfolioChart({ data }: { data: ChartPoint[] }) {
               type="monotone"
               dataKey="nifty50Pct"
               stroke="#3b82f6"
-              strokeWidth={1.5}
-              strokeDasharray="4 2"
+              strokeWidth={2}
               dot={false}
               activeDot={{ r: 3, strokeWidth: 0 }}
             />
@@ -125,8 +124,7 @@ export default function PortfolioChart({ data }: { data: ChartPoint[] }) {
               type="monotone"
               dataKey="nifty500Pct"
               stroke="#a855f7"
-              strokeWidth={1.5}
-              strokeDasharray="4 2"
+              strokeWidth={2}
               dot={false}
               activeDot={{ r: 3, strokeWidth: 0 }}
             />
