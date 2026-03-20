@@ -172,14 +172,18 @@ Return ONLY valid JSON: {"composite_score":<1-10>,"classification":"<Undervalued
 // ── Step 2: News ──────────────────────────────────────────────────────────────
 
 async function fetchBSECode(t) {
-  try {
-    const res  = await fetch(`https://www.screener.in/company/${t}/consolidated/`, {
-      headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(10000),
-    });
-    const html  = await res.text();
-    const match = html.match(/bseindia\.com[^"]*?(\d{6})\/?"/);
-    return match ? match[1] : null;
-  } catch { return null; }
+  for (const url of [
+    `https://www.screener.in/company/${t}/consolidated/`,
+    `https://www.screener.in/company/${t}/`,
+  ]) {
+    try {
+      const res  = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(10000) });
+      const html = await res.text();
+      const match = html.match(/bseindia\.com[^"]*?(\d{6})\/?"/);
+      if (match) return match[1];
+    } catch { /* try next */ }
+  }
+  return null;
 }
 
 async function runNews(stock) {

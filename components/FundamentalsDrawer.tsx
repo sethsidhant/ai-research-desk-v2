@@ -184,7 +184,7 @@ export default function FundamentalsDrawer({ row, onClose }: { row: WatchlistRow
 
         {/* Footer */}
         <div className="px-5 py-3 border-t border-gray-200">
-          <a href={`https://www.screener.in/company/${row.ticker}/consolidated/`} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:text-blue-500 font-medium">
+          <a href={`https://www.screener.in/company/${row.ticker}/`} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:text-blue-500 font-medium">
             View full report on Screener →
           </a>
         </div>
