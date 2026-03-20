@@ -33,20 +33,22 @@ export default function LivePriceTable({ initialRows }: { initialRows: Watchlist
       if (!json.marketOpen || !json.prices) return
 
       const prices: Record<string, { last: number; change: number; changePct: number }> = json.prices
+
+      // Compute flashes + changes from prices directly (not inside setRows updater)
       const newFlashes: Record<string, PriceFlash> = {}
       const newChanges: Record<string, PriceChange> = {}
+      for (const [ticker, live] of Object.entries(prices)) {
+        const prev_ = prevPrices.current[ticker]
+        if (prev_ != null && live.last !== prev_) {
+          newFlashes[ticker] = live.last > prev_ ? 'up' : 'down'
+        }
+        prevPrices.current[ticker] = live.last
+        newChanges[ticker] = { change: live.change, changePct: live.changePct }
+      }
 
       setRows(prev => prev.map(row => {
         const live = prices[row.ticker]
-        if (!live) return row
-
-        const prev_ = prevPrices.current[row.ticker]
-        if (prev_ != null && live.last !== prev_) {
-          newFlashes[row.ticker] = live.last > prev_ ? 'up' : 'down'
-        }
-        prevPrices.current[row.ticker] = live.last
-        newChanges[row.ticker] = { change: live.change, changePct: live.changePct }
-        return { ...row, current_price: live.last }
+        return live ? { ...row, current_price: live.last } : row
       }))
 
       setChanges(newChanges)
