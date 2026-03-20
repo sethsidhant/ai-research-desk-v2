@@ -14,13 +14,6 @@ const supabase = createClient(
 );
 
 async function main() {
-  const nowIST = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
-  const day    = nowIST.getDay();
-  if (day === 0 || day === 6) {
-    console.log(`[queuePoller] Weekend — skipping. (${nowIST.toDateString()})`);
-    process.exit(0);
-  }
-
   console.log(`\n[queuePoller] ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST`);
 
   const { data, error } = await supabase
