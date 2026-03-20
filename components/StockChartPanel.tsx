@@ -180,7 +180,7 @@ export default function StockChartPanel({
                     />
                     <Tooltip
                       contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e5e7eb' }}
-                      formatter={(v: any, name: string) => {
+                      formatter={(v: any, name: any) => {
                         const label = name === 'close' ? 'Close' : name === 'dma50' ? '50 DMA' : '200 DMA'
                         return [`₹${Number(v).toLocaleString('en-IN')}`, label]
                       }}
