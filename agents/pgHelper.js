@@ -74,4 +74,23 @@ async function logApiUsage(agent, ticker, inputTokens, outputTokens) {
   if (error) console.error('[logApiUsage] Failed:', error.message)
 }
 
-module.exports = { getAllStocks, getWatchlistedStocks, upsertStock, upsertDailyScore, insertHistory, closePool, logApiUsage };
+async function upsertIndexHistory(rows) {
+  // rows: [{ date, nifty50_close, nifty500_close }]
+  if (!rows.length) return;
+  const { error } = await supabase
+    .from('index_history')
+    .upsert(rows, { onConflict: 'date', ignoreDuplicates: true });
+  if (error) console.error('[upsertIndexHistory]', error.message);
+}
+
+async function getIndexHistory(fromDate) {
+  const { data, error } = await supabase
+    .from('index_history')
+    .select('date, nifty50_close, nifty500_close')
+    .gte('date', fromDate)
+    .order('date', { ascending: true });
+  if (error) throw new Error('getIndexHistory: ' + error.message);
+  return data ?? [];
+}
+
+module.exports = { getAllStocks, getWatchlistedStocks, upsertStock, upsertDailyScore, insertHistory, closePool, logApiUsage, upsertIndexHistory, getIndexHistory };

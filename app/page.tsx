@@ -19,6 +19,8 @@ export default async function DashboardPage() {
       stock_id,
       invested_amount,
       entry_price,
+      nifty50_entry,
+      nifty500_entry,
       notes,
       stocks (
         ticker,
@@ -102,6 +104,8 @@ export default async function DashboardPage() {
       score_date:        score?.date ?? null,
       invested_amount:   w.invested_amount ?? null,
       entry_price:       w.entry_price ?? null,
+      nifty50_entry:     w.nifty50_entry ?? null,
+      nifty500_entry:    w.nifty500_entry ?? null,
       roe:               stock?.roe ?? null,
       roce:              stock?.roce ?? null,
       eps:               stock?.eps ?? null,
@@ -161,13 +165,26 @@ export default async function DashboardPage() {
     // Earliest date we care about
     const earliestDate = Object.values(addedAtMap).sort()[0] ?? '2000-01-01'
 
-    const { data: history } = await supabase
-      .from('daily_history')
-      .select('stock_id, date, closing_price')
-      .in('stock_id', portfolioRowsWithHistory.map(r => r.stock_id))
-      .not('closing_price', 'is', null)
-      .gte('date', earliestDate)
-      .order('date', { ascending: true })
+    const [{ data: history }, { data: indexHistory }] = await Promise.all([
+      supabase
+        .from('daily_history')
+        .select('stock_id, date, closing_price')
+        .in('stock_id', portfolioRowsWithHistory.map(r => r.stock_id))
+        .not('closing_price', 'is', null)
+        .gte('date', earliestDate)
+        .order('date', { ascending: true }),
+      supabase
+        .from('index_history')
+        .select('date, nifty50_close, nifty500_close')
+        .gte('date', earliestDate)
+        .order('date', { ascending: true }),
+    ])
+
+    // Build date -> index lookup
+    const indexByDate: Record<string, { n50: number; n500: number }> = {}
+    for (const row of indexHistory ?? []) {
+      indexByDate[row.date] = { n50: row.nifty50_close, n500: row.nifty500_close }
+    }
 
     if (history && history.length > 0) {
       // Group closing prices by date, only from each stock's added_at onwards
@@ -184,6 +201,9 @@ export default async function DashboardPage() {
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([date, prices]) => {
           let currentVal = 0, investedOnDay = 0
+          let n50Weighted = 0, n500Weighted = 0, benchmarkWeight = 0
+          const idxNow = indexByDate[date]
+
           for (const r of portfolioRowsWithHistory) {
             const addedAt = addedAtMap[r.stock_id] ?? '2000-01-01'
             if (date < addedAt) continue    // stock not yet added on this date
@@ -191,12 +211,22 @@ export default async function DashboardPage() {
             if (!price) continue
             currentVal    += (price / r.entry_price!) * r.invested_amount!
             investedOnDay += r.invested_amount!
+
+            // Benchmark: use stored entry index values at time stock was added
+            if (idxNow && r.nifty50_entry && r.nifty500_entry) {
+              const w = r.invested_amount!
+              n50Weighted  += ((idxNow.n50  / r.nifty50_entry)  - 1) * w
+              n500Weighted += ((idxNow.n500 / r.nifty500_entry) - 1) * w
+              benchmarkWeight += w
+            }
           }
           if (investedOnDay === 0) return null
-          const returnPct = ((currentVal - investedOnDay) / investedOnDay) * 100
+          const returnPct  = ((currentVal - investedOnDay) / investedOnDay) * 100
+          const nifty50Pct  = benchmarkWeight > 0 ? parseFloat((n50Weighted  / benchmarkWeight * 100).toFixed(2)) : undefined
+          const nifty500Pct = benchmarkWeight > 0 ? parseFloat((n500Weighted / benchmarkWeight * 100).toFixed(2)) : undefined
           const d = new Date(date)
           const label = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
-          return { date: label, returnPct: parseFloat(returnPct.toFixed(2)) }
+          return { date: label, returnPct: parseFloat(returnPct.toFixed(2)), nifty50Pct, nifty500Pct }
         })
         .filter(Boolean) as ChartPoint[]
     }

@@ -1,22 +1,35 @@
 'use client'
 
-import { LineChart, Line, XAxis, YAxis, Tooltip, ReferenceLine, ResponsiveContainer } from 'recharts'
+import { LineChart, Line, XAxis, YAxis, Tooltip, ReferenceLine, ResponsiveContainer, Legend } from 'recharts'
 
 export type ChartPoint = {
-  date: string        // 'DD MMM' formatted
-  returnPct: number   // % return vs total invested on that day
+  date:        string   // 'DD MMM' formatted
+  returnPct:   number   // % return vs total invested on that day
+  nifty50Pct?: number   // matched benchmark: Nifty50 % return over same holding periods
+  nifty500Pct?: number  // matched benchmark: Nifty500 % return over same holding periods
 }
 
 function CustomTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null
-  const val = payload[0].value as number
-  const gain = val >= 0
+  const byKey: Record<string, number> = {}
+  for (const p of payload) byKey[p.dataKey] = p.value as number
+
+  const fmt = (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`
+
   return (
-    <div className="bg-white border border-gray-200 rounded-lg px-3 py-2 shadow-lg text-xs">
+    <div className="bg-white border border-gray-200 rounded-lg px-3 py-2 shadow-lg text-xs space-y-1">
       <div className="text-gray-400 mb-1">{label}</div>
-      <div className={`font-bold text-sm ${gain ? 'text-emerald-600' : 'text-red-500'}`}>
-        {gain ? '+' : ''}{val.toFixed(2)}%
-      </div>
+      {byKey.returnPct != null && (
+        <div className={`font-bold ${byKey.returnPct >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+          Portfolio {fmt(byKey.returnPct)}
+        </div>
+      )}
+      {byKey.nifty50Pct != null && (
+        <div className="text-blue-500">Nifty 50 {fmt(byKey.nifty50Pct)}</div>
+      )}
+      {byKey.nifty500Pct != null && (
+        <div className="text-purple-500">Nifty 500 {fmt(byKey.nifty500Pct)}</div>
+      )}
     </div>
   )
 }
@@ -30,19 +43,44 @@ export default function PortfolioChart({ data }: { data: ChartPoint[] }) {
     )
   }
 
-  const latest  = data[data.length - 1].returnPct
-  const gain    = latest >= 0
-  const minVal  = Math.min(...data.map(d => d.returnPct))
-  const maxVal  = Math.max(...data.map(d => d.returnPct))
+  const hasBenchmark = data.some(d => d.nifty50Pct != null)
+  const latest = data[data.length - 1]
+  const gain   = latest.returnPct >= 0
+
+  const allVals = data.flatMap(d => [
+    d.returnPct,
+    d.nifty50Pct  ?? d.returnPct,
+    d.nifty500Pct ?? d.returnPct,
+  ])
+  const minVal  = Math.min(...allVals)
+  const maxVal  = Math.max(...allVals)
   const padding = Math.max(0.5, (maxVal - minVal) * 0.15)
 
   return (
     <div>
-      <div className="flex items-baseline gap-2 mb-3">
-        <span className={`text-2xl font-bold ${gain ? 'text-emerald-600' : 'text-red-500'}`}>
-          {gain ? '+' : ''}{latest.toFixed(2)}%
-        </span>
-        <span className="text-xs text-gray-400">total return since tracking</span>
+      <div className="flex items-baseline gap-4 mb-3 flex-wrap">
+        <div>
+          <span className={`text-2xl font-bold ${gain ? 'text-emerald-600' : 'text-red-500'}`}>
+            {gain ? '+' : ''}{latest.returnPct.toFixed(2)}%
+          </span>
+          <span className="text-xs text-gray-400 ml-2">portfolio</span>
+        </div>
+        {hasBenchmark && latest.nifty50Pct != null && (
+          <div>
+            <span className={`text-sm font-semibold text-blue-500`}>
+              {latest.nifty50Pct >= 0 ? '+' : ''}{latest.nifty50Pct.toFixed(2)}%
+            </span>
+            <span className="text-xs text-gray-400 ml-1">Nifty 50</span>
+          </div>
+        )}
+        {hasBenchmark && latest.nifty500Pct != null && (
+          <div>
+            <span className={`text-sm font-semibold text-purple-500`}>
+              {latest.nifty500Pct >= 0 ? '+' : ''}{latest.nifty500Pct.toFixed(2)}%
+            </span>
+            <span className="text-xs text-gray-400 ml-1">Nifty 500</span>
+          </div>
+        )}
       </div>
       <ResponsiveContainer width="100%" height={160}>
         <LineChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
@@ -71,6 +109,28 @@ export default function PortfolioChart({ data }: { data: ChartPoint[] }) {
             dot={false}
             activeDot={{ r: 4, strokeWidth: 0 }}
           />
+          {hasBenchmark && (
+            <Line
+              type="monotone"
+              dataKey="nifty50Pct"
+              stroke="#3b82f6"
+              strokeWidth={1.5}
+              strokeDasharray="4 2"
+              dot={false}
+              activeDot={{ r: 3, strokeWidth: 0 }}
+            />
+          )}
+          {hasBenchmark && (
+            <Line
+              type="monotone"
+              dataKey="nifty500Pct"
+              stroke="#a855f7"
+              strokeWidth={1.5}
+              strokeDasharray="4 2"
+              dot={false}
+              activeDot={{ r: 3, strokeWidth: 0 }}
+            />
+          )}
         </LineChart>
       </ResponsiveContainer>
     </div>

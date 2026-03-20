@@ -30,9 +30,14 @@ export default function LivePriceTable({ initialRows, chartData }: { initialRows
     if (totalInvested === 0 || chartData.length === 0) return chartData
     const todayLabel = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
     const todayPct   = parseFloat(((totalCurrent - totalInvested) / totalInvested * 100).toFixed(2))
-    const todayPoint: ChartPoint = { date: todayLabel, returnPct: todayPct }
-    // Replace last point if it's already today, otherwise append
     const last = chartData[chartData.length - 1]
+    // Carry benchmark forward from last known historical point (index_history updates after market close)
+    const todayPoint: ChartPoint = {
+      date:        todayLabel,
+      returnPct:   todayPct,
+      nifty50Pct:  last.nifty50Pct,
+      nifty500Pct: last.nifty500Pct,
+    }
     if (last.date === todayLabel) return [...chartData.slice(0, -1), todayPoint]
     return [...chartData, todayPoint]
   })()

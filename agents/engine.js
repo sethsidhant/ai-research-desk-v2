@@ -17,7 +17,7 @@ const { execSync } = require("child_process");
 const fs           = require("fs");
 const path         = require("path");
 const { getTechnicals, getReturns, NIFTY50_TOKEN, NIFTY500_TOKEN } = require("./technicalService");
-const { getWatchlistedStocks, upsertStock, upsertDailyScore, insertHistory, closePool, logApiUsage } = require("./pgHelper");
+const { getWatchlistedStocks, upsertStock, upsertDailyScore, insertHistory, closePool, logApiUsage, upsertIndexHistory } = require("./pgHelper");
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const sleep     = ms => new Promise(r => setTimeout(r, ms));
@@ -112,9 +112,19 @@ async function runDailyScoring() {
       console.log(`  ${industry}: ${pe ?? "N/A"}`);
     }
 
-    // 3. Benchmark returns — one call each
-    const niftyReturns   = await getReturns(NIFTY50_TOKEN);
+    // 3. Benchmark returns — one call each, also saves daily index history
+    const niftyReturns    = await getReturns(NIFTY50_TOKEN);
     const nifty500Returns = await getReturns(NIFTY500_TOKEN);
+
+    // Save index history — merge both series by date
+    if (niftyReturns.history.length > 0) {
+      const n500Map = Object.fromEntries(nifty500Returns.history.map(r => [r.date, r.close]));
+      const rows = niftyReturns.history
+        .filter(r => n500Map[r.date])
+        .map(r => ({ date: r.date, nifty50_close: r.close, nifty500_close: n500Map[r.date] }));
+      await upsertIndexHistory(rows);
+      console.log(`  Saved ${rows.length} index history rows`);
+    }
 
     // 4. Per-stock scoring
     for (const stock of stocks) {

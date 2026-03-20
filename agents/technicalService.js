@@ -94,10 +94,15 @@ async function getReturns(instrumentToken) {
       return base ? +((latest - base) / base * 100).toFixed(2) : null;
     };
 
-    return { r6m: pct(126), r1y: pct(252) };
+    // Return candles alongside returns so engine can save index history
+    const history = candles.map(c => ({
+      date:  c.date.toISOString().slice(0, 10),
+      close: c.close,
+    }));
+    return { r6m: pct(126), r1y: pct(252), history };
   } catch (e) {
     console.log(`  getReturns(${instrumentToken}) error: ${e.message}`);
-    return { r6m: null, r1y: null };
+    return { r6m: null, r1y: null, history: [] };
   }
 }
 
