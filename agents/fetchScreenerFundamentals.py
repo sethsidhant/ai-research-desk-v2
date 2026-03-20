@@ -16,6 +16,14 @@ def fetch_screener_fundamentals(ticker):
         try:
             r = requests.get(url, headers=headers, timeout=20)
             if r.status_code == 200 and len(r.text) > 5000:
+                # Verify top-ratios has actual data (consolidated stub pages have empty values)
+                from bs4 import BeautifulSoup as _BS
+                _soup = _BS(r.text, "html.parser")
+                _ul = _soup.find("ul", id="top-ratios")
+                if _ul:
+                    _nums = [s.get_text(strip=True) for s in _ul.find_all("span", class_="number")]
+                    if not any(_nums):
+                        continue  # stub page — try next URL
                 html = r.text
                 break
         except Exception:
