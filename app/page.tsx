@@ -28,7 +28,23 @@ export default async function DashboardPage() {
         low_52w,
         pct_from_52w_high,
         stock_pe,
-        industry_pe
+        industry_pe,
+        roe,
+        roce,
+        eps,
+        pb,
+        dividend_yield,
+        market_cap,
+        debt_to_equity,
+        promoter_holding,
+        current_ratio,
+        total_debt,
+        revenue_growth_1y,
+        revenue_growth_3y,
+        revenue_growth_5y,
+        profit_growth_1y,
+        profit_growth_3y,
+        profit_growth_5y
       )
     `)
     .eq('user_id', user.id)
@@ -81,6 +97,22 @@ export default async function DashboardPage() {
       score_date:        score?.date ?? null,
       invested_amount:   w.invested_amount ?? null,
       entry_price:       w.entry_price ?? null,
+      roe:               stock?.roe ?? null,
+      roce:              stock?.roce ?? null,
+      eps:               stock?.eps ?? null,
+      pb:                stock?.pb ?? null,
+      dividend_yield:    stock?.dividend_yield ?? null,
+      market_cap:        stock?.market_cap ?? null,
+      debt_to_equity:    stock?.debt_to_equity ?? null,
+      promoter_holding:  stock?.promoter_holding ?? null,
+      current_ratio:     stock?.current_ratio ?? null,
+      total_debt:        stock?.total_debt ?? null,
+      revenue_growth_1y: stock?.revenue_growth_1y ?? null,
+      revenue_growth_3y: stock?.revenue_growth_3y ?? null,
+      revenue_growth_5y: stock?.revenue_growth_5y ?? null,
+      profit_growth_1y:  stock?.profit_growth_1y ?? null,
+      profit_growth_3y:  stock?.profit_growth_3y ?? null,
+      profit_growth_5y:  stock?.profit_growth_5y ?? null,
     }
   }).sort((a, b) => {
     // Group by industry, then by stock name within industry

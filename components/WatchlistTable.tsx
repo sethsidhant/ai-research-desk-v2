@@ -3,6 +3,7 @@
 import React, { useState } from 'react'
 import ClassificationBadge, { getValuationBand, peDeviationColor } from './ClassificationBadge'
 import StockSummaryPanel from './StockSummaryPanel'
+import FundamentalsDrawer from './FundamentalsDrawer'
 
 export type WatchlistRow = {
   stock_id: string
@@ -33,6 +34,23 @@ export type WatchlistRow = {
   score_date: string | null
   invested_amount: number | null
   entry_price: number | null
+  // fundamentals
+  roe: number | null
+  roce: number | null
+  eps: number | null
+  pb: number | null
+  dividend_yield: number | null
+  market_cap: number | null
+  debt_to_equity: number | null
+  promoter_holding: number | null
+  current_ratio: number | null
+  total_debt: number | null
+  revenue_growth_1y: number | null
+  revenue_growth_3y: number | null
+  revenue_growth_5y: number | null
+  profit_growth_1y: number | null
+  profit_growth_3y: number | null
+  profit_growth_5y: number | null
 }
 
 function fmt(n: number | null, decimals = 1) {
@@ -98,6 +116,7 @@ export default function WatchlistTable({
 }) {
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null)
   const [panelMode, setPanelMode] = useState<'summary' | 'filings'>('summary')
+  const [fundamentalsRow, setFundamentalsRow] = useState<WatchlistRow | null>(null)
 
   function openPanel(ticker: string, mode: 'summary' | 'filings') {
     setSelectedTicker(ticker)
@@ -123,6 +142,7 @@ export default function WatchlistTable({
   return (
     <>
     <StockSummaryPanel ticker={selectedTicker} mode={panelMode} onClose={() => setSelectedTicker(null)} />
+    <FundamentalsDrawer row={fundamentalsRow} onClose={() => setFundamentalsRow(null)} />
     <div className="overflow-x-auto rounded-xl border border-gray-200 shadow-sm">
       <table className="w-full text-sm">
         <thead>
@@ -137,8 +157,6 @@ export default function WatchlistTable({
             <th className="hidden sm:table-cell text-center px-3 py-3">DMA</th>
             <th className="hidden sm:table-cell text-right px-3 py-3">RSI</th>
             <th className="hidden sm:table-cell text-center px-3 py-3">Signal</th>
-            <th className="hidden lg:table-cell text-right px-3 py-3">6M vs N50</th>
-            <th className="hidden lg:table-cell text-right px-3 py-3">1Y vs N50</th>
             <th className="px-3 py-3" />
           </tr>
         </thead>
@@ -283,19 +301,16 @@ export default function WatchlistTable({
                   <RsiSignalBadge signal={r.rsi_signal} />
                 </td>
 
-                {/* 6M return — lg+ */}
-                <td className="hidden lg:table-cell px-3 py-3 text-right font-mono text-xs text-gray-900">
-                  {fmtReturn(r.stock_6m)}
-                </td>
-
-                {/* 1Y return — lg+ */}
-                <td className="hidden lg:table-cell px-3 py-3 text-right font-mono text-xs text-gray-900">
-                  {fmtReturn(r.stock_1y)}
-                </td>
-
                 {/* Panel triggers */}
                 <td className="px-3 py-3 text-center">
                   <div className="flex items-center justify-center gap-2">
+                    <button
+                      onClick={() => setFundamentalsRow(r)}
+                      title="Fundamentals"
+                      className="text-base hover:scale-110 transition-transform leading-none"
+                    >
+                      📊
+                    </button>
                     <button
                       onClick={() => openPanel(r.ticker, 'summary')}
                       title="AI research note"

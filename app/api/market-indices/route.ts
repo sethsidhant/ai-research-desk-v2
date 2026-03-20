@@ -29,9 +29,12 @@ export type IndexQuote = {
 }
 
 const INDICES = [
-  { key: 'NSE:NIFTY 50',   label: 'NIFTY 50'   },
-  { key: 'BSE:SENSEX',     label: 'SENSEX'      },
-  { key: 'NSE:NIFTY BANK', label: 'BANK NIFTY'  },
+  { key: 'NSE:NIFTY 50',        label: 'NIFTY 50'    },
+  { key: 'BSE:SENSEX',          label: 'SENSEX'       },
+  { key: 'NSE:NIFTY BANK',      label: 'BANK NIFTY'  },
+  { key: 'NSE:NIFTY 500',       label: 'NIFTY 500'   },
+  { key: 'NSE:NIFTY MIDCAP 100', label: 'MIDCAP 100' },
+  { key: 'NSE:INDIA VIX',       label: 'INDIA VIX'   },
 ]
 
 let cache: { data: IndexQuote[]; ts: number } | null = null
