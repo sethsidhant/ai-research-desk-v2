@@ -184,8 +184,22 @@ export default async function DashboardPage() {
 
     // Build date -> index lookup (slice to YYYY-MM-DD to handle any timestamp format)
     const indexByDate: Record<string, { n50: number; n500: number }> = {}
+    const sortedIndexDates: string[] = []
     for (const row of indexHistory ?? []) {
-      indexByDate[row.date.slice(0, 10)] = { n50: row.nifty50_close, n500: row.nifty500_close }
+      const d = row.date.slice(0, 10)
+      indexByDate[d] = { n50: row.nifty50_close, n500: row.nifty500_close }
+      sortedIndexDates.push(d)
+    }
+    sortedIndexDates.sort()
+
+    // Returns nearest available index on or before targetDate (handles days with no close yet)
+    function nearestIndex(targetDate: string) {
+      let result: { n50: number; n500: number } | undefined
+      for (const d of sortedIndexDates) {
+        if (d <= targetDate) result = indexByDate[d]
+        else break
+      }
+      return result
     }
 
     if (history && history.length > 0) {
@@ -204,7 +218,7 @@ export default async function DashboardPage() {
         .map(([date, prices]) => {
           let currentVal = 0, investedOnDay = 0
           let n50Weighted = 0, n500Weighted = 0, benchmarkWeight = 0
-          const idxNow = indexByDate[date.slice(0, 10)]
+          const idxNow = nearestIndex(date.slice(0, 10))
 
           for (const r of portfolioRowsWithHistory) {
             const addedAt = addedAtMap[r.stock_id] ?? '2000-01-01'
