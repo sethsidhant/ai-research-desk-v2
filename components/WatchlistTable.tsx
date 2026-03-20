@@ -4,6 +4,7 @@ import React, { useState } from 'react'
 import ClassificationBadge, { getValuationBand, peDeviationColor } from './ClassificationBadge'
 import StockSummaryPanel from './StockSummaryPanel'
 import FundamentalsDrawer from './FundamentalsDrawer'
+import StockChartPanel from './StockChartPanel'
 
 export type WatchlistRow = {
   stock_id: string
@@ -124,6 +125,7 @@ export default function WatchlistTable({
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null)
   const [panelMode, setPanelMode] = useState<'summary' | 'filings'>('summary')
   const [fundamentalsRow, setFundamentalsRow] = useState<WatchlistRow | null>(null)
+  const [chartRow, setChartRow] = useState<WatchlistRow | null>(null)
 
   function openPanel(ticker: string, mode: 'summary' | 'filings') {
     setSelectedTicker(ticker)
@@ -150,6 +152,7 @@ export default function WatchlistTable({
     <>
     <StockSummaryPanel ticker={selectedTicker} mode={panelMode} onClose={() => setSelectedTicker(null)} />
     <FundamentalsDrawer row={fundamentalsRow} onClose={() => setFundamentalsRow(null)} />
+    <StockChartPanel ticker={chartRow?.ticker ?? null} stockName={chartRow?.stock_name} onClose={() => setChartRow(null)} />
     <div className="overflow-x-auto rounded-xl border border-gray-200 shadow-sm">
       <table className="w-full text-sm">
         <thead>
@@ -317,6 +320,13 @@ export default function WatchlistTable({
                       className="text-base hover:scale-110 transition-transform leading-none"
                     >
                       📊
+                    </button>
+                    <button
+                      onClick={() => setChartRow(r)}
+                      title="Price chart"
+                      className="text-base hover:scale-110 transition-transform leading-none"
+                    >
+                      📈
                     </button>
                     <button
                       onClick={() => openPanel(r.ticker, 'summary')}

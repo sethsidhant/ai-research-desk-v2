@@ -1,16 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import { type WatchlistRow } from './WatchlistTable'
-import {
-  ComposedChart, Line, Bar, XAxis, YAxis, Tooltip,
-  ResponsiveContainer, ReferenceLine, CartesianGrid,
-} from 'recharts'
-
-type Tab = 'overview' | 'growth' | 'comparison' | 'chart'
-type Period = '1m' | '3m' | '6m' | '1y'
-
-type Candle = { date: string; open: number; high: number; low: number; close: number; volume: number }
+type Tab = 'overview' | 'growth' | 'comparison'
 
 function fmt(n: number | null, suffix = '', decimals = 1) {
   if (n == null) return '—'
@@ -78,106 +70,6 @@ function BenchCompare({ label, stockVal, benchVal, benchLabel }: { label: string
   )
 }
 
-function ChartTab({ ticker }: { ticker: string }) {
-  const [period, setPeriod]   = useState<Period>('3m')
-  const [candles, setCandles] = useState<Candle[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError]     = useState(false)
-
-  useEffect(() => {
-    setLoading(true)
-    setError(false)
-    fetch(`/api/stock-chart?ticker=${ticker}&period=${period}`)
-      .then(r => r.json())
-      .then(d => {
-        if (d.candles) setCandles(d.candles)
-        else setError(true)
-      })
-      .catch(() => setError(true))
-      .finally(() => setLoading(false))
-  }, [ticker, period])
-
-  const firstClose = candles[0]?.close ?? null
-  const chartData  = candles.map(c => ({
-    date:    c.date.slice(5),   // MM-DD
-    close:   c.close,
-    volume:  c.volume,
-    pct:     firstClose ? parseFloat(((c.close - firstClose) / firstClose * 100).toFixed(2)) : 0,
-  }))
-
-  const minClose = Math.min(...candles.map(c => c.close))
-  const maxClose = Math.max(...candles.map(c => c.close))
-  const lastClose = candles[candles.length - 1]?.close
-  const isUp = lastClose != null && firstClose != null ? lastClose >= firstClose : true
-  const lineColor = isUp ? '#10b981' : '#ef4444'
-
-  return (
-    <div>
-      {/* Period selector */}
-      <div className="flex gap-2 mb-4">
-        {(['1m', '3m', '6m', '1y'] as Period[]).map(p => (
-          <button
-            key={p}
-            onClick={() => setPeriod(p)}
-            className={`px-3 py-1 rounded-lg text-xs font-semibold uppercase transition-colors ${
-              period === p ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-            }`}
-          >
-            {p}
-          </button>
-        ))}
-      </div>
-
-      {loading && <div className="h-64 flex items-center justify-center text-gray-400 text-sm">Loading chart...</div>}
-      {error   && <div className="h-64 flex items-center justify-center text-red-400 text-sm">Could not load chart data</div>}
-
-      {!loading && !error && chartData.length > 0 && (
-        <>
-          {/* Price chart */}
-          <div className="mb-1">
-            <div className="text-xs text-gray-400 mb-1">Price (₹)</div>
-            <ResponsiveContainer width="100%" height={160}>
-              <ComposedChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="date" tick={{ fontSize: 9 }} tickLine={false} interval="preserveStartEnd" />
-                <YAxis
-                  domain={[minClose * 0.98, maxClose * 1.02]}
-                  tick={{ fontSize: 9 }}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={v => `₹${v.toLocaleString('en-IN')}`}
-                  width={60}
-                />
-                <Tooltip
-                  contentStyle={{ fontSize: 11, borderRadius: 8 }}
-                  formatter={(v: any) => [`₹${Number(v).toLocaleString('en-IN')}`, 'Close']}
-                />
-                <Line type="monotone" dataKey="close" stroke={lineColor} dot={false} strokeWidth={2} />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Volume chart */}
-          <div>
-            <div className="text-xs text-gray-400 mb-1 mt-3">Volume</div>
-            <ResponsiveContainer width="100%" height={70}>
-              <ComposedChart data={chartData} margin={{ top: 0, right: 4, left: 0, bottom: 0 }}>
-                <XAxis dataKey="date" hide />
-                <YAxis hide />
-                <Tooltip
-                  contentStyle={{ fontSize: 11, borderRadius: 8 }}
-                  formatter={(v: any) => [(Number(v) / 1e5).toFixed(1) + 'L', 'Volume']}
-                />
-                <Bar dataKey="volume" fill="#94a3b8" radius={[2, 2, 0, 0]} />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
-
 export default function FundamentalsDrawer({ row, onClose }: { row: WatchlistRow | null; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>('overview')
 
@@ -190,7 +82,6 @@ export default function FundamentalsDrawer({ row, onClose }: { row: WatchlistRow
     { id: 'overview',   label: 'Fundamentals' },
     { id: 'growth',     label: 'Growth' },
     { id: 'comparison', label: 'vs Nifty' },
-    { id: 'chart',      label: 'Chart' },
   ]
 
   return (
@@ -288,8 +179,6 @@ export default function FundamentalsDrawer({ row, onClose }: { row: WatchlistRow
               <BenchCompare label="Stock" stockVal={row.stock_1y} benchVal={row.nifty500_1y} benchLabel="Nifty 500" />
             </div>
           )}
-
-          {tab === 'chart' && <ChartTab ticker={row.ticker} />}
 
         </div>
 
