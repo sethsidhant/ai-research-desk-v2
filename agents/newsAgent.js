@@ -97,11 +97,16 @@ async function fetchETNews(stockName, ticker) {
       "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms"
     );
 
+    const cutoff = Date.now() - 10 * 24 * 60 * 60 * 1000   // 10 days ago
+
     return (feed.items || [])
       .filter(item => {
         const title   = (item.title || "").toLowerCase();
         const content = (item.contentSnippet || "").toLowerCase();
-        return searchTerms.some(term => title.includes(term) || content.includes(term));
+        if (!searchTerms.some(term => title.includes(term) || content.includes(term))) return false
+        // Drop articles older than 10 days
+        if (item.pubDate && new Date(item.pubDate).getTime() < cutoff) return false
+        return true
       })
       .slice(0, 3)
       .map(item => ({
