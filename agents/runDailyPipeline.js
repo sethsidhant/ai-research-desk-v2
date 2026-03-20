@@ -59,6 +59,13 @@ async function onboardPendingStocks() {
 }
 
 async function main() {
+  const nowIST = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+  const day    = nowIST.getDay(); // 0 = Sunday, 6 = Saturday
+  if (day === 0 || day === 6) {
+    console.log(`[runDailyPipeline] Weekend — skipping. (${nowIST.toDateString()})`);
+    process.exit(0);
+  }
+
   console.log(`\n${'═'.repeat(60)}`);
   console.log(`[runDailyPipeline] ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST`);
   console.log('═'.repeat(60));
