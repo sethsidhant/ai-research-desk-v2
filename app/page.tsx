@@ -202,7 +202,7 @@ export default async function DashboardPage() {
         .map(([date, prices]) => {
           let currentVal = 0, investedOnDay = 0
           let n50Weighted = 0, n500Weighted = 0, benchmarkWeight = 0
-          const idxNow = indexByDate[date]
+          const idxNow = indexByDate[date.slice(0, 10)]
 
           for (const r of portfolioRowsWithHistory) {
             const addedAt = addedAtMap[r.stock_id] ?? '2000-01-01'
