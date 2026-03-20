@@ -26,15 +26,24 @@ export type IndexQuote = {
   prevClose:  number
   change:     number
   changePct:  number
+  group:      string
 }
 
 const INDICES = [
-  { key: 'NSE:NIFTY 50',        label: 'NIFTY 50'    },
-  { key: 'BSE:SENSEX',          label: 'SENSEX'       },
-  { key: 'NSE:NIFTY BANK',      label: 'BANK NIFTY'  },
-  { key: 'NSE:NIFTY 500',       label: 'NIFTY 500'   },
-  { key: 'NSE:NIFTY MIDCAP 100', label: 'MIDCAP 100' },
-  { key: 'NSE:INDIA VIX',       label: 'INDIA VIX'   },
+  // Broad market
+  { key: 'NSE:NIFTY 50',          label: 'NIFTY 50',     group: 'broad' },
+  { key: 'BSE:SENSEX',            label: 'SENSEX',        group: 'broad' },
+  { key: 'NSE:NIFTY BANK',        label: 'BANK NIFTY',   group: 'broad' },
+  { key: 'NSE:NIFTY 500',         label: 'NIFTY 500',    group: 'broad' },
+  { key: 'NSE:NIFTY MIDCAP 100',  label: 'MIDCAP 100',   group: 'broad' },
+  { key: 'NSE:NIFTY SMALLCAP 100',label: 'SMALLCAP 100', group: 'broad' },
+  { key: 'NSE:INDIA VIX',         label: 'VIX',          group: 'vix'   },
+  // Sectors
+  { key: 'NSE:NIFTY IT',          label: 'IT',           group: 'sector' },
+  { key: 'NSE:NIFTY PHARMA',      label: 'PHARMA',       group: 'sector' },
+  { key: 'NSE:NIFTY AUTO',        label: 'AUTO',         group: 'sector' },
+  { key: 'NSE:NIFTY FMCG',        label: 'FMCG',         group: 'sector' },
+  { key: 'NSE:NIFTY METAL',       label: 'METAL',        group: 'sector' },
 ]
 
 let cache: { data: IndexQuote[]; ts: number } | null = null
@@ -77,7 +86,7 @@ export async function GET() {
       const prevClose = d?.ohlc?.close  ?? 0
       const change    = d?.net_change   ?? 0
       const changePct = prevClose > 0 ? (change / prevClose) * 100 : 0
-      return { name: idx.label, last, prevClose, change, changePct }
+      return { name: idx.label, last, prevClose, change, changePct, group: idx.group }
     })
 
     cache = { data: indices, ts: Date.now() }
