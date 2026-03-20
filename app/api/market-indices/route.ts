@@ -36,7 +36,7 @@ const INDICES = [
   { key: 'NSE:NIFTY BANK',        label: 'BANK NIFTY',   group: 'broad' },
   { key: 'NSE:NIFTY 500',         label: 'NIFTY 500',    group: 'broad' },
   { key: 'NSE:NIFTY MIDCAP 100',  label: 'MIDCAP 100',   group: 'broad' },
-  { key: 'NSE:NIFTY SMALLCAP 100',label: 'SMALLCAP 100', group: 'broad' },
+  { key: 'NSE:NIFTY SMLCAP 100',  label: 'SMALLCAP 100', group: 'broad' },
   { key: 'NSE:INDIA VIX',         label: 'VIX',          group: 'vix'   },
   // Sectors
   { key: 'NSE:NIFTY IT',          label: 'IT',           group: 'sector' },
