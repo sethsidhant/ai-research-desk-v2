@@ -16,7 +16,7 @@ const Anthropic    = require("@anthropic-ai/sdk");
 const { execSync } = require("child_process");
 const fs           = require("fs");
 const path         = require("path");
-const { getTechnicals, getReturns, NIFTY50_TOKEN } = require("./technicalService");
+const { getTechnicals, getReturns, NIFTY50_TOKEN, NIFTY500_TOKEN } = require("./technicalService");
 const { getWatchlistedStocks, upsertStock, upsertDailyScore, insertHistory, closePool, logApiUsage } = require("./pgHelper");
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -112,8 +112,9 @@ async function runDailyScoring() {
       console.log(`  ${industry}: ${pe ?? "N/A"}`);
     }
 
-    // 3. Benchmark returns — one call
-    const niftyReturns = await getReturns(NIFTY50_TOKEN);
+    // 3. Benchmark returns — one call each
+    const niftyReturns   = await getReturns(NIFTY50_TOKEN);
+    const nifty500Returns = await getReturns(NIFTY500_TOKEN);
 
     // 4. Per-stock scoring
     for (const stock of stocks) {
@@ -219,6 +220,8 @@ Return ONLY valid JSON:
         stock_1y:         stockReturns.r1y,
         nifty50_6m:       niftyReturns.r6m,
         nifty50_1y:       niftyReturns.r1y,
+        nifty500_6m:      nifty500Returns.r6m,
+        nifty500_1y:      nifty500Returns.r1y,
       });
 
       // Insert history — no OHLC/volume (fetch from Kite on demand for charts)

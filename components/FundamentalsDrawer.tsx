@@ -1,9 +1,16 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { type WatchlistRow } from './WatchlistTable'
+import {
+  ComposedChart, Line, Bar, XAxis, YAxis, Tooltip,
+  ResponsiveContainer, ReferenceLine, CartesianGrid,
+} from 'recharts'
 
-type Tab = 'overview' | 'growth' | 'comparison'
+type Tab = 'overview' | 'growth' | 'comparison' | 'chart'
+type Period = '1m' | '3m' | '6m' | '1y'
+
+type Candle = { date: string; open: number; high: number; low: number; close: number; volume: number }
 
 function fmt(n: number | null, suffix = '', decimals = 1) {
   if (n == null) return '—'
@@ -33,14 +40,21 @@ function GrowthBar({ value }: { value: number | null }) {
   )
 }
 
-function MetricRow({ label, value, highlight }: { label: string; value: string; highlight?: 'green' | 'red' | 'amber' }) {
+function MetricRow({ label, value, highlight, sub }: { label: string; value: string; highlight?: 'green' | 'red' | 'amber'; sub?: string }) {
   const color = highlight === 'green' ? 'text-emerald-600' : highlight === 'red' ? 'text-red-600' : highlight === 'amber' ? 'text-amber-600' : 'text-gray-900'
   return (
     <div className="flex items-center justify-between py-2.5 border-b border-gray-100 last:border-0">
-      <span className="text-sm text-gray-500">{label}</span>
+      <div>
+        <span className="text-sm text-gray-500">{label}</span>
+        {sub && <div className="text-xs text-gray-400">{sub}</div>}
+      </div>
       <span className={`text-sm font-semibold font-mono ${color}`}>{value}</span>
     </div>
   )
+}
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3 mt-5 first:mt-0">{children}</div>
 }
 
 function returnHighlight(stock: number | null, bench: number | null): 'green' | 'red' | undefined {
@@ -48,32 +62,140 @@ function returnHighlight(stock: number | null, bench: number | null): 'green' | 
   return stock >= bench ? 'green' : 'red'
 }
 
-export default function FundamentalsDrawer({
-  row,
-  onClose,
-}: {
-  row: WatchlistRow | null
-  onClose: () => void
-}) {
+function BenchCompare({ label, stockVal, benchVal, benchLabel }: { label: string; stockVal: number | null; benchVal: number | null; benchLabel: string }) {
+  const diff = stockVal != null && benchVal != null ? stockVal - benchVal : null
+  return (
+    <div className="mb-5">
+      <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">{label}</div>
+      <MetricRow label={label.includes('Stock') ? label : 'Stock'} value={stockVal != null ? `${stockVal > 0 ? '+' : ''}${stockVal.toFixed(1)}%` : '—'} highlight={returnHighlight(stockVal, benchVal)} />
+      <MetricRow label={benchLabel} value={benchVal != null ? `${benchVal > 0 ? '+' : ''}${benchVal.toFixed(1)}%` : '—'} />
+      {diff != null && (
+        <div className={`text-xs mt-1.5 font-medium ${diff >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+          {diff >= 0 ? `↑ Outperforming by ${diff.toFixed(1)}%` : `↓ Underperforming by ${Math.abs(diff).toFixed(1)}%`}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ChartTab({ ticker }: { ticker: string }) {
+  const [period, setPeriod]   = useState<Period>('3m')
+  const [candles, setCandles] = useState<Candle[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError]     = useState(false)
+
+  useEffect(() => {
+    setLoading(true)
+    setError(false)
+    fetch(`/api/stock-chart?ticker=${ticker}&period=${period}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.candles) setCandles(d.candles)
+        else setError(true)
+      })
+      .catch(() => setError(true))
+      .finally(() => setLoading(false))
+  }, [ticker, period])
+
+  const firstClose = candles[0]?.close ?? null
+  const chartData  = candles.map(c => ({
+    date:    c.date.slice(5),   // MM-DD
+    close:   c.close,
+    volume:  c.volume,
+    pct:     firstClose ? parseFloat(((c.close - firstClose) / firstClose * 100).toFixed(2)) : 0,
+  }))
+
+  const minClose = Math.min(...candles.map(c => c.close))
+  const maxClose = Math.max(...candles.map(c => c.close))
+  const lastClose = candles[candles.length - 1]?.close
+  const isUp = lastClose != null && firstClose != null ? lastClose >= firstClose : true
+  const lineColor = isUp ? '#10b981' : '#ef4444'
+
+  return (
+    <div>
+      {/* Period selector */}
+      <div className="flex gap-2 mb-4">
+        {(['1m', '3m', '6m', '1y'] as Period[]).map(p => (
+          <button
+            key={p}
+            onClick={() => setPeriod(p)}
+            className={`px-3 py-1 rounded-lg text-xs font-semibold uppercase transition-colors ${
+              period === p ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+            }`}
+          >
+            {p}
+          </button>
+        ))}
+      </div>
+
+      {loading && <div className="h-64 flex items-center justify-center text-gray-400 text-sm">Loading chart...</div>}
+      {error   && <div className="h-64 flex items-center justify-center text-red-400 text-sm">Could not load chart data</div>}
+
+      {!loading && !error && chartData.length > 0 && (
+        <>
+          {/* Price chart */}
+          <div className="mb-1">
+            <div className="text-xs text-gray-400 mb-1">Price (₹)</div>
+            <ResponsiveContainer width="100%" height={160}>
+              <ComposedChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="date" tick={{ fontSize: 9 }} tickLine={false} interval="preserveStartEnd" />
+                <YAxis
+                  domain={[minClose * 0.98, maxClose * 1.02]}
+                  tick={{ fontSize: 9 }}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={v => `₹${v.toLocaleString('en-IN')}`}
+                  width={60}
+                />
+                <Tooltip
+                  contentStyle={{ fontSize: 11, borderRadius: 8 }}
+                  formatter={(v: any) => [`₹${Number(v).toLocaleString('en-IN')}`, 'Close']}
+                />
+                <Line type="monotone" dataKey="close" stroke={lineColor} dot={false} strokeWidth={2} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Volume chart */}
+          <div>
+            <div className="text-xs text-gray-400 mb-1 mt-3">Volume</div>
+            <ResponsiveContainer width="100%" height={70}>
+              <ComposedChart data={chartData} margin={{ top: 0, right: 4, left: 0, bottom: 0 }}>
+                <XAxis dataKey="date" hide />
+                <YAxis hide />
+                <Tooltip
+                  contentStyle={{ fontSize: 11, borderRadius: 8 }}
+                  formatter={(v: any) => [(Number(v) / 1e5).toFixed(1) + 'L', 'Volume']}
+                />
+                <Bar dataKey="volume" fill="#94a3b8" radius={[2, 2, 0, 0]} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+export default function FundamentalsDrawer({ row, onClose }: { row: WatchlistRow | null; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>('overview')
+
+  useEffect(() => { if (row) setTab('overview') }, [row?.stock_id])
 
   if (!row) return null
 
+  const r = row as any
   const tabs: { id: Tab; label: string }[] = [
-    { id: 'overview',    label: 'Fundamentals' },
-    { id: 'growth',      label: 'Growth' },
-    { id: 'comparison',  label: 'vs Nifty' },
+    { id: 'overview',   label: 'Fundamentals' },
+    { id: 'growth',     label: 'Growth' },
+    { id: 'comparison', label: 'vs Nifty' },
+    { id: 'chart',      label: 'Chart' },
   ]
 
   return (
     <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black/20 z-40"
-        onClick={onClose}
-      />
-
-      {/* Drawer */}
+      <div className="fixed inset-0 bg-black/20 z-40" onClick={onClose} />
       <div className="fixed right-0 top-0 h-full w-full sm:w-96 bg-white shadow-2xl z-50 flex flex-col">
 
         {/* Header */}
@@ -92,9 +214,7 @@ export default function FundamentalsDrawer({
               key={t.id}
               onClick={() => setTab(t.id)}
               className={`flex-1 py-2.5 text-xs font-semibold uppercase tracking-wide transition-colors ${
-                tab === t.id
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-400 hover:text-gray-600'
+                tab === t.id ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400 hover:text-gray-600'
               }`}
             >
               {t.label}
@@ -107,116 +227,75 @@ export default function FundamentalsDrawer({
 
           {tab === 'overview' && (
             <div>
-              <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Valuation</div>
+              <SectionTitle>Valuation</SectionTitle>
               <MetricRow label="Stock PE" value={fmt(row.stock_pe, 'x')} />
               <MetricRow label="Industry PE" value={fmt(row.industry_pe, 'x')} />
-              <MetricRow
-                label="PE vs Industry"
-                value={row.pe_deviation != null ? `${row.pe_deviation > 0 ? '+' : ''}${row.pe_deviation.toFixed(1)}%` : '—'}
-                highlight={row.pe_deviation != null ? (row.pe_deviation <= -10 ? 'green' : row.pe_deviation >= 20 ? 'red' : undefined) : undefined}
-              />
-              <MetricRow label="P/B Ratio" value={fmt((row as any).pb, 'x')} />
-              <MetricRow label="EPS" value={(row as any).eps != null ? `₹${(row as any).eps.toFixed(2)}` : '—'} />
-              <MetricRow label="Dividend Yield" value={fmt((row as any).dividend_yield, '%')} />
-              <MetricRow label="Market Cap" value={fmtCr((row as any).market_cap)} />
+              <MetricRow label="PE vs Industry" value={row.pe_deviation != null ? `${row.pe_deviation > 0 ? '+' : ''}${row.pe_deviation.toFixed(1)}%` : '—'} highlight={row.pe_deviation != null ? (row.pe_deviation <= -10 ? 'green' : row.pe_deviation >= 20 ? 'red' : undefined) : undefined} />
+              <MetricRow label="P/B Ratio" value={fmt(r.pb, 'x')} />
+              <MetricRow label="EPS" value={r.eps != null ? `₹${r.eps.toFixed(2)}` : '—'} />
+              <MetricRow label="Dividend Yield" value={fmt(r.dividend_yield, '%')} />
+              <MetricRow label="Market Cap" value={fmtCr(r.market_cap)} />
 
-              <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3 mt-5">Quality</div>
-              <MetricRow
-                label="ROCE"
-                value={fmt((row as any).roce, '%')}
-                highlight={(row as any).roce != null ? ((row as any).roce >= 15 ? 'green' : (row as any).roce < 10 ? 'red' : 'amber') : undefined}
-              />
-              <MetricRow
-                label="ROE"
-                value={fmt((row as any).roe, '%')}
-                highlight={(row as any).roe != null ? ((row as any).roe >= 15 ? 'green' : (row as any).roe < 10 ? 'red' : 'amber') : undefined}
-              />
-              <MetricRow label="Promoter Holding" value={fmt((row as any).promoter_holding, '%')} />
+              <SectionTitle>Quality</SectionTitle>
+              <MetricRow label="ROCE" value={fmt(r.roce, '%')} highlight={r.roce != null ? (r.roce >= 15 ? 'green' : r.roce < 10 ? 'red' : 'amber') : undefined} />
+              <MetricRow label="ROE"  value={fmt(r.roe, '%')}  highlight={r.roe  != null ? (r.roe  >= 15 ? 'green' : r.roe  < 10 ? 'red' : 'amber') : undefined} />
 
-              <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3 mt-5">Financial Health</div>
-              <MetricRow
-                label="Debt / Equity"
-                value={fmt((row as any).debt_to_equity, 'x')}
-                highlight={(row as any).debt_to_equity != null ? ((row as any).debt_to_equity <= 0.5 ? 'green' : (row as any).debt_to_equity >= 1.5 ? 'red' : 'amber') : undefined}
-              />
-              <MetricRow label="Current Ratio" value={fmt((row as any).current_ratio, 'x')} />
-              <MetricRow label="Total Debt" value={fmtCr((row as any).total_debt)} />
+              <SectionTitle>Ownership</SectionTitle>
+              <MetricRow label="Promoter Holding" value={fmt(r.promoter_holding, '%')} />
+              <MetricRow label="FII Holding"       value={fmt(r.fii_holding, '%')} />
+              <MetricRow label="DII Holding"       value={fmt(r.dii_holding, '%')} />
+
+              <SectionTitle>Balance Sheet</SectionTitle>
+              <MetricRow label="Reserves"     value={fmtCr(r.reserves)} />
+              <MetricRow label="Borrowings"   value={fmtCr(r.borrowings)} highlight={r.borrowings != null && r.reserves != null ? (r.borrowings < r.reserves ? 'green' : r.borrowings > r.reserves * 2 ? 'red' : 'amber') : undefined} />
+              <MetricRow label="Total Debt"   value={fmtCr(r.total_debt)} />
+              <MetricRow label="Debt / Equity" value={fmt(r.debt_to_equity, 'x')} highlight={r.debt_to_equity != null ? (r.debt_to_equity <= 0.5 ? 'green' : r.debt_to_equity >= 1.5 ? 'red' : 'amber') : undefined} />
+              <MetricRow label="Current Ratio" value={fmt(r.current_ratio, 'x')} />
             </div>
           )}
 
           {tab === 'growth' && (
             <div>
-              <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Revenue CAGR</div>
-              <div className="space-y-3 mb-6">
-                <div>
-                  <div className="text-xs text-gray-500 mb-1">1 Year</div>
-                  <GrowthBar value={(row as any).revenue_growth_1y} />
-                </div>
-                <div>
-                  <div className="text-xs text-gray-500 mb-1">3 Year</div>
-                  <GrowthBar value={(row as any).revenue_growth_3y} />
-                </div>
-                <div>
-                  <div className="text-xs text-gray-500 mb-1">5 Year</div>
-                  <GrowthBar value={(row as any).revenue_growth_5y} />
-                </div>
+              <SectionTitle>Revenue CAGR</SectionTitle>
+              <div className="space-y-3 mb-2">
+                {(['1y', '3y', '5y'] as const).map(p => (
+                  <div key={p}>
+                    <div className="text-xs text-gray-500 mb-1">{p === '1y' ? '1 Year' : p === '3y' ? '3 Year' : '5 Year'}</div>
+                    <GrowthBar value={r[`revenue_growth_${p}`]} />
+                  </div>
+                ))}
               </div>
-
-              <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Profit CAGR</div>
+              <SectionTitle>Profit CAGR</SectionTitle>
               <div className="space-y-3">
-                <div>
-                  <div className="text-xs text-gray-500 mb-1">1 Year</div>
-                  <GrowthBar value={(row as any).profit_growth_1y} />
-                </div>
-                <div>
-                  <div className="text-xs text-gray-500 mb-1">3 Year</div>
-                  <GrowthBar value={(row as any).profit_growth_3y} />
-                </div>
-                <div>
-                  <div className="text-xs text-gray-500 mb-1">5 Year</div>
-                  <GrowthBar value={(row as any).profit_growth_5y} />
-                </div>
+                {(['1y', '3y', '5y'] as const).map(p => (
+                  <div key={p}>
+                    <div className="text-xs text-gray-500 mb-1">{p === '1y' ? '1 Year' : p === '3y' ? '3 Year' : '5 Year'}</div>
+                    <GrowthBar value={r[`profit_growth_${p}`]} />
+                  </div>
+                ))}
               </div>
             </div>
           )}
 
           {tab === 'comparison' && (
             <div>
-              <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">6 Month Returns</div>
-              <MetricRow label={row.stock_name} value={row.stock_6m != null ? `${row.stock_6m > 0 ? '+' : ''}${row.stock_6m.toFixed(1)}%` : '—'} highlight={returnHighlight(row.stock_6m, row.nifty50_6m)} />
-              <MetricRow label="Nifty 50" value={row.nifty50_6m != null ? `${row.nifty50_6m > 0 ? '+' : ''}${row.nifty50_6m.toFixed(1)}%` : '—'} />
+              <SectionTitle>6 Month Returns</SectionTitle>
+              <BenchCompare label="Stock" stockVal={row.stock_6m} benchVal={row.nifty50_6m}  benchLabel="Nifty 50" />
+              <BenchCompare label="Stock" stockVal={row.stock_6m} benchVal={row.nifty500_6m} benchLabel="Nifty 500" />
 
-              {row.stock_6m != null && row.nifty50_6m != null && (
-                <div className={`text-xs mt-2 mb-4 font-medium ${row.stock_6m >= row.nifty50_6m ? 'text-emerald-600' : 'text-red-600'}`}>
-                  {row.stock_6m >= row.nifty50_6m
-                    ? `↑ Outperforming Nifty 50 by ${(row.stock_6m - row.nifty50_6m).toFixed(1)}%`
-                    : `↓ Underperforming Nifty 50 by ${(row.nifty50_6m - row.stock_6m).toFixed(1)}%`}
-                </div>
-              )}
-
-              <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3 mt-5">1 Year Returns</div>
-              <MetricRow label={row.stock_name} value={row.stock_1y != null ? `${row.stock_1y > 0 ? '+' : ''}${row.stock_1y.toFixed(1)}%` : '—'} highlight={returnHighlight(row.stock_1y, row.nifty50_1y)} />
-              <MetricRow label="Nifty 50" value={row.nifty50_1y != null ? `${row.nifty50_1y > 0 ? '+' : ''}${row.nifty50_1y.toFixed(1)}%` : '—'} />
-
-              {row.stock_1y != null && row.nifty50_1y != null && (
-                <div className={`text-xs mt-2 font-medium ${row.stock_1y >= row.nifty50_1y ? 'text-emerald-600' : 'text-red-600'}`}>
-                  {row.stock_1y >= row.nifty50_1y
-                    ? `↑ Outperforming Nifty 50 by ${(row.stock_1y - row.nifty50_1y).toFixed(1)}%`
-                    : `↓ Underperforming Nifty 50 by ${(row.nifty50_1y - row.stock_1y).toFixed(1)}%`}
-                </div>
-              )}
+              <SectionTitle>1 Year Returns</SectionTitle>
+              <BenchCompare label="Stock" stockVal={row.stock_1y} benchVal={row.nifty50_1y}  benchLabel="Nifty 50" />
+              <BenchCompare label="Stock" stockVal={row.stock_1y} benchVal={row.nifty500_1y} benchLabel="Nifty 500" />
             </div>
           )}
+
+          {tab === 'chart' && <ChartTab ticker={row.ticker} />}
+
         </div>
 
-        {/* Footer — Screener link */}
+        {/* Footer */}
         <div className="px-5 py-3 border-t border-gray-200">
-          <a
-            href={`https://www.screener.in/company/${row.ticker}/consolidated/`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs text-blue-600 hover:text-blue-500 font-medium"
-          >
+          <a href={`https://www.screener.in/company/${row.ticker}/consolidated/`} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:text-blue-500 font-medium">
             View full report on Screener →
           </a>
         </div>

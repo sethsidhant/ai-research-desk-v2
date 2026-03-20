@@ -44,7 +44,11 @@ export default async function DashboardPage() {
         revenue_growth_5y,
         profit_growth_1y,
         profit_growth_3y,
-        profit_growth_5y
+        profit_growth_5y,
+        reserves,
+        borrowings,
+        fii_holding,
+        dii_holding
       )
     `)
     .eq('user_id', user.id)
@@ -55,7 +59,7 @@ export default async function DashboardPage() {
   const { data: scores } = stockIds.length > 0
     ? await supabase
         .from('daily_scores')
-        .select('stock_id, pe_deviation, rsi, rsi_signal, dma_50, dma_200, above_50_dma, above_200_dma, composite_score, classification, suggested_action, stock_6m, stock_1y, nifty50_6m, nifty50_1y, date')
+        .select('stock_id, pe_deviation, rsi, rsi_signal, dma_50, dma_200, above_50_dma, above_200_dma, composite_score, classification, suggested_action, stock_6m, stock_1y, nifty50_6m, nifty50_1y, nifty500_6m, nifty500_1y, date')
         .in('stock_id', stockIds)
         .order('date', { ascending: false })
     : { data: [] }
@@ -113,6 +117,12 @@ export default async function DashboardPage() {
       profit_growth_1y:  stock?.profit_growth_1y ?? null,
       profit_growth_3y:  stock?.profit_growth_3y ?? null,
       profit_growth_5y:  stock?.profit_growth_5y ?? null,
+      reserves:          stock?.reserves ?? null,
+      borrowings:        stock?.borrowings ?? null,
+      fii_holding:       stock?.fii_holding ?? null,
+      dii_holding:       stock?.dii_holding ?? null,
+      nifty500_6m:       score?.nifty500_6m ?? null,
+      nifty500_1y:       score?.nifty500_1y ?? null,
     }
   }).sort((a, b) => {
     // Group by industry, then by stock name within industry

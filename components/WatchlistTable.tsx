@@ -45,12 +45,19 @@ export type WatchlistRow = {
   promoter_holding: number | null
   current_ratio: number | null
   total_debt: number | null
+  reserves: number | null
+  borrowings: number | null
+  fii_holding: number | null
+  dii_holding: number | null
   revenue_growth_1y: number | null
   revenue_growth_3y: number | null
   revenue_growth_5y: number | null
   profit_growth_1y: number | null
   profit_growth_3y: number | null
   profit_growth_5y: number | null
+  // nifty 500 comparison
+  nifty500_6m: number | null
+  nifty500_1y: number | null
 }
 
 function fmt(n: number | null, decimals = 1) {
