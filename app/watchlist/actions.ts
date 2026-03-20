@@ -5,21 +5,44 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { exec } from 'child_process'
 import path from 'path'
+import fs from 'fs'
 
-// Use the most recent close from index_history — same source as stocks.current_price.
-// This ensures stock entry price and index baseline are always from the same date.
-async function fetchIndexBaseline(): Promise<{ nifty50: number | null; nifty500: number | null }> {
+// Fetch live prices from Kite for both a stock and the indices.
+// Kite last_price = live price during market hours, closing price after close.
+// Both stock and index come from Kite so they always reflect the same market state.
+async function fetchKitePrices(instrumentToken: number): Promise<{
+  stockPrice: number | null
+  nifty50:    number | null
+  nifty500:   number | null
+}> {
   try {
-    const admin = createAdminClient()
-    const { data } = await admin
-      .from('index_history')
-      .select('nifty50_close, nifty500_close')
-      .order('date', { ascending: false })
-      .limit(1)
-      .single()
-    return { nifty50: data?.nifty50_close ?? null, nifty500: data?.nifty500_close ?? null }
+    const apiKey = process.env.KITE_API_KEY
+    if (!apiKey) return { stockPrice: null, nifty50: null, nifty500: null }
+
+    let accessToken: string | undefined
+    try {
+      accessToken = fs.readFileSync(path.join(process.cwd(), '.kite_token'), 'utf8').trim()
+    } catch {
+      accessToken = process.env.KITE_ACCESS_TOKEN
+    }
+    if (!accessToken) return { stockPrice: null, nifty50: null, nifty500: null }
+
+    const query = `i=NSE%3ANIFTY+50&i=NSE%3ANIFTY+500&i=${instrumentToken}`
+    const res = await fetch(`https://api.kite.trade/quote?${query}`, {
+      headers: { 'X-Kite-Version': '3', 'Authorization': `token ${apiKey}:${accessToken}` },
+      signal: AbortSignal.timeout(5000),
+    })
+    if (!res.ok) return { stockPrice: null, nifty50: null, nifty500: null }
+    const json = await res.json()
+    const d = json.data ?? {}
+    const stockKey = Object.keys(d).find(k => k !== 'NSE:NIFTY 50' && k !== 'NSE:NIFTY 500')
+    return {
+      stockPrice: stockKey ? (d[stockKey]?.last_price ?? null) : null,
+      nifty50:    d['NSE:NIFTY 50']?.last_price  ?? null,
+      nifty500:   d['NSE:NIFTY 500']?.last_price ?? null,
+    }
   } catch {
-    return { nifty50: null, nifty500: null }
+    return { stockPrice: null, nifty50: null, nifty500: null }
   }
 }
 
@@ -36,13 +59,38 @@ export async function addToWatchlist(stockId: string, alerts: AlertPrefs, invest
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Not authenticated' }
 
-  // Fetch current stock price + index baseline in parallel
-  const [{ data: stockData }, { nifty50, nifty500 }] = await Promise.all([
-    supabase.from('stocks').select('current_price').eq('id', stockId).single(),
-    fetchIndexBaseline(),
-  ])
+  // Fetch stock metadata (need instrument_token for live Kite price)
+  const { data: stockData } = await supabase
+    .from('stocks')
+    .select('current_price, instrument_token')
+    .eq('id', stockId)
+    .single()
 
-  const entryPrice = stockData?.current_price ?? null
+  // Fetch live prices from Kite (single call for stock + both indices)
+  // Falls back to DB current_price if Kite is unavailable
+  let entryPrice  = stockData?.current_price ?? null
+  let nifty50: number | null = null
+  let nifty500: number | null = null
+
+  if (stockData?.instrument_token) {
+    const kite = await fetchKitePrices(stockData.instrument_token)
+    if (kite.stockPrice) entryPrice = kite.stockPrice
+    nifty50  = kite.nifty50
+    nifty500 = kite.nifty500
+  }
+
+  // If Kite failed, fall back to latest index_history close
+  if (!nifty50 || !nifty500) {
+    const admin = createAdminClient()
+    const { data: idx } = await admin
+      .from('index_history')
+      .select('nifty50_close, nifty500_close')
+      .order('date', { ascending: false })
+      .limit(1)
+      .single()
+    if (!nifty50)  nifty50  = idx?.nifty50_close  ?? null
+    if (!nifty500) nifty500 = idx?.nifty500_close ?? null
+  }
 
   const { error } = await supabase
     .from('user_stocks')
