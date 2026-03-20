@@ -180,10 +180,10 @@ export default async function DashboardPage() {
         .order('date', { ascending: true }),
     ])
 
-    // Build date -> index lookup
+    // Build date -> index lookup (slice to YYYY-MM-DD to handle any timestamp format)
     const indexByDate: Record<string, { n50: number; n500: number }> = {}
     for (const row of indexHistory ?? []) {
-      indexByDate[row.date] = { n50: row.nifty50_close, n500: row.nifty500_close }
+      indexByDate[row.date.slice(0, 10)] = { n50: row.nifty50_close, n500: row.nifty500_close }
     }
 
     if (history && history.length > 0) {
@@ -230,18 +230,6 @@ export default async function DashboardPage() {
         })
         .filter(Boolean) as ChartPoint[]
 
-      // Normalize so chart always starts at 0%
-      if (chartData.length > 0) {
-        const offset     = chartData[0].returnPct
-        const n50Offset  = chartData[0].nifty50Pct  ?? 0
-        const n500Offset = chartData[0].nifty500Pct ?? 0
-        chartData = chartData.map(p => ({
-          ...p,
-          returnPct:   parseFloat((p.returnPct   - offset).toFixed(2)),
-          nifty50Pct:  p.nifty50Pct  != null ? parseFloat((p.nifty50Pct  - n50Offset).toFixed(2))  : undefined,
-          nifty500Pct: p.nifty500Pct != null ? parseFloat((p.nifty500Pct - n500Offset).toFixed(2)) : undefined,
-        }))
-      }
     }
   }
 

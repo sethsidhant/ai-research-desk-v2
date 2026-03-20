@@ -34,14 +34,25 @@ function CustomTooltip({ active, payload, label }: any) {
   )
 }
 
-export default function PortfolioChart({ data }: { data: ChartPoint[] }) {
-  if (data.length < 2) {
+export default function PortfolioChart({ data: rawData }: { data: ChartPoint[] }) {
+  if (rawData.length < 2) {
     return (
       <div className="flex items-center justify-center h-32 text-xs text-gray-400">
         Not enough history yet — check back after a few trading days.
       </div>
     )
   }
+
+  // Normalize so chart always starts at 0%
+  const offset     = rawData[0].returnPct
+  const n50Offset  = rawData[0].nifty50Pct  ?? 0
+  const n500Offset = rawData[0].nifty500Pct ?? 0
+  const data = rawData.map(p => ({
+    ...p,
+    returnPct:   parseFloat((p.returnPct   - offset).toFixed(2)),
+    nifty50Pct:  p.nifty50Pct  != null ? parseFloat((p.nifty50Pct  - n50Offset).toFixed(2))  : undefined,
+    nifty500Pct: p.nifty500Pct != null ? parseFloat((p.nifty500Pct - n500Offset).toFixed(2)) : undefined,
+  }))
 
   const hasBenchmark = data.some(d => d.nifty50Pct != null)
   const latest = data[data.length - 1]
