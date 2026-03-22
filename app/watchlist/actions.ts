@@ -10,7 +10,7 @@ import fs from 'fs'
 // Fetch live prices from Kite for both a stock and the indices.
 // Kite last_price = live price during market hours, closing price after close.
 // Both stock and index come from Kite so they always reflect the same market state.
-async function fetchKitePrices(instrumentToken: number): Promise<{
+async function fetchKitePrices(instrumentToken: number | null): Promise<{
   stockPrice: number | null
   nifty50:    number | null
   nifty500:   number | null
@@ -27,7 +27,10 @@ async function fetchKitePrices(instrumentToken: number): Promise<{
     }
     if (!accessToken) return { stockPrice: null, nifty50: null, nifty500: null }
 
-    const query = `i=NSE%3ANIFTY+50&i=NSE%3ANIFTY+500&i=${instrumentToken}`
+    // Always fetch indices; only include stock instrument if token available
+    const query = instrumentToken
+      ? `i=NSE%3ANIFTY+50&i=NSE%3ANIFTY+500&i=${instrumentToken}`
+      : `i=NSE%3ANIFTY+50&i=NSE%3ANIFTY+500`
     const res = await fetch(`https://api.kite.trade/quote?${query}`, {
       headers: { 'X-Kite-Version': '3', 'Authorization': `token ${apiKey}:${accessToken}` },
       signal: AbortSignal.timeout(5000),
@@ -35,7 +38,9 @@ async function fetchKitePrices(instrumentToken: number): Promise<{
     if (!res.ok) return { stockPrice: null, nifty50: null, nifty500: null }
     const json = await res.json()
     const d = json.data ?? {}
-    const stockKey = Object.keys(d).find(k => k !== 'NSE:NIFTY 50' && k !== 'NSE:NIFTY 500')
+    const stockKey = instrumentToken
+      ? Object.keys(d).find(k => k !== 'NSE:NIFTY 50' && k !== 'NSE:NIFTY 500')
+      : undefined
     return {
       stockPrice: stockKey ? (d[stockKey]?.last_price ?? null) : null,
       nifty50:    d['NSE:NIFTY 50']?.last_price  ?? null,
@@ -72,12 +77,11 @@ export async function addToWatchlist(stockId: string, alerts: AlertPrefs, invest
   let nifty50: number | null = null
   let nifty500: number | null = null
 
-  if (stockData?.instrument_token) {
-    const kite = await fetchKitePrices(stockData.instrument_token)
-    if (kite.stockPrice) entryPrice = kite.stockPrice
-    nifty50  = kite.nifty50
-    nifty500 = kite.nifty500
-  }
+  // Always call Kite for indices — instrument_token only needed for stock price
+  const kite = await fetchKitePrices(stockData?.instrument_token ?? null)
+  if (kite.stockPrice) entryPrice = kite.stockPrice
+  nifty50  = kite.nifty50
+  nifty500 = kite.nifty500
 
   // If Kite failed, fall back to latest index_history close
   if (!nifty50 || !nifty500) {
