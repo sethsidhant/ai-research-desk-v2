@@ -78,7 +78,7 @@ export default function FundamentalsDrawer({ row, onClose }: { row: WatchlistRow
   if (!row) return null
 
   const r = row as any
-  const hasAnalystData = row.analyst_rating || row.target_mean || (row.earnings_history && row.earnings_history.length > 0)
+  const hasAnalystData = row.analyst_rating || row.target_mean
   const tabs: { id: Tab; label: string }[] = [
     { id: 'overview',   label: 'Fundamentals' },
     { id: 'growth',     label: 'Growth' },
@@ -249,31 +249,6 @@ export default function FundamentalsDrawer({ row, onClose }: { row: WatchlistRow
                 </>
               )}
 
-              {/* Earnings History */}
-              {row.earnings_history && row.earnings_history.length > 0 && (
-                <>
-                  <SectionTitle>Earnings Beats / Misses</SectionTitle>
-                  <div className="space-y-1.5">
-                    {row.earnings_history.map((e, i) => (
-                      <div key={i} className="flex items-center justify-between py-1.5 border-b border-gray-100 last:border-0">
-                        <span className="text-xs text-gray-500 font-mono">{e.quarter}</span>
-                        <div className="flex items-center gap-2">
-                          {e.actual != null && (
-                            <span className="text-xs font-mono text-gray-700">EPS {e.actual}</span>
-                          )}
-                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                            e.type === 'positive' ? 'bg-emerald-100 text-emerald-700' :
-                            e.type === 'negative' ? 'bg-red-100 text-red-700' :
-                            'bg-gray-100 text-gray-500'
-                          }`}>
-                            {e.type === 'positive' ? 'Beat' : e.type === 'negative' ? 'Miss' : 'Inline'}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
             </div>
           )}
 

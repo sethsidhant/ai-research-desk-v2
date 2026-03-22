@@ -48,22 +48,6 @@ async function fetchMCData(scId) {
     }
   } catch { /* skip */ }
 
-  // 3. Earnings hits/misses (type only — estimates locked behind subscription)
-  try {
-    const res  = await fetch(
-      `https://api.moneycontrol.com/mcapi/v1/stock/estimates/hits-misses?deviceType=W&scId=${scId}&ex=N&type=eps&financialType=S`,
-      { headers: HEADERS, signal: AbortSignal.timeout(8000) }
-    );
-    const json = await res.json();
-    if (json.success && json.data?.list) {
-      result.earnings_history = json.data.list.slice(0, 8).map(item => ({
-        quarter: item.quarter,
-        actual:  item.actual !== '' ? parseFloat(item.actual) : null,
-        type:    item.type, // 'positive' (beat) | 'inline' | 'negative' (miss)
-      }));
-    }
-  } catch { /* skip */ }
-
   return Object.keys(result).length > 0 ? result : null;
 }
 

@@ -72,7 +72,6 @@ export type WatchlistRow = {
   target_mean: number | null
   target_high: number | null
   target_low: number | null
-  earnings_history: { quarter: string; actual: number | null; type: string }[] | null
 }
 
 function fmt(n: number | null, decimals = 1) {

@@ -181,7 +181,6 @@ Return ONLY valid JSON: {"composite_score":<1-10>,"classification":"<Undervalued
         target_mean:      mc.target_mean      ?? undefined,
         target_high:      mc.target_high      ?? undefined,
         target_low:       mc.target_low       ?? undefined,
-        earnings_history: mc.earnings_history ?? undefined,
       });
       console.log(`  MC: ${mc.analyst_rating ?? "N/A"} | Target: ${mc.target_mean ?? "N/A"} | Analysts: ${mc.analyst_count ?? "N/A"}`);
     }
