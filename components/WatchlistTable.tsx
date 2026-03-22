@@ -36,6 +36,8 @@ export type WatchlistRow = {
   score_date: string | null
   invested_amount: number | null
   entry_price: number | null
+  nifty50_entry: number | null
+  nifty500_entry: number | null
   // fundamentals
   roe: number | null
   roce: number | null
@@ -140,6 +142,7 @@ export default function WatchlistTable({
   const [fundamentalsRow, setFundamentalsRow] = useState<WatchlistRow | null>(null)
   const [chartRow, setChartRow] = useState<WatchlistRow | null>(null)
   const [noteRow, setNoteRow] = useState<WatchlistRow | null>(null)
+  const [expandedEntry, setExpandedEntry] = useState<string | null>(null)
   const [notes, setNotes] = useState<Record<string, string>>(() =>
     Object.fromEntries(rows.filter(r => r.notes).map(r => [r.stock_id, r.notes!]))
   )
@@ -241,6 +244,14 @@ export default function WatchlistTable({
                     {r.stock_name}
                   </a>
                   <div className="text-gray-500 text-xs font-mono">{r.ticker}</div>
+                  {r.entry_price != null && (
+                    <button
+                      onClick={() => setExpandedEntry(expandedEntry === r.stock_id ? null : r.stock_id)}
+                      className="mt-1 text-[10px] font-semibold text-blue-500 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-1.5 py-0.5 rounded transition-colors"
+                    >
+                      Entry ₹{r.entry_price.toLocaleString('en-IN')} {expandedEntry === r.stock_id ? '▲' : '▼'}
+                    </button>
+                  )}
                   {/* Mobile-only compact info row */}
                   <div className="flex items-center gap-1.5 mt-1 sm:hidden flex-wrap">
                     {band && (
@@ -377,6 +388,30 @@ export default function WatchlistTable({
                   </div>
                 </td>
               </tr>
+              )}
+              {/* Entry context row — expands when user clicks "Entry ₹X" chip */}
+              {expandedEntry === r.stock_id && r.entry_price != null && (
+                <tr className="border-b border-blue-100 bg-blue-50/60">
+                  <td colSpan={14} className="px-4 py-2.5">
+                    <div className="flex items-center gap-6 text-xs flex-wrap">
+                      <div>
+                        <span className="text-gray-400 font-semibold uppercase tracking-wide">Stock entry</span>
+                        <span className="ml-2 font-mono font-bold text-gray-800">₹{r.entry_price.toLocaleString('en-IN')}</span>
+                        {r.current_price != null && (
+                          <span className={`ml-2 font-mono font-semibold ${r.current_price >= r.entry_price ? 'text-emerald-600' : 'text-red-600'}`}>
+                            {r.current_price >= r.entry_price ? '▲' : '▼'} {Math.abs(((r.current_price - r.entry_price) / r.entry_price) * 100).toFixed(2)}%
+                          </span>
+                        )}
+                      </div>
+                      {r.nifty50_entry != null && (
+                        <div>
+                          <span className="text-gray-400 font-semibold uppercase tracking-wide">Nifty 50 at entry</span>
+                          <span className="ml-2 font-mono font-bold text-gray-800">{r.nifty50_entry.toLocaleString('en-IN')}</span>
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                </tr>
               )}
               </React.Fragment>
             )
