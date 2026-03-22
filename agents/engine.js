@@ -176,8 +176,9 @@ async function runDailyScoring() {
         low_52w:           low52w,
       });
 
-      // MoneyControl analyst data — only when mc_scid is set
-      if (stock.mc_scid) {
+      // MoneyControl analyst data — weekly refresh (Saturdays only, or first-time fetch when no data yet)
+      const isSaturday = dim.dayOfWeek === 'Saturday';
+      if (stock.mc_scid && (isSaturday || !stock.analyst_rating)) {
         const mc = await fetchMCData(stock.mc_scid);
         if (mc) {
           await upsertStock(ticker, {
