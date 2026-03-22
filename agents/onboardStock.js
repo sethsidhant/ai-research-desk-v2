@@ -12,6 +12,7 @@ const axios        = require("axios");
 const { getTechnicals, getReturns, NIFTY50_TOKEN } = require("./technicalService");
 const { upsertStock, upsertDailyScore, insertHistory, logApiUsage } = require("./pgHelper");
 const { createClient } = require("@supabase/supabase-js");
+const { fetchMCData } = require("./fetchMCData");
 
 const ticker = process.argv[2];
 if (!ticker) { console.error("Usage: node onboardStock.js TICKER"); process.exit(1); }
@@ -166,6 +167,26 @@ Return ONLY valid JSON: {"composite_score":<1-10>,"classification":"<Undervalued
   });
 
   console.log(`  ✓ ${result.classification} | ${result.suggested_action} | Score: ${result.composite_score}`);
+
+  // MoneyControl analyst data — only when mc_scid is set
+  if (stock.mc_scid) {
+    const mc = await fetchMCData(stock.mc_scid);
+    if (mc) {
+      await upsertStock(ticker, {
+        analyst_rating:   mc.analyst_rating   ?? undefined,
+        analyst_buy_pct:  mc.analyst_buy_pct  ?? undefined,
+        analyst_hold_pct: mc.analyst_hold_pct ?? undefined,
+        analyst_sell_pct: mc.analyst_sell_pct ?? undefined,
+        analyst_count:    mc.analyst_count    ?? undefined,
+        target_mean:      mc.target_mean      ?? undefined,
+        target_high:      mc.target_high      ?? undefined,
+        target_low:       mc.target_low       ?? undefined,
+        earnings_history: mc.earnings_history ?? undefined,
+      });
+      console.log(`  MC: ${mc.analyst_rating ?? "N/A"} | Target: ${mc.target_mean ?? "N/A"} | Analysts: ${mc.analyst_count ?? "N/A"}`);
+    }
+  }
+
   return true;
 }
 
@@ -260,15 +281,21 @@ async function runNews(stock) {
     }
   }
 
+  const cutoff = Date.now() - 10 * 24 * 60 * 60 * 1000;
+  const nameWords = stock.stock_name.toLowerCase().split(/\s+/).filter(w => w.length >= 4);
+  const cleanTicker = ticker.replace(/\.(NS|BO)$/i, "").toLowerCase();
+  const terms = [...new Set([cleanTicker, ...nameWords])];
+
   let etNews = [];
   try {
-    const nameWords = stock.stock_name.toLowerCase().split(/\s+/).filter(w => w.length >= 4);
-    const terms     = [...new Set([ticker.toLowerCase(), ...nameWords])];
-    const feed      = await rssParser.parseURL("https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms");
+    const feed = await rssParser.parseURL("https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms");
     etNews = (feed.items || [])
       .filter(item => {
         const t = (item.title || "").toLowerCase();
-        return terms.some(term => t.includes(term));
+        const c = (item.contentSnippet || "").toLowerCase();
+        if (!terms.some(term => t.includes(term) || c.includes(term))) return false;
+        if (item.pubDate && new Date(item.pubDate).getTime() < cutoff) return false;
+        return true;
       })
       .slice(0, 3)
       .map(item => ({
@@ -277,6 +304,25 @@ async function runNews(stock) {
         link: item.link || "",
       }));
   } catch { /* skip ET */ }
+
+  let googleNews = [];
+  try {
+    const query = encodeURIComponent(`${stock.stock_name} NSE stock`);
+    const feed  = await rssParser.parseURL(`https://news.google.com/rss/search?q=${query}&hl=en-IN&gl=IN&ceid=IN:en`);
+    googleNews = (feed.items || [])
+      .filter(item => {
+        const t = (item.title || "").toLowerCase();
+        if (!terms.some(term => t.includes(term))) return false;
+        if (item.pubDate && new Date(item.pubDate).getTime() < cutoff) return false;
+        return true;
+      })
+      .slice(0, 3)
+      .map(item => ({
+        headline: item.title || "",
+        date: item.pubDate ? new Date(item.pubDate).toISOString().replace("T", " ").substring(0, 16) : "",
+        link: item.link || "",
+      }));
+  } catch { /* skip Google News */ }
 
   const sections = [];
   if (filings.length > 0) {
@@ -289,6 +335,11 @@ async function runNews(stock) {
     etNews.forEach((n, i) => lines.push(`\n[${i + 1}] 📅 ${n.date}\n📌 ${n.headline}\n🔗 ${n.link}\n`));
     sections.push(lines.join("\n"));
   }
+  if (googleNews.length > 0) {
+    const lines = ["━━ GOOGLE NEWS ━━"];
+    googleNews.forEach((n, i) => lines.push(`\n[${i + 1}] 📅 ${n.date}\n📌 ${n.headline}\n🔗 ${n.link}\n`));
+    sections.push(lines.join("\n"));
+  }
   const headlines = sections.join("\n");
 
   await supabase.from("stocks").update({
@@ -296,7 +347,7 @@ async function runNews(stock) {
     last_news_update: new Date().toISOString(),
   }).eq("id", stock.id);
 
-  console.log(`  ✓ BSE filings: ${filings.length} | ET news: ${etNews.length}`);
+  console.log(`  ✓ BSE filings: ${filings.length} | ET news: ${etNews.length} | Google: ${googleNews.length}`);
 }
 
 // ── Step 3: AI Summary ────────────────────────────────────────────────────────

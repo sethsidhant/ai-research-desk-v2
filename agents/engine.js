@@ -18,6 +18,7 @@ const fs           = require("fs");
 const path         = require("path");
 const { getTechnicals, getReturns, NIFTY50_TOKEN, NIFTY500_TOKEN } = require("./technicalService");
 const { getWatchlistedStocks, upsertStock, upsertDailyScore, insertHistory, closePool, logApiUsage, upsertIndexHistory } = require("./pgHelper");
+const { fetchMCData } = require("./fetchMCData");
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const sleep     = ms => new Promise(r => setTimeout(r, ms));
@@ -174,6 +175,25 @@ async function runDailyScoring() {
         high_52w:          high52w,
         low_52w:           low52w,
       });
+
+      // MoneyControl analyst data — only when mc_scid is set
+      if (stock.mc_scid) {
+        const mc = await fetchMCData(stock.mc_scid);
+        if (mc) {
+          await upsertStock(ticker, {
+            analyst_rating:    mc.analyst_rating    ?? undefined,
+            analyst_buy_pct:   mc.analyst_buy_pct   ?? undefined,
+            analyst_hold_pct:  mc.analyst_hold_pct  ?? undefined,
+            analyst_sell_pct:  mc.analyst_sell_pct  ?? undefined,
+            analyst_count:     mc.analyst_count     ?? undefined,
+            target_mean:       mc.target_mean       ?? undefined,
+            target_high:       mc.target_high       ?? undefined,
+            target_low:        mc.target_low        ?? undefined,
+            earnings_history:  mc.earnings_history  ?? undefined,
+          });
+          console.log(`  MC: ${mc.analyst_rating ?? "N/A"} | Target: ${mc.target_mean ?? "N/A"} | Analysts: ${mc.analyst_count ?? "N/A"}`);
+        }
+      }
 
       const stockReturns = instrument_token ? await getReturns(instrument_token) : { r6m: null, r1y: null };
 

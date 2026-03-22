@@ -2,7 +2,7 @@
 
 import { useState, useEffect, type ReactNode } from 'react'
 import { type WatchlistRow } from './WatchlistTable'
-type Tab = 'overview' | 'growth' | 'comparison'
+type Tab = 'overview' | 'growth' | 'comparison' | 'analyst'
 
 function fmt(n: number | null, suffix = '', decimals = 1) {
   if (n == null) return '—'
@@ -78,10 +78,12 @@ export default function FundamentalsDrawer({ row, onClose }: { row: WatchlistRow
   if (!row) return null
 
   const r = row as any
+  const hasAnalystData = row.analyst_rating || row.target_mean || (row.earnings_history && row.earnings_history.length > 0)
   const tabs: { id: Tab; label: string }[] = [
     { id: 'overview',   label: 'Fundamentals' },
     { id: 'growth',     label: 'Growth' },
     { id: 'comparison', label: 'vs Nifty' },
+    ...(hasAnalystData ? [{ id: 'analyst' as Tab, label: 'Analyst' }] : []),
   ]
 
   return (
@@ -177,6 +179,101 @@ export default function FundamentalsDrawer({ row, onClose }: { row: WatchlistRow
               <SectionTitle>1 Year Returns</SectionTitle>
               <BenchCompare label="Stock" stockVal={row.stock_1y} benchVal={row.nifty50_1y}  benchLabel="Nifty 50" />
               <BenchCompare label="Stock" stockVal={row.stock_1y} benchVal={row.nifty500_1y} benchLabel="Nifty 500" />
+            </div>
+          )}
+
+          {tab === 'analyst' && (
+            <div>
+              {/* Analyst Consensus */}
+              {row.analyst_rating && (
+                <>
+                  <SectionTitle>Analyst Consensus</SectionTitle>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className={`text-sm font-bold px-3 py-1 rounded-full ${
+                      row.analyst_rating === 'Buy' ? 'bg-emerald-100 text-emerald-700' :
+                      row.analyst_rating === 'Sell' ? 'bg-red-100 text-red-700' :
+                      'bg-amber-100 text-amber-700'
+                    }`}>{row.analyst_rating}</span>
+                    {row.analyst_count && (
+                      <span className="text-xs text-gray-400">{row.analyst_count} analysts</span>
+                    )}
+                  </div>
+                  {(row.analyst_buy_pct != null || row.analyst_hold_pct != null || row.analyst_sell_pct != null) && (
+                    <div className="space-y-2 mb-4">
+                      {[
+                        { label: 'Buy', pct: row.analyst_buy_pct, color: 'bg-emerald-500', text: 'text-emerald-700' },
+                        { label: 'Hold', pct: row.analyst_hold_pct, color: 'bg-amber-400', text: 'text-amber-700' },
+                        { label: 'Sell', pct: row.analyst_sell_pct, color: 'bg-red-500', text: 'text-red-700' },
+                      ].map(({ label, pct, color, text }) => (
+                        <div key={label} className="flex items-center gap-2">
+                          <span className={`text-xs font-semibold w-8 ${text}`}>{label}</span>
+                          <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                            <div className={`h-full rounded-full ${color}`} style={{ width: `${pct ?? 0}%` }} />
+                          </div>
+                          <span className="text-xs font-mono text-gray-500 w-8 text-right">{pct != null ? `${pct.toFixed(0)}%` : '—'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Price Target */}
+              {row.target_mean != null && row.current_price != null && (
+                <>
+                  <SectionTitle>Price Target</SectionTitle>
+                  <div className="bg-gray-50 rounded-xl p-3 mb-4">
+                    <div className="flex justify-between items-end mb-2">
+                      {[
+                        { label: 'Low', value: row.target_low },
+                        { label: 'Mean', value: row.target_mean, bold: true },
+                        { label: 'High', value: row.target_high },
+                      ].map(({ label, value, bold }) => (
+                        <div key={label} className="text-center">
+                          <div className={`font-mono ${bold ? 'text-base font-bold text-gray-900' : 'text-sm font-semibold text-gray-500'}`}>
+                            {value != null ? `₹${value.toLocaleString('en-IN', { maximumFractionDigits: 0 })}` : '—'}
+                          </div>
+                          <div className="text-[10px] text-gray-400 mt-0.5">{label}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {row.target_mean != null && (
+                      <div className="text-center mt-1">
+                        <span className={`text-sm font-semibold ${row.target_mean > row.current_price ? 'text-emerald-600' : 'text-red-600'}`}>
+                          {row.target_mean > row.current_price ? '▲' : '▼'} {Math.abs(((row.target_mean - row.current_price) / row.current_price) * 100).toFixed(1)}% upside
+                        </span>
+                        <span className="text-xs text-gray-400 ml-1">(vs ₹{row.current_price.toLocaleString('en-IN', { maximumFractionDigits: 0 })})</span>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {/* Earnings History */}
+              {row.earnings_history && row.earnings_history.length > 0 && (
+                <>
+                  <SectionTitle>Earnings Beats / Misses</SectionTitle>
+                  <div className="space-y-1.5">
+                    {row.earnings_history.map((e, i) => (
+                      <div key={i} className="flex items-center justify-between py-1.5 border-b border-gray-100 last:border-0">
+                        <span className="text-xs text-gray-500 font-mono">{e.quarter}</span>
+                        <div className="flex items-center gap-2">
+                          {e.actual != null && (
+                            <span className="text-xs font-mono text-gray-700">EPS {e.actual}</span>
+                          )}
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                            e.type === 'positive' ? 'bg-emerald-100 text-emerald-700' :
+                            e.type === 'negative' ? 'bg-red-100 text-red-700' :
+                            'bg-gray-100 text-gray-500'
+                          }`}>
+                            {e.type === 'positive' ? 'Beat' : e.type === 'negative' ? 'Miss' : 'Inline'}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           )}
 

@@ -62,6 +62,17 @@ export type WatchlistRow = {
   nifty500_1y: number | null
   // personal notes
   notes: string | null
+  // MoneyControl analyst data
+  mc_scid: string | null
+  analyst_rating: string | null
+  analyst_buy_pct: number | null
+  analyst_hold_pct: number | null
+  analyst_sell_pct: number | null
+  analyst_count: number | null
+  target_mean: number | null
+  target_high: number | null
+  target_low: number | null
+  earnings_history: { quarter: string; actual: number | null; type: string }[] | null
 }
 
 function fmt(n: number | null, decimals = 1) {

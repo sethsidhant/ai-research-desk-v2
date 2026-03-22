@@ -53,7 +53,17 @@ export default async function DashboardPage() {
         reserves,
         borrowings,
         fii_holding,
-        dii_holding
+        dii_holding,
+        mc_scid,
+        analyst_rating,
+        analyst_buy_pct,
+        analyst_hold_pct,
+        analyst_sell_pct,
+        analyst_count,
+        target_mean,
+        target_high,
+        target_low,
+        earnings_history
       )
     `)
     .eq('user_id', user.id)
@@ -131,6 +141,16 @@ export default async function DashboardPage() {
       nifty500_6m:       score?.nifty500_6m ?? null,
       nifty500_1y:       score?.nifty500_1y ?? null,
       notes:             w.notes ?? null,
+      mc_scid:           stock?.mc_scid ?? null,
+      analyst_rating:    stock?.analyst_rating ?? null,
+      analyst_buy_pct:   stock?.analyst_buy_pct ?? null,
+      analyst_hold_pct:  stock?.analyst_hold_pct ?? null,
+      analyst_sell_pct:  stock?.analyst_sell_pct ?? null,
+      analyst_count:     stock?.analyst_count ?? null,
+      target_mean:       stock?.target_mean ?? null,
+      target_high:       stock?.target_high ?? null,
+      target_low:        stock?.target_low ?? null,
+      earnings_history:  stock?.earnings_history ?? null,
     }
   }).sort((a, b) => {
     // Group by industry, then by stock name within industry

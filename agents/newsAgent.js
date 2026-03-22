@@ -97,16 +97,15 @@ async function fetchETNews(stockName, ticker) {
       "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms"
     );
 
-    const cutoff = Date.now() - 10 * 24 * 60 * 60 * 1000   // 10 days ago
+    const cutoff = Date.now() - 10 * 24 * 60 * 60 * 1000;
 
     return (feed.items || [])
       .filter(item => {
         const title   = (item.title || "").toLowerCase();
         const content = (item.contentSnippet || "").toLowerCase();
-        if (!searchTerms.some(term => title.includes(term) || content.includes(term))) return false
-        // Drop articles older than 10 days
-        if (item.pubDate && new Date(item.pubDate).getTime() < cutoff) return false
-        return true
+        if (!searchTerms.some(term => title.includes(term) || content.includes(term))) return false;
+        if (item.pubDate && new Date(item.pubDate).getTime() < cutoff) return false;
+        return true;
       })
       .slice(0, 3)
       .map(item => ({
@@ -120,8 +119,40 @@ async function fetchETNews(stockName, ticker) {
   }
 }
 
+// ── Google News RSS ───────────────────────────────────────────────────────────
+async function fetchGoogleNews(stockName, ticker) {
+  try {
+    const query = encodeURIComponent(`${stockName} NSE stock`);
+    const feed  = await rssParser.parseURL(
+      `https://news.google.com/rss/search?q=${query}&hl=en-IN&gl=IN&ceid=IN:en`
+    );
+
+    const cutoff      = Date.now() - 10 * 24 * 60 * 60 * 1000;
+    const cleanTicker = ticker.replace(/\.(NS|BO)$/i, "").toLowerCase();
+    const nameWords   = stockName.toLowerCase().split(/\s+/).filter(w => w.length >= 4);
+    const searchTerms = [...new Set([cleanTicker, ...nameWords])];
+
+    return (feed.items || [])
+      .filter(item => {
+        const title = (item.title || "").toLowerCase();
+        if (!searchTerms.some(term => title.includes(term))) return false;
+        if (item.pubDate && new Date(item.pubDate).getTime() < cutoff) return false;
+        return true;
+      })
+      .slice(0, 3)
+      .map(item => ({
+        headline: item.title || "",
+        date: item.pubDate ? new Date(item.pubDate).toISOString().replace("T", " ").substring(0, 16) : "",
+        link: item.link || "",
+      }));
+  } catch (err) {
+    console.log(`  Google News error: ${err.message}`);
+    return [];
+  }
+}
+
 // ── Format headlines text ──────────────────────────────────────────────────────
-function formatHeadlines(filings, etNews) {
+function formatHeadlines(filings, etNews, googleNews) {
   const sections = [];
   if (filings.length > 0) {
     const lines = ["━━ BSE CORPORATE FILINGS ━━"];
@@ -133,6 +164,13 @@ function formatHeadlines(filings, etNews) {
   if (etNews.length > 0) {
     const lines = ["━━ ECONOMIC TIMES ━━"];
     etNews.forEach((n, i) => {
+      lines.push(`\n[${i + 1}] 📅 ${n.date}\n📌 ${n.headline}\n🔗 ${n.link}\n`);
+    });
+    sections.push(lines.join("\n"));
+  }
+  if (googleNews && googleNews.length > 0) {
+    const lines = ["━━ GOOGLE NEWS ━━"];
+    googleNews.forEach((n, i) => {
       lines.push(`\n[${i + 1}] 📅 ${n.date}\n📌 ${n.headline}\n🔗 ${n.link}\n`);
     });
     sections.push(lines.join("\n"));
@@ -167,14 +205,15 @@ async function main() {
     if (i >= 15) await sleep(8000);
     else if (i >= 10) await sleep(4000);
 
-    const [filings, etNews] = await Promise.all([
+    const [filings, etNews, googleNews] = await Promise.all([
       bse_code ? fetchBSEFilings(bse_code, stock_name) : Promise.resolve([]),
       fetchETNews(stock_name, ticker),
+      fetchGoogleNews(stock_name, ticker),
     ]);
 
-    console.log(`  BSE filings: ${filings.length} | ET news: ${etNews.length}`);
+    console.log(`  BSE filings: ${filings.length} | ET news: ${etNews.length} | Google: ${googleNews.length}`);
 
-    const headlines = formatHeadlines(filings, etNews);
+    const headlines = formatHeadlines(filings, etNews, googleNews);
     const today = new Date().toISOString().split("T")[0];
 
     const { error: updateError } = await supabase
