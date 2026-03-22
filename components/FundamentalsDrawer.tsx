@@ -78,7 +78,7 @@ export default function FundamentalsDrawer({ row, onClose }: { row: WatchlistRow
   if (!row) return null
 
   const r = row as any
-  const hasAnalystData = row.analyst_rating || row.target_mean
+  const hasAnalystData = row.industry !== 'ETF' && (row.analyst_rating || row.target_mean)
   const tabs: { id: Tab; label: string }[] = [
     { id: 'overview',   label: 'Fundamentals' },
     { id: 'growth',     label: 'Growth' },
