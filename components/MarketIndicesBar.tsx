@@ -67,7 +67,7 @@ function SectorChip({ idx, flash }: { idx: IndexQuote; flash: 'up' | 'down' | nu
 
 export default function MarketIndicesBar() {
   const [indices, setIndices] = useState<IndexQuote[]>([])
-  const [error, setError]     = useState(false)
+  const [stale, setStale]     = useState(false)
   const prevRef               = useRef<Record<string, number>>({})
   const [flashes, setFlashes] = useState<Record<string, 'up' | 'down' | null>>({})
 
@@ -87,15 +87,13 @@ export default function MarketIndicesBar() {
       }
 
       setIndices(json.indices)
-      setError(false)
+      setStale(!!json.stale)
 
       if (Object.keys(newFlashes).length > 0) {
         setFlashes(newFlashes)
         setTimeout(() => setFlashes({}), 1000)
       }
-    } catch {
-      setError(true)
-    }
+    } catch { /* silent fail — keep showing last known data */ }
   }
 
   useEffect(() => {
@@ -104,7 +102,7 @@ export default function MarketIndicesBar() {
     return () => clearInterval(id)
   }, [])
 
-  if (error || indices.length === 0) return null
+  if (indices.length === 0) return null
 
   const broad   = indices.filter(i => i.group === 'broad' || i.group === 'vix')
   const sectors = indices.filter(i => i.group === 'sector')
@@ -116,6 +114,11 @@ export default function MarketIndicesBar() {
         {broad.map(idx => (
           <BroadCard key={idx.name} idx={idx} flash={flashes[idx.name] ?? null} />
         ))}
+        {stale && (
+          <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 border border-gray-200 px-2 py-1 rounded-full whitespace-nowrap">
+            CLOSED · Last close
+          </span>
+        )}
       </div>
       {/* Row 2 — sectors */}
       {sectors.length > 0 && (

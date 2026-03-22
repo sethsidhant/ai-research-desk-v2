@@ -48,6 +48,7 @@ const INDICES = [
 
 let cache: { data: IndexQuote[]; ts: number } | null = null
 const CACHE_TTL_MS = 15000
+const CACHE_STALE_TTL_MS = 24 * 60 * 60 * 1000 // serve stale cache for up to 24h if Kite fails
 
 export async function GET() {
   const supabase = await createClient()
@@ -60,6 +61,9 @@ export async function GET() {
 
   const kite = await getKiteToken()
   if (!kite) {
+    if (cache && Date.now() - cache.ts < CACHE_STALE_TTL_MS) {
+      return NextResponse.json({ indices: cache.data, stale: true })
+    }
     return NextResponse.json({ error: 'Kite credentials not configured' }, { status: 500 })
   }
   const { apiKey, accessToken } = kite
@@ -75,7 +79,12 @@ export async function GET() {
       signal: AbortSignal.timeout(8000),
     })
 
-    if (!res.ok) return NextResponse.json({ error: `Kite error: ${res.status}` }, { status: 502 })
+    if (!res.ok) {
+      if (cache && Date.now() - cache.ts < CACHE_STALE_TTL_MS) {
+        return NextResponse.json({ indices: cache.data, stale: true })
+      }
+      return NextResponse.json({ error: `Kite error: ${res.status}` }, { status: 502 })
+    }
 
     const json    = await res.json()
     const kiteMap = json.data ?? {}
@@ -93,6 +102,9 @@ export async function GET() {
     return NextResponse.json({ indices })
 
   } catch (err: any) {
+    if (cache && Date.now() - cache.ts < CACHE_STALE_TTL_MS) {
+      return NextResponse.json({ indices: cache.data, stale: true })
+    }
     return NextResponse.json({ error: err.message }, { status: 502 })
   }
 }
