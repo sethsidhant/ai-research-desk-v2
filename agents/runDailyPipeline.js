@@ -72,6 +72,7 @@ async function main() {
 
   await onboardPendingStocks();
 
+  run('backfillHistory.js');  // EOD closes from Kite — must run before engine
   run('engine.js');
   run('newsAgent.js');
   run('summaryAgent.js');
