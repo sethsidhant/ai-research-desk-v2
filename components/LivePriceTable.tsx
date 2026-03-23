@@ -10,12 +10,28 @@ const POLL_INTERVAL = 15000
 type PriceFlash    = 'up' | 'down' | null
 type PriceChange   = { change: number; changePct: number }
 
+type FilterKey = 'all' | 'cheap' | 'discount' | 'fair' | 'premium' | 'expensive' | 'oversold' | 'overbought'
+
+function applyFilter(rows: WatchlistRow[], filter: FilterKey): WatchlistRow[] {
+  switch (filter) {
+    case 'cheap':     return rows.filter(r => r.pe_deviation != null && r.pe_deviation < -30)
+    case 'discount':  return rows.filter(r => r.pe_deviation != null && r.pe_deviation >= -30 && r.pe_deviation < -10)
+    case 'fair':      return rows.filter(r => r.pe_deviation != null && r.pe_deviation >= -10 && r.pe_deviation <= 10)
+    case 'premium':   return rows.filter(r => r.pe_deviation != null && r.pe_deviation > 10 && r.pe_deviation <= 30)
+    case 'expensive': return rows.filter(r => r.pe_deviation != null && r.pe_deviation > 30)
+    case 'oversold':  return rows.filter(r => r.rsi != null && r.rsi < 30)
+    case 'overbought':return rows.filter(r => r.rsi != null && r.rsi > 70)
+    default:          return rows
+  }
+}
+
 export default function LivePriceTable({ initialRows, chartData }: { initialRows: WatchlistRow[]; chartData: ChartPoint[] }) {
   const [rows, setRows]             = useState<WatchlistRow[]>(initialRows)
   const [marketOpen, setMarketOpen] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [flashes, setFlashes]       = useState<Record<string, PriceFlash>>({})
   const [changes, setChanges]       = useState<Record<string, PriceChange>>({})
+  const [activeFilter, setActiveFilter] = useState<FilterKey>('all')
   const prevPrices                  = useRef<Record<string, number>>({})
 
   // Live portfolio P&L — recomputes whenever rows update with new prices
@@ -113,8 +129,11 @@ export default function LivePriceTable({ initialRows, chartData }: { initialRows
         </div>
       )}
 
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-gray-900">Watchlist</h2>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-lg font-semibold text-gray-900">
+          Watchlist
+          <span className="ml-2 text-sm font-normal text-gray-400">{rows.length} stocks</span>
+        </h2>
         <div className="flex items-center gap-3">
           {marketOpen ? (
             <span className="flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
@@ -129,12 +148,43 @@ export default function LivePriceTable({ initialRows, chartData }: { initialRows
           )}
           {lastUpdated && (
             <span className="text-xs text-gray-400">
-              Updated {lastUpdated.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              {lastUpdated.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
             </span>
           )}
         </div>
       </div>
-      <WatchlistTable rows={rows} priceFlashes={flashes} priceChanges={changes} />
+
+      {/* Filter chips */}
+      <div className="flex flex-wrap gap-1.5 mb-4">
+        {([
+          { key: 'all',       label: 'All',        count: rows.length,                                   color: 'gray' },
+          { key: 'cheap',     label: 'Cheap',      count: applyFilter(rows,'cheap').length,      color: 'green' },
+          { key: 'discount',  label: 'Discount',   count: applyFilter(rows,'discount').length,   color: 'green' },
+          { key: 'fair',      label: 'Fair',        count: applyFilter(rows,'fair').length,       color: 'gray' },
+          { key: 'premium',   label: 'Premium',     count: applyFilter(rows,'premium').length,    color: 'amber' },
+          { key: 'expensive', label: 'Expensive',   count: applyFilter(rows,'expensive').length,  color: 'red' },
+          { key: 'oversold',  label: 'Oversold',    count: applyFilter(rows,'oversold').length,   color: 'blue' },
+          { key: 'overbought',label: 'Overbought',  count: applyFilter(rows,'overbought').length, color: 'orange' },
+        ] as const).filter(f => f.key === 'all' || f.count > 0).map(({ key, label, count, color }) => {
+          const active = activeFilter === key
+          const base = 'px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors cursor-pointer'
+          const styles: Record<string, string> = {
+            gray:   active ? 'bg-gray-800 text-white border-gray-800'       : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-gray-400',
+            green:  active ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:border-emerald-400',
+            amber:  active ? 'bg-amber-500 text-white border-amber-500'     : 'bg-amber-50 text-amber-700 border-amber-200 hover:border-amber-400',
+            red:    active ? 'bg-red-600 text-white border-red-600'         : 'bg-red-50 text-red-600 border-red-200 hover:border-red-400',
+            blue:   active ? 'bg-blue-600 text-white border-blue-600'       : 'bg-blue-50 text-blue-600 border-blue-200 hover:border-blue-400',
+            orange: active ? 'bg-orange-500 text-white border-orange-500'   : 'bg-orange-50 text-orange-600 border-orange-200 hover:border-orange-400',
+          }
+          return (
+            <button key={key} onClick={() => setActiveFilter(key)} className={`${base} ${styles[color]}`}>
+              {label} <span className="opacity-70 ml-0.5">{count}</span>
+            </button>
+          )
+        })}
+      </div>
+
+      <WatchlistTable rows={applyFilter(rows, activeFilter)} priceFlashes={flashes} priceChanges={changes} />
     </div>
   )
 }

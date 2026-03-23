@@ -315,42 +315,9 @@ export default async function DashboardPage() {
 
       {/* Main content */}
       <main className="px-3 sm:px-6 py-4 sm:py-8 max-w-screen-xl mx-auto">
-        {/* Stats bar */}
-        <div className="grid grid-cols-2 sm:grid-cols-7 gap-3 mb-8">
-          <StatCard label="Tracked"    value={rows.length.toString()} />
-          <StatCard label="Cheap"      value={rows.filter(r => r.pe_deviation != null && r.pe_deviation < -30).length.toString()}                                  highlight="green" />
-          <StatCard label="Discount"   value={rows.filter(r => r.pe_deviation != null && r.pe_deviation >= -30 && r.pe_deviation < -10).length.toString()}         highlight="green" />
-          <StatCard label="Fair"       value={rows.filter(r => r.pe_deviation != null && r.pe_deviation >= -10 && r.pe_deviation <= 10).length.toString()} />
-          <StatCard label="Premium"    value={rows.filter(r => r.pe_deviation != null && r.pe_deviation > 10 && r.pe_deviation <= 30).length.toString()}            highlight="amber" />
-          <StatCard label="Expensive"  value={rows.filter(r => r.pe_deviation != null && r.pe_deviation > 30).length.toString()}                                    highlight="red" />
-          <StatCard label="Oversold"   value={rows.filter(r => r.rsi != null && r.rsi < 30).length.toString()}                                                     highlight="green" />
-        </div>
-
         <LivePriceTable initialRows={rows} chartData={chartData} />
       </main>
     </div>
   )
 }
 
-function StatCard({
-  label,
-  value,
-  highlight,
-}: {
-  label: string
-  value: string
-  highlight?: 'green' | 'red' | 'amber'
-}) {
-  const valueColor =
-    highlight === 'green' ? 'text-emerald-600' :
-    highlight === 'red'   ? 'text-red-600' :
-    highlight === 'amber' ? 'text-amber-600' :
-    'text-gray-900'
-
-  return (
-    <div className="bg-white border border-gray-200 rounded-xl px-4 py-4 shadow-sm">
-      <div className={`text-2xl font-bold ${valueColor}`}>{value}</div>
-      <div className="text-xs text-gray-400 mt-1">{label}</div>
-    </div>
-  )
-}
