@@ -19,12 +19,18 @@ async function fetchKitePrices(instrumentToken: number | null): Promise<{
     const apiKey = process.env.KITE_API_KEY
     if (!apiKey) return { stockPrice: null, nifty50: null, nifty500: null }
 
+    // Try .kite_token file (local), then Supabase app_settings (always up-to-date after GH Actions refresh), then env var
     let accessToken: string | undefined
     try {
       accessToken = fs.readFileSync(path.join(process.cwd(), '.kite_token'), 'utf8').trim()
-    } catch {
-      accessToken = process.env.KITE_ACCESS_TOKEN
+    } catch { /* not available on Vercel */ }
+
+    if (!accessToken) {
+      const admin = createAdminClient()
+      const { data } = await admin.from('app_settings').select('value').eq('key', 'kite_access_token').single()
+      accessToken = data?.value ?? process.env.KITE_ACCESS_TOKEN
     }
+
     if (!accessToken) return { stockPrice: null, nifty50: null, nifty500: null }
 
     // Always fetch indices; only include stock instrument if token available
