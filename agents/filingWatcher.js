@@ -87,7 +87,10 @@ async function poll() {
       if (!chatIds.length) continue;
 
       const headline = f.HEADLINE ?? 'New Filing';
-      await sendToMany(chatIds, `📋 *${entry.ticker}* — BSE Filing\n${headline}`);
+      const link     = f.NEWSID
+        ? `https://www.bseindia.com/markets/MarketInfo/DispNewSearchAnnouncement.aspx?newsid=${f.NEWSID}`
+        : `https://www.bseindia.com/corporates/ann.html?scrip=${scrip}&dur=TD&type=C`;
+      await sendToMany(chatIds, `📋 *${entry.ticker}* — BSE Filing\n${headline}\n[View on BSE](${link})`);
       console.log(`[filingWatcher] Alert: ${entry.ticker} — ${headline} → ${chatIds.length} user(s)`);
     }
 
