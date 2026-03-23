@@ -65,27 +65,16 @@ export type AlertPrefs = {
   new_filing_alert:         boolean
 }
 
-export async function addToWatchlist(stockId: string, alerts: AlertPrefs, investedAmount?: number) {
+export async function addToWatchlist(stockId: string, alerts: AlertPrefs, investedAmount?: number, entryPrice?: number) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Not authenticated' }
 
-  // Fetch stock metadata (need instrument_token for live Kite price)
-  const { data: stockData } = await supabase
-    .from('stocks')
-    .select('current_price, instrument_token')
-    .eq('id', stockId)
-    .single()
-
-  // Fetch live prices from Kite (single call for stock + both indices)
-  // Falls back to DB current_price if Kite is unavailable
-  let entryPrice  = stockData?.current_price ?? null
+  // Fetch index levels from Kite for relative performance tracking
   let nifty50: number | null = null
   let nifty500: number | null = null
 
-  // Always call Kite for indices — instrument_token only needed for stock price
-  const kite = await fetchKitePrices(stockData?.instrument_token ?? null)
-  if (kite.stockPrice) entryPrice = kite.stockPrice
+  const kite = await fetchKitePrices(null)
   nifty50  = kite.nifty50
   nifty500 = kite.nifty500
 
@@ -113,7 +102,7 @@ export async function addToWatchlist(stockId: string, alerts: AlertPrefs, invest
       pct_from_high_threshold:  alerts.pct_from_high_threshold,
       new_filing_alert:         alerts.new_filing_alert,
       invested_amount:  investedAmount && investedAmount > 0 ? investedAmount : null,
-      entry_price:      entryPrice,
+      entry_price:      entryPrice && entryPrice > 0 ? entryPrice : null,
       nifty50_entry:    nifty50,
       nifty500_entry:   nifty500,
     })
@@ -169,7 +158,7 @@ export async function removeFromWatchlist(stockId: string) {
   return { success: true }
 }
 
-export async function updateStockAlerts(stockId: string, alerts: AlertPrefs) {
+export async function updateStockAlerts(stockId: string, alerts: AlertPrefs, investedAmount?: number, entryPrice?: number) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Not authenticated' }
@@ -182,11 +171,14 @@ export async function updateStockAlerts(stockId: string, alerts: AlertPrefs) {
       dma_cross_alert:          alerts.dma_cross_alert,
       pct_from_high_threshold:  alerts.pct_from_high_threshold,
       new_filing_alert:         alerts.new_filing_alert,
+      invested_amount:  investedAmount && investedAmount > 0 ? investedAmount : null,
+      entry_price:      entryPrice && entryPrice > 0 ? entryPrice : null,
     })
     .eq('user_id', user.id)
     .eq('stock_id', stockId)
 
   if (error) return { error: error.message }
+  revalidatePath('/')
   revalidatePath('/watchlist')
   return { success: true }
 }

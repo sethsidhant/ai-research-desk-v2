@@ -12,17 +12,19 @@ export default async function WatchlistPage() {
   // Only load the user's watchlisted stocks — search is handled via /api/search-stocks
   const { data: userStocks } = await supabase
     .from('user_stocks')
-    .select('stock_id, rsi_oversold_threshold, rsi_overbought_threshold, dma_cross_alert, pct_from_high_threshold, new_filing_alert, stocks(id, ticker, stock_name, industry)')
+    .select('stock_id, rsi_oversold_threshold, rsi_overbought_threshold, dma_cross_alert, pct_from_high_threshold, new_filing_alert, entry_price, invested_amount, stocks(id, ticker, stock_name, industry)')
     .eq('user_id', user.id)
 
   const stocks = (userStocks ?? []).map((ws: any) => {
     const s = Array.isArray(ws.stocks) ? ws.stocks[0] : ws.stocks
     return {
-      id:          s.id,
-      ticker:      s.ticker,
-      stock_name:  s.stock_name,
-      industry:    s.industry ?? null,
-      inWatchlist: true,
+      id:              s.id,
+      ticker:          s.ticker,
+      stock_name:      s.stock_name,
+      industry:        s.industry ?? null,
+      inWatchlist:     true,
+      entry_price:     ws.entry_price ?? null,
+      invested_amount: ws.invested_amount ?? null,
       alerts: {
         rsi_oversold_threshold:   ws.rsi_oversold_threshold   ?? 30,
         rsi_overbought_threshold: ws.rsi_overbought_threshold ?? 70,

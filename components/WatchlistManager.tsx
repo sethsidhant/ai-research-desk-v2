@@ -10,6 +10,8 @@ type Stock = {
   industry: string | null
   inWatchlist: boolean
   alerts?: AlertPrefs | null
+  entry_price?: number | null
+  invested_amount?: number | null
 }
 
 type SearchResult = {
@@ -38,6 +40,7 @@ export default function WatchlistManager({ stocks: initialStocks }: { stocks: St
   const [expandedId, setExpandedId]     = useState<string | null>(null)
   const [alertForms, setAlertForms]     = useState<Record<string, AlertPrefs>>({})
   const [investedAmounts, setInvestedAmounts] = useState<Record<string, string>>({})
+  const [entryPrices, setEntryPrices]         = useState<Record<string, string>>({})
   const debounceRef                     = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -81,8 +84,9 @@ export default function WatchlistManager({ stocks: initialStocks }: { stocks: St
 
   function handleConfirmAdd(stock: Stock) {
     startTransition(async () => {
-      const amt = parseFloat(investedAmounts[stock.id] ?? '')
-      const result = await addToWatchlist(stock.id, getAlerts(stock.id, stock.alerts), isNaN(amt) ? undefined : amt)
+      const amt   = parseFloat(investedAmounts[stock.id] ?? '')
+      const price = parseFloat(entryPrices[stock.id] ?? '')
+      const result = await addToWatchlist(stock.id, getAlerts(stock.id, stock.alerts), isNaN(amt) ? undefined : amt, isNaN(price) ? undefined : price)
       if (result.error) {
         setMessage(`Error: ${result.error}`)
       } else {
@@ -108,7 +112,12 @@ export default function WatchlistManager({ stocks: initialStocks }: { stocks: St
 
   function handleUpdateAlerts(stock: Stock) {
     startTransition(async () => {
-      const result = await updateStockAlerts(stock.id, getAlerts(stock.id, stock.alerts))
+      const amt   = parseFloat(investedAmounts[stock.id] ?? '')
+      const price = parseFloat(entryPrices[stock.id] ?? '')
+      // Fall back to existing DB values if user hasn't changed them
+      const finalAmt   = isNaN(amt)   ? (stock.invested_amount ?? undefined) : amt
+      const finalPrice = isNaN(price) ? (stock.entry_price     ?? undefined) : price
+      const result = await updateStockAlerts(stock.id, getAlerts(stock.id, stock.alerts), finalAmt, finalPrice)
       if (result.error) setMessage(`Error: ${result.error}`)
       else { setMessage(`Alerts updated for ${stock.ticker}`); setExpandedId(null) }
       setTimeout(() => setMessage(''), 3000)
@@ -181,7 +190,9 @@ export default function WatchlistManager({ stocks: initialStocks }: { stocks: St
           isExpanded={expandedId === stock.id}
           alerts={getAlerts(stock.id, stock.alerts)}
           investedAmount={investedAmounts[stock.id] ?? ''}
+          entryPrice={entryPrices[stock.id] ?? ''}
           onInvestedAmountChange={val => setInvestedAmounts(prev => ({ ...prev, [stock.id]: val }))}
+          onEntryPriceChange={val => setEntryPrices(prev => ({ ...prev, [stock.id]: val }))}
           pending={pending}
           onToggleExpand={() => setExpandedId(expandedId === stock.id ? null : stock.id)}
           onConfirmAdd={() => handleConfirmAdd(stock)}
@@ -203,8 +214,10 @@ export default function WatchlistManager({ stocks: initialStocks }: { stocks: St
           stock={stock}
           isExpanded={expandedId === stock.id}
           alerts={getAlerts(stock.id, stock.alerts)}
-          investedAmount=""
-          onInvestedAmountChange={() => {}}
+          investedAmount={investedAmounts[stock.id] ?? (stock.invested_amount != null ? String(stock.invested_amount) : '')}
+          entryPrice={entryPrices[stock.id] ?? (stock.entry_price != null ? String(stock.entry_price) : '')}
+          onInvestedAmountChange={val => setInvestedAmounts(prev => ({ ...prev, [stock.id]: val }))}
+          onEntryPriceChange={val => setEntryPrices(prev => ({ ...prev, [stock.id]: val }))}
           pending={pending}
           onToggleExpand={() => setExpandedId(expandedId === stock.id ? null : stock.id)}
           onConfirmAdd={() => handleConfirmAdd(stock)}
@@ -218,14 +231,16 @@ export default function WatchlistManager({ stocks: initialStocks }: { stocks: St
 }
 
 function StockRow({
-  stock, isExpanded, alerts, investedAmount, onInvestedAmountChange, pending,
+  stock, isExpanded, alerts, investedAmount, entryPrice, onInvestedAmountChange, onEntryPriceChange, pending,
   onToggleExpand, onConfirmAdd, onRemove, onUpdateAlerts, onAlertChange,
 }: {
   stock: Stock
   isExpanded: boolean
   alerts: AlertPrefs
   investedAmount: string
+  entryPrice: string
   onInvestedAmountChange: (val: string) => void
+  onEntryPriceChange: (val: string) => void
   pending: boolean
   onToggleExpand: () => void
   onConfirmAdd: () => void
@@ -275,9 +290,21 @@ function StockRow({
           <p className="text-xs text-gray-400 mb-4 font-medium uppercase tracking-wide">
             Configure alerts for {stock.ticker}
           </p>
-          {!stock.inWatchlist && (
-            <div className="mb-4">
-              <label className="block text-xs text-gray-500 mb-1">Interested amount (₹) <span className="text-gray-400 font-normal">— optional, to track P&amp;L</span></label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Entry price (₹) <span className="text-gray-400 font-normal">— your buy price</span></label>
+              <div className="relative">
+                <span className="absolute left-3 top-2.5 text-gray-400 text-sm">₹</span>
+                <input
+                  type="number" min="0" step="0.05" placeholder="e.g. 1250.50"
+                  value={entryPrice}
+                  onChange={e => onEntryPriceChange(e.target.value)}
+                  className="w-full pl-7 pr-4 py-2.5 rounded-lg bg-white text-gray-900 border border-gray-300 focus:outline-none focus:border-blue-500 text-sm"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Invested amount (₹) <span className="text-gray-400 font-normal">— optional</span></label>
               <div className="relative">
                 <span className="absolute left-3 top-2.5 text-gray-400 text-sm">₹</span>
                 <input
@@ -288,7 +315,7 @@ function StockRow({
                 />
               </div>
             </div>
-          )}
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
             <div>
               <label className="block text-xs text-gray-500 mb-1">RSI oversold below</label>
