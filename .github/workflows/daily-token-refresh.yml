@@ -1,9 +1,7 @@
 name: Daily Kite Token Refresh
 
 on:
-  schedule:
-    - cron: '35 18 * * *'  # 6:35 PM UTC = 12:05 AM IST — runs right after token expires at midnight IST (backup; primary via cron-job.org)
-  workflow_dispatch:         # manual trigger if needed
+  workflow_dispatch:          # triggered via cron-job.org or manually from GitHub UI
 
 jobs:
   refresh-token:

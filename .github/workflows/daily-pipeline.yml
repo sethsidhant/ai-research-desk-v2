@@ -1,9 +1,7 @@
 name: Daily Pipeline
 
 on:
-  schedule:
-    - cron: '00 03 * * 1-5'   # 3:00 AM UTC = 8:30 AM IST, Mon–Fri (backup — primary trigger via cron-job.org)
-  workflow_dispatch:            # manual trigger from GitHub UI
+  workflow_dispatch:            # triggered via cron-job.org or manually from GitHub UI
 
 jobs:
   pipeline:

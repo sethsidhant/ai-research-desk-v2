@@ -1,9 +1,7 @@
 name: Fundamentals Refresh
 
 on:
-  schedule:
-    - cron: '30 20 1,15 * *'  # 8:30 PM UTC = 2:00 AM IST, on 1st and 15th of each month
-  workflow_dispatch:           # manual trigger from GitHub UI
+  workflow_dispatch:            # triggered via cron-job.org or manually from GitHub UI
 
 jobs:
   fundamentals:
