@@ -124,7 +124,7 @@ async function seedBotOffset() {
 async function pollBot() {
   if (!BOT_TOKEN) return;
   try {
-    const res  = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getUpdates?offset=${botOffset}&limit=10&timeout=0`);
+    const res  = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getUpdates?offset=${botOffset}&limit=10&timeout=0`, { signal: AbortSignal.timeout(8000) });
     const json = await res.json();
     for (const update of json.result ?? []) {
       botOffset = update.update_id + 1;
