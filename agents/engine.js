@@ -64,7 +64,7 @@ async function fetchAllPrices(stocks) {
 // Fetch industry PE — cached per industry name to avoid duplicate scrapes
 function fetchIndustryPE(industryName) {
   try {
-    const out = execSync(`python fetchIndustryPE.py "${industryName}"`, {
+    const out = execSync(`python3 fetchIndustryPE.py "${industryName}"`, {
       encoding: "utf8", cwd: __dirname,
       env: { ...process.env, PYTHONIOENCODING: "utf-8" },
     });

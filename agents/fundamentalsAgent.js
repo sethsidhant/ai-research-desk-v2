@@ -15,7 +15,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function getScreenerFundamentals(ticker) {
   try {
-    return JSON.parse(execSync(`python fetchScreenerFundamentals.py ${ticker}`, {
+    return JSON.parse(execSync(`python3 fetchScreenerFundamentals.py ${ticker}`, {
       encoding: "utf8", cwd: __dirname,
     }));
   } catch { return null; }

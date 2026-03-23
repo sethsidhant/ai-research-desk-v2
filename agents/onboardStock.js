@@ -39,13 +39,13 @@ function getRSISignal(rsi) {
 
 function getScreenerFundamentals(t) {
   try {
-    return JSON.parse(execSync(`python fetchScreenerFundamentals.py ${t}`, { encoding: "utf8", cwd: __dirname }));
+    return JSON.parse(execSync(`python3 fetchScreenerFundamentals.py ${t}`, { encoding: "utf8", cwd: __dirname }));
   } catch { return null; }
 }
 
 function getIndustryPE(industryName) {
   try {
-    const out = execSync(`python fetchIndustryPE.py "${industryName}"`, {
+    const out = execSync(`python3 fetchIndustryPE.py "${industryName}"`, {
       encoding: "utf8", cwd: __dirname, env: { ...process.env, PYTHONIOENCODING: "utf-8" },
     });
     const m = out.match(/Median: ([\d.]+)/);

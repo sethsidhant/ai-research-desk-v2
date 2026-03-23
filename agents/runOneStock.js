@@ -30,7 +30,7 @@ function getRSISignal(rsi) {
 
 function getScreenerFundamentals(t) {
   try {
-    const out = execSync(`python fetchScreenerFundamentals.py ${t}`, {
+    const out = execSync(`python3 fetchScreenerFundamentals.py ${t}`, {
       encoding: "utf8", cwd: __dirname,
     });
     return JSON.parse(out);
@@ -40,7 +40,7 @@ function getScreenerFundamentals(t) {
 function getIndustryPE(industryName) {
   try {
     const out = execSync(
-      `python fetchIndustryPE.py "${industryName}"`,
+      `python3 fetchIndustryPE.py "${industryName}"`,
       { encoding: "utf8", cwd: __dirname, env: { ...process.env, PYTHONIOENCODING: "utf-8" } }
     );
     const m = out.match(/Median: ([\d.]+)/);
