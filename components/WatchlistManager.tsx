@@ -283,6 +283,13 @@ function StockRow({
           <span className="font-semibold text-gray-900 font-mono">{stock.ticker}</span>
           <span className="text-gray-500 text-sm ml-3">{stock.stock_name}</span>
           {stock.industry && <span className="text-gray-400 text-xs ml-3">{stock.industry}</span>}
+          {stock.inWatchlist && (stock.entry_price != null || stock.invested_amount != null) && (
+            <span className="ml-3 text-xs text-gray-400">
+              {stock.entry_price != null && <>@ ₹{Number(stock.entry_price).toLocaleString('en-IN')}</>}
+              {stock.entry_price != null && stock.invested_amount != null && <span className="mx-1">·</span>}
+              {stock.invested_amount != null && <>₹{Number(stock.invested_amount).toLocaleString('en-IN')} invested</>}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {stock.inWatchlist && (
