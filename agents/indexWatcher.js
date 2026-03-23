@@ -17,6 +17,7 @@ const POLL_INTERVAL_MS = 60000;
 // Track highest alerted step per index: e.g. { 'NIFTY 50': { up: 1, down: 0 } }
 const alerted = {};
 for (const idx of INDICES) alerted[idx.label] = { up: 0, down: 0 };
+let initialized = false;
 
 function isMarketHours() {
   const now = new Date();
@@ -62,10 +63,16 @@ async function poll() {
       if (alerted[idx.label][dir] >= step) continue; // already alerted this step
 
       alerted[idx.label][dir] = step;
+      if (!initialized) continue; // seed state on first poll without alerting
+
       const arrow = dir === 'up' ? '📈' : '📉';
       const sign  = dir === 'up' ? '+' : '';
       await sendAlert(`${arrow} *${idx.label}* ${sign}${changePct.toFixed(2)}% today\n${prevClose.toLocaleString('en-IN')} → ${last.toLocaleString('en-IN')}`);
       console.log(`[indexWatcher] Alert sent: ${idx.label} ${sign}${changePct.toFixed(2)}%`);
+    }
+    if (!initialized) {
+      initialized = true;
+      console.log('[indexWatcher] Initial state seeded — will alert on new moves only');
     }
   } catch (err) {
     console.error('[indexWatcher] Poll error:', err.message);

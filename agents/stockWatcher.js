@@ -17,6 +17,7 @@ const REFRESH_STOCKS_MS = 5 * 60 * 1000;
 
 // { ticker: { instrumentKey, prevClose, alerted: { up: step, down: step } } }
 let watchlist = {};
+let initialized = false;
 
 async function loadWatchlist() {
   try {
@@ -89,11 +90,14 @@ async function poll() {
       if (watchlist[ticker].alerted[dir] >= step) continue;
 
       watchlist[ticker].alerted[dir] = step;
+      if (!initialized) continue; // seed state on first poll without alerting
+
       const arrow = dir === 'up' ? '🚀' : '🔻';
       const sign  = dir === 'up' ? '+' : '';
       await sendAlert(`${arrow} *${ticker}* ${sign}${changePct.toFixed(2)}% today\n₹${prevClose.toLocaleString('en-IN')} → ₹${last.toLocaleString('en-IN')}`);
       console.log(`[stockWatcher] Alert: ${ticker} ${sign}${changePct.toFixed(2)}%`);
     }
+    if (!initialized) initialized = true;
   } catch (err) {
     console.error('[stockWatcher] Poll error:', err.message);
   }
