@@ -73,9 +73,8 @@ async function runFundamentals(stock) {
 
   const f = getScreenerFundamentals(ticker);
   if (!f) {
-    // No Screener data — treat as ETF, mark industry and proceed to technicals
-    console.log("  No Screener data — treating as ETF");
-    await upsertStock(ticker, { industry: 'ETF', fundamentals_updated_at: new Date().toISOString() });
+    // No Screener data — skip fundamentals but don't mark as ETF
+    console.log("  No Screener data — skipping fundamentals, continuing to technicals");
     return true;
   }
 
