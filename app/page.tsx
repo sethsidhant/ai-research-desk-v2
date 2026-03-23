@@ -62,7 +62,8 @@ export default async function DashboardPage() {
         analyst_count,
         target_mean,
         target_high,
-        target_low
+        target_low,
+        mc_earnings_json
       )
     `)
     .eq('user_id', user.id)
@@ -149,6 +150,7 @@ export default async function DashboardPage() {
       target_mean:       stock?.target_mean ?? null,
       target_high:       stock?.target_high ?? null,
       target_low:        stock?.target_low ?? null,
+      mc_earnings_json:  stock?.mc_earnings_json ?? null,
     }
   }).sort((a, b) => {
     // Group by industry, then by stock name within industry

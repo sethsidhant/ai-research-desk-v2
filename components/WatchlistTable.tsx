@@ -74,6 +74,15 @@ export type WatchlistRow = {
   target_mean: number | null
   target_high: number | null
   target_low: number | null
+  mc_earnings_json: { netProfit: EarningsQuarter[]; revenue: EarningsQuarter[] } | null
+}
+
+export type EarningsQuarter = {
+  date: string
+  high: number | null
+  low: number | null
+  avg: number | null
+  actual: number | null
 }
 
 function fmt(n: number | null, decimals = 1) {
@@ -236,7 +245,7 @@ export default function WatchlistTable({
                 {/* Stock name — mobile shows compact badges inline */}
                 <td className="px-4 py-3">
                   <a
-                    href={`https://www.screener.in/company/${r.ticker}/`}
+                    href={`https://www.screener.in/company/${r.ticker}/consolidated/`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className={`font-semibold hover:underline ${nameColor}`}

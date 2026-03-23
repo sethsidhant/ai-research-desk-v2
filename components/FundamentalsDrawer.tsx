@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, type ReactNode } from 'react'
-import { type WatchlistRow } from './WatchlistTable'
+import { type WatchlistRow, type EarningsQuarter } from './WatchlistTable'
 type Tab = 'overview' | 'growth' | 'comparison' | 'analyst'
 
 function fmt(n: number | null, suffix = '', decimals = 1) {
@@ -47,6 +47,63 @@ function MetricRow({ label, value, highlight, sub }: { label: string; value: str
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3 mt-5 first:mt-0">{children}</div>
+}
+
+function fmtEarnings(n: number | null) {
+  if (n == null) return '—'
+  if (n >= 100000) return `₹${(n / 100000).toFixed(1)}L Cr`
+  if (n >= 1000)   return `₹${(n / 1000).toFixed(0)}K Cr`
+  return `₹${n.toFixed(0)} Cr`
+}
+
+function EarningsTable({ quarters, revenueQuarters }: { quarters: EarningsQuarter[]; revenueQuarters: EarningsQuarter[] }) {
+  // Merge by date
+  const dates = [...new Set([...quarters.map(q => q.date), ...revenueQuarters.map(q => q.date)])]
+  const revMap = Object.fromEntries(revenueQuarters.map(q => [q.date, q]))
+  const profMap = Object.fromEntries(quarters.map(q => [q.date, q]))
+
+  return (
+    <div className="overflow-x-auto -mx-1">
+      <table className="w-full text-xs border-separate border-spacing-0">
+        <thead>
+          <tr>
+            <th className="text-left text-gray-400 font-semibold pb-2 pr-2">Qtr</th>
+            <th className="text-right text-gray-400 font-semibold pb-2 pr-2">Revenue</th>
+            <th className="text-right text-gray-400 font-semibold pb-2">Net Profit</th>
+          </tr>
+        </thead>
+        <tbody>
+          {dates.map(date => {
+            const rev  = revMap[date]
+            const prof = profMap[date]
+            const hasActual = (rev?.actual != null) || (prof?.actual != null)
+            return (
+              <tr key={date} className="border-t border-gray-100">
+                <td className="py-1.5 pr-2 text-gray-600 font-medium whitespace-nowrap">{date}</td>
+                <td className="py-1.5 pr-2 text-right font-mono">
+                  {hasActual && rev?.actual != null
+                    ? <span className="text-emerald-700 font-semibold">{fmtEarnings(rev.actual)}</span>
+                    : rev?.avg != null
+                      ? <span className="text-gray-700">{fmtEarnings(rev.avg)}</span>
+                      : <span className="text-gray-400">—</span>
+                  }
+                </td>
+                <td className="py-1.5 text-right font-mono">
+                  {hasActual && prof?.actual != null
+                    ? <span className="text-emerald-700 font-semibold">{fmtEarnings(prof.actual)}</span>
+                    : prof?.avg != null
+                      ? <span className="text-gray-700">{fmtEarnings(prof.avg)}</span>
+                      : <span className="text-gray-400">—</span>
+                  }
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+      <div className="text-[10px] text-gray-400 mt-1.5">Bold green = actual reported · Gray = analyst estimate (avg)</div>
+    </div>
+  )
 }
 
 function returnHighlight(stock: number | null, bench: number | null): 'green' | 'red' | undefined {
@@ -249,6 +306,17 @@ export default function FundamentalsDrawer({ row, onClose }: { row: WatchlistRow
                 </>
               )}
 
+              {/* Earnings Forecast */}
+              {row.mc_earnings_json && (row.mc_earnings_json.revenue?.length > 0 || row.mc_earnings_json.netProfit?.length > 0) && (
+                <>
+                  <SectionTitle>Earnings Forecast</SectionTitle>
+                  <EarningsTable
+                    quarters={row.mc_earnings_json.netProfit ?? []}
+                    revenueQuarters={row.mc_earnings_json.revenue ?? []}
+                  />
+                </>
+              )}
+
             </div>
           )}
 
@@ -256,7 +324,7 @@ export default function FundamentalsDrawer({ row, onClose }: { row: WatchlistRow
 
         {/* Footer */}
         <div className="px-5 py-3 border-t border-gray-200">
-          <a href={`https://www.screener.in/company/${row.ticker}/`} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:text-blue-500 font-medium">
+          <a href={`https://www.screener.in/company/${row.ticker}/consolidated/`} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:text-blue-500 font-medium">
             View full report on Screener →
           </a>
         </div>

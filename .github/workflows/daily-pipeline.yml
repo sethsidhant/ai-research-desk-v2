@@ -2,7 +2,7 @@ name: Daily Pipeline
 
 on:
   schedule:
-    - cron: '40 21 * * 1-5'   # 9:40 PM UTC = 3:10 AM IST, Mon–Fri
+    - cron: '00 03 * * 1-5'   # 3:00 AM UTC = 8:30 AM IST, Mon–Fri (backup — primary trigger via cron-job.org)
   workflow_dispatch:            # manual trigger from GitHub UI
 
 jobs:
@@ -45,6 +45,10 @@ jobs:
         run: node refreshKiteToken.js
         working-directory: agents
 
+      - name: Backfill EOD closes (Kite historical)
+        run: node backfillHistory.js
+        working-directory: agents
+
       - name: Run engine (scores + prices)
         run: node engine.js
         working-directory: agents
@@ -56,3 +60,14 @@ jobs:
       - name: Run summary agent
         run: node summaryAgent.js
         working-directory: agents
+
+      - name: Run notifier
+        run: node whatsappNotifier.js
+        working-directory: agents
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "{\"chat_id\":\"${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}\",\"text\":\"❌ *AI Research Desk — Daily Pipeline Failed*\n\nCheck GitHub Actions for details.\nhttps://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\",\"parse_mode\":\"Markdown\"}"

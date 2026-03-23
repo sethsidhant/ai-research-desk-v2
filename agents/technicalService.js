@@ -106,4 +106,8 @@ async function getReturns(instrumentToken) {
   }
 }
 
-module.exports = { getTechnicals, getReturns, NIFTY50_TOKEN, NIFTY500_TOKEN };
+function setKiteToken(token) {
+  kc.setAccessToken(token);
+}
+
+module.exports = { getTechnicals, getReturns, NIFTY50_TOKEN, NIFTY500_TOKEN, setKiteToken };

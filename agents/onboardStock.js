@@ -9,7 +9,7 @@ const Anthropic    = require("@anthropic-ai/sdk");
 const { execSync } = require("child_process");
 const RSSParser    = require("rss-parser");
 const axios        = require("axios");
-const { getTechnicals, getReturns, NIFTY50_TOKEN } = require("./technicalService");
+const { getTechnicals, getReturns, NIFTY50_TOKEN, setKiteToken } = require("./technicalService");
 const { upsertStock, upsertDailyScore, insertHistory, logApiUsage } = require("./pgHelper");
 const { createClient } = require("@supabase/supabase-js");
 const { fetchMCData } = require("./fetchMCData");
@@ -181,6 +181,7 @@ Return ONLY valid JSON: {"composite_score":<1-10>,"classification":"<Undervalued
         target_mean:      mc.target_mean      ?? undefined,
         target_high:      mc.target_high      ?? undefined,
         target_low:       mc.target_low       ?? undefined,
+        mc_earnings_json: mc.mc_earnings_json ?? undefined,
       });
       console.log(`  MC: ${mc.analyst_rating ?? "N/A"} | Target: ${mc.target_mean ?? "N/A"} | Analysts: ${mc.analyst_count ?? "N/A"}`);
     }
@@ -418,6 +419,16 @@ Guidelines:
 
 async function main() {
   console.log(`\n[onboardStock] Starting full pipeline for ${ticker}...`);
+
+  // Always use the latest Kite token from Supabase (GitHub Actions refreshes it there daily)
+  const { data: tokenRow } = await supabase
+    .from("app_settings")
+    .select("value")
+    .eq("key", "kite_access_token")
+    .single();
+  if (tokenRow?.value) {
+    setKiteToken(tokenRow.value);
+  }
 
   const { data: stocks } = await supabase.from("stocks").select("*").eq("ticker", ticker).limit(1);
   const stock = stocks?.[0];

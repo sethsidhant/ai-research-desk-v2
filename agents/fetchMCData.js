@@ -1,7 +1,7 @@
 // fetchMCData.js — Fetches MoneyControl analyst data for a given scId
 // Endpoints are public (no auth needed).
 // Returns: analyst_rating, analyst_buy/hold/sell_pct, analyst_count,
-//          target_mean/high/low, earnings_history (last 8 quarters)
+//          target_mean/high/low, mc_earnings_json (netProfit + revenue forecasts)
 
 const HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -45,6 +45,36 @@ async function fetchMCData(scId) {
       result.target_mean = json.data.mean ? parseFloat(json.data.mean) : null;
       result.target_high = json.data.high ? parseFloat(json.data.high) : null;
       result.target_low  = json.data.low  ? parseFloat(json.data.low)  : null;
+    }
+  } catch { /* skip */ }
+
+  // 3. Earning forecast (quarterly estimates for netProfit + revenue)
+  try {
+    const res  = await fetch(
+      `https://api.moneycontrol.com/mcapi/v1/stock/estimates/earning-forecast?scId=${scId}&ex=N&deviceType=W&financialType=S&frequency=3`,
+      { headers: HEADERS, signal: AbortSignal.timeout(8000) }
+    );
+    const json = await res.json();
+    if (json.success && json.data) {
+      const { netProfit, revenue } = json.data;
+      if ((netProfit?.length || revenue?.length)) {
+        result.mc_earnings_json = {
+          netProfit: (netProfit ?? []).map(q => ({
+            date:   q.date,
+            high:   q.high   ? parseFloat(q.high)   : null,
+            low:    q.low    ? parseFloat(q.low)     : null,
+            avg:    q.avg    ? parseFloat(q.avg)     : null,
+            actual: q.actual ? parseFloat(q.actual)  : null,
+          })),
+          revenue: (revenue ?? []).map(q => ({
+            date:   q.date,
+            high:   q.high   ? parseFloat(q.high)   : null,
+            low:    q.low    ? parseFloat(q.low)     : null,
+            avg:    q.avg    ? parseFloat(q.avg)     : null,
+            actual: q.actual ? parseFloat(q.actual)  : null,
+          })),
+        };
+      }
     }
   } catch { /* skip */ }
 

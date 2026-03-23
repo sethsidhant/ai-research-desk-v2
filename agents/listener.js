@@ -66,8 +66,11 @@ async function start() {
     for (const ticker of missed) onboard(ticker);
   }
 
-  // Subscribe to new watchlist additions
-  supabase
+  subscribeRealtime();
+}
+
+function subscribeRealtime() {
+  const channel = supabase
     .channel('user_stocks_inserts')
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'user_stocks' }, async (payload) => {
       const stockId = payload.new.stock_id;
@@ -79,6 +82,11 @@ async function start() {
     })
     .subscribe((status) => {
       console.log(`[listener] Realtime status: ${status}`);
+      if (status === 'CLOSED') {
+        console.log(`[listener] Channel closed — reconnecting in 10s...`);
+        supabase.removeChannel(channel);
+        setTimeout(subscribeRealtime, 10000);
+      }
     });
 }
 
