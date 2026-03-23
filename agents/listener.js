@@ -50,10 +50,8 @@ async function poll() {
         .map(s => s.ticker)
     )];
 
-    if (pending.length) {
-      console.log(`[listener] ${pending.length} stock(s) need onboarding: ${pending.join(', ')}`);
-      for (const ticker of pending) onboard(ticker);
-    }
+    console.log(`[listener] Poll: ${(data ?? []).length} watchlist entries, ${pending.length} need onboarding${pending.length ? ': ' + pending.join(', ') : ''}`)
+    for (const ticker of pending) onboard(ticker);
   } catch (err) {
     console.error(`[listener] Poll error:`, err.message);
   }
