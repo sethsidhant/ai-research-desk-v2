@@ -140,6 +140,13 @@ export default async function AdminPage() {
   // ── 6. User join trend (last 30 days) ────────────────────────────────────
   const recentUsers = allUsers.filter(u => u.created_at && new Date(u.created_at) > new Date(thirtyDaysAgoISO)).length
 
+  // ── 7. Railway listener heartbeat ─────────────────────────────────────────
+  const { data: heartbeatRow } = await adminSupabase
+    .from('app_settings').select('value').eq('key', 'railway_heartbeat').single()
+  const heartbeatAt  = heartbeatRow?.value ? new Date(heartbeatRow.value) : null
+  const heartbeatAge = heartbeatAt ? Math.floor((Date.now() - heartbeatAt.getTime()) / 1000) : null
+  const listenerUp   = heartbeatAge != null && heartbeatAge < 120
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="border-b border-gray-200 px-6 py-4 bg-white flex items-center justify-between">
@@ -162,6 +169,24 @@ export default async function AdminPage() {
             <AdminCard label="With Watchlists"    value={usersWithStocks.toString()} />
             <AdminCard label="Joined Last 30d"    value={recentUsers.toString()} highlight="green" />
             <AdminCard label="Avg Stocks / User"  value={fmt(avgStocksPerUser, 1)} />
+          </div>
+        </section>
+
+        {/* ── Railway Listener ──────────────────────────────────── */}
+        <section>
+          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Railway Listener</h2>
+          <div className="bg-white border border-gray-200 rounded-xl px-5 py-4 shadow-sm flex items-center gap-4">
+            <span className={`w-3 h-3 rounded-full flex-shrink-0 ${listenerUp ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
+            <div>
+              <div className={`text-sm font-semibold ${listenerUp ? 'text-emerald-700' : 'text-red-600'}`}>
+                {listenerUp ? 'Online' : 'Offline / No heartbeat'}
+              </div>
+              <div className="text-xs text-gray-400 mt-0.5">
+                {heartbeatAge != null
+                  ? `Last heartbeat ${heartbeatAge < 60 ? `${heartbeatAge}s ago` : `${Math.floor(heartbeatAge / 60)}m ago`} · onboarding · index · stock · filing watchers`
+                  : 'No heartbeat received yet'}
+              </div>
+            </div>
           </div>
         </section>
 
