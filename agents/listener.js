@@ -1,35 +1,20 @@
 // listener.js
-// Listens for new stocks added to any user's watchlist via Supabase Realtime.
-// When a stock with no fundamentals is added, immediately runs onboarding.
+// Polls Supabase every 30s for watchlist stocks that need onboarding.
+// Replaces Realtime WebSocket approach which is unreliable on Railway.
 // Run permanently with: pm2 start listener.js --name ai-desk-listener
 
 require('dotenv').config({ path: '../.env.local' });
-const { execSync }   = require('child_process');
+const { execSync }     = require('child_process');
 const { createClient } = require('@supabase/supabase-js');
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY,
-  {
-    auth: { autoRefreshToken: false, persistSession: false },
-    realtime: {
-      params: { apikey: process.env.SUPABASE_SERVICE_KEY },
-      heartbeatIntervalMs: 15000,
-    },
-  }
+  { auth: { autoRefreshToken: false, persistSession: false } }
 );
 
-const processing = new Set(); // prevent duplicate concurrent runs
-
-async function needsOnboarding(stockId) {
-  const { data } = await supabase
-    .from('stocks')
-    .select('ticker, fundamentals_updated_at')
-    .eq('id', stockId)
-    .single();
-  if (!data || data.fundamentals_updated_at) return null;
-  return data.ticker;
-}
+const POLL_INTERVAL_MS = 30000;
+const processing = new Set();
 
 function onboard(ticker) {
   if (processing.has(ticker)) {
@@ -52,48 +37,33 @@ function onboard(ticker) {
   }
 }
 
-async function start() {
-  console.log(`[listener] Starting — ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST`);
+async function poll() {
+  try {
+    const { data } = await supabase
+      .from('user_stocks')
+      .select('stocks(ticker, fundamentals_updated_at)');
 
-  // On startup, catch any stocks added while listener was offline
-  const { data } = await supabase
-    .from('user_stocks')
-    .select('stocks(ticker, fundamentals_updated_at)');
+    const pending = [...new Set(
+      (data ?? [])
+        .map(r => r.stocks)
+        .filter(s => s && !s.fundamentals_updated_at)
+        .map(s => s.ticker)
+    )];
 
-  const missed = [...new Set(
-    (data ?? [])
-      .map(r => r.stocks)
-      .filter(s => s && !s.fundamentals_updated_at)
-      .map(s => s.ticker)
-  )];
-
-  if (missed.length) {
-    console.log(`[listener] Catching up on ${missed.length} missed stock(s): ${missed.join(', ')}`);
-    for (const ticker of missed) onboard(ticker);
+    if (pending.length) {
+      console.log(`[listener] ${pending.length} stock(s) need onboarding: ${pending.join(', ')}`);
+      for (const ticker of pending) onboard(ticker);
+    }
+  } catch (err) {
+    console.error(`[listener] Poll error:`, err.message);
   }
-
-  subscribeRealtime();
 }
 
-function subscribeRealtime() {
-  const channel = supabase
-    .channel('user_stocks_inserts')
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'user_stocks' }, async (payload) => {
-      const stockId = payload.new.stock_id;
-      const ticker  = await needsOnboarding(stockId);
-      if (ticker) {
-        console.log(`[listener] New stock detected: ${ticker}`);
-        onboard(ticker);
-      }
-    })
-    .subscribe((status) => {
-      console.log(`[listener] Realtime status: ${status}`);
-      if (status === 'CLOSED' || status === 'TIMED_OUT' || status === 'CHANNEL_ERROR') {
-        console.log(`[listener] Channel ${status} — reconnecting in 10s...`);
-        supabase.removeChannel(channel);
-        setTimeout(subscribeRealtime, 10000);
-      }
-    });
+async function start() {
+  console.log(`[listener] Starting — ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST`);
+  console.log(`[listener] Polling every ${POLL_INTERVAL_MS / 1000}s for stocks needing onboarding`);
+  await poll();
+  setInterval(poll, POLL_INTERVAL_MS);
 }
 
 start();
