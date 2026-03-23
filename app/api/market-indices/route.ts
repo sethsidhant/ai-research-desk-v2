@@ -93,18 +93,16 @@ export async function GET() {
 
     const indices: IndexQuote[] = INDICES.map(idx => {
       const d         = kiteMap[idx.key]
-      const last      = d?.last_price   ?? 0
-      const prevClose = d?.ohlc?.close  ?? 0
-      const change    = d?.net_change   ?? 0
-      // fallback: derive prevClose from last - change if ohlc.close is missing (e.g. NSEIX)
-      const effectivePrev = prevClose > 0 ? prevClose : (last - change > 0 ? last - change : 0)
-      const changePct = effectivePrev > 0 ? (change / effectivePrev) * 100 : 0
+      const last      = d?.last_price  ?? 0
+      const prevClose = d?.ohlc?.close ?? 0
+      // Kite doesn't populate net_change for NSEIX instruments — compute it from ohlc.close
+      const change    = (d?.net_change && d.net_change !== 0) ? d.net_change : (prevClose > 0 ? last - prevClose : 0)
+      const changePct = prevClose > 0 ? (change / prevClose) * 100 : 0
       return { name: idx.label, last, prevClose, change, changePct, group: idx.group }
     })
 
     cache = { data: indices, ts: Date.now() }
-    const giftRaw = kiteMap['NSEIX:GIFT NIFTY']
-    return NextResponse.json({ indices, _debug_gift: giftRaw ? { last_price: giftRaw.last_price, net_change: giftRaw.net_change, ohlc: giftRaw.ohlc } : null })
+    return NextResponse.json({ indices })
 
   } catch (err: any) {
     if (cache && Date.now() - cache.ts < CACHE_STALE_TTL_MS) {
