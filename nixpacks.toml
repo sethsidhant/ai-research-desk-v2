@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["nodejs_20", "python3", "python3Packages.requests", "python3Packages.beautifulsoup4"]
+nixPkgs = ["nodejs_20", "python3"]
 
 [phases.install]
-cmds = ["cd agents && npm ci"]
+cmds = ["python3 -m ensurepip", "python3 -m pip install requests beautifulsoup4", "cd agents && npm ci"]
