@@ -98,6 +98,7 @@ async function runFundamentals(stock) {
     operating_cash_flow: f.operating_cash_flow, free_cash_flow: f.free_cash_flow,
     total_debt: f.total_debt, current_ratio: f.current_ratio,
     interest_coverage: f.interest_coverage, fundamentals_updated_at: new Date().toISOString(),
+    ...(f.bse_code ? { bse_code: f.bse_code } : {}),
   });
 
   const peDeviation = industryPE && f.pe

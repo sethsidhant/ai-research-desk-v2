@@ -64,6 +64,7 @@ def fetch_screener_fundamentals(ticker):
         "operating_cash_flow": None, "free_cash_flow": None, "total_debt": None,
         "current_ratio": None, "interest_coverage": None, "pledged_pct": None,
         "reserves": None, "borrowings": None,
+        "bse_code": None,
     }
 
     # ── Top ratios (#top-ratios) ──────────────────────────────────────────────
@@ -271,6 +272,13 @@ def fetch_screener_fundamentals(ticker):
                     f["dii_holding"] = latest
                 elif re.match(r'Pledged', label, re.IGNORECASE) and f["pledged_pct"] is None:
                     f["pledged_pct"] = latest
+
+    # ── BSE code — from bseindia.com link on page ────────────────────────────
+    for a in soup.find_all("a", href=True):
+        m = re.search(r'bseindia\.com[^"]*?/(\d{6})/?$', a["href"])
+        if m:
+            f["bse_code"] = m.group(1)
+            break
 
     return f
 
