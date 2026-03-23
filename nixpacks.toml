@@ -1,2 +1,5 @@
 [phases.setup]
 nixPkgs = ["nodejs_20", "python3"]
+
+[phases.install]
+cmds = ["cd agents && npm ci", "pip install -r agents/requirements.txt"]
