@@ -1,9 +1,9 @@
-// stockWatcher.js — alerts when any watchlist stock moves ±5%, ±10%, ±15% etc intraday
+// stockWatcher.js — alerts each user when their watchlist stock moves ±5%, ±10%, ±15% etc intraday
 require('dotenv').config({ path: '../.env.local' });
 
 const { createClient } = require('@supabase/supabase-js');
 const { quoteMultiple } = require('./kiteClient');
-const { sendAlert }     = require('./telegramAlert');
+const { sendToMany }    = require('./telegramAlert');
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -15,26 +15,47 @@ const THRESHOLD_PCT     = 5.0;   // alert every 5% step
 const POLL_INTERVAL_MS  = 60000;
 const REFRESH_STOCKS_MS = 5 * 60 * 1000;
 
-// { ticker: { instrumentKey, prevClose, alerted: { up: step, down: step } } }
+// { ticker: { instrumentKey, alerted: { up: step, down: step }, chatIds: string[] } }
 let watchlist = {};
 let initialized = false;
 
 async function loadWatchlist() {
   try {
-    const { data } = await supabase
+    // Load all user_stocks with stock data
+    const { data: rows } = await supabase
       .from('user_stocks')
-      .select('stocks(ticker, instrument_token)');
+      .select('user_id, stocks(ticker, instrument_token)');
+
+    // Load all users with a linked Telegram
+    const { data: prefs } = await supabase
+      .from('user_alert_preferences')
+      .select('user_id, telegram_chat_id')
+      .not('telegram_chat_id', 'is', null);
+
+    const chatIdByUser = {};
+    for (const p of prefs ?? []) chatIdByUser[p.user_id] = p.telegram_chat_id;
 
     const updated = {};
-    for (const row of data ?? []) {
+    for (const row of rows ?? []) {
       const s = row.stocks;
       if (!s?.ticker || !s?.instrument_token) continue;
-      const key = `NSE:${s.ticker}`;
-      updated[s.ticker] = {
-        instrumentKey: key,
-        alerted: watchlist[s.ticker]?.alerted ?? { up: 0, down: 0 },
-      };
+
+      if (!updated[s.ticker]) {
+        updated[s.ticker] = {
+          instrumentKey: `NSE:${s.ticker}`,
+          alerted: watchlist[s.ticker]?.alerted ?? { up: 0, down: 0 },
+          chatIds: new Set(),
+        };
+      }
+      const chatId = chatIdByUser[row.user_id];
+      if (chatId) updated[s.ticker].chatIds.add(chatId);
     }
+
+    // Convert Sets to arrays
+    for (const ticker of Object.keys(updated)) {
+      updated[ticker].chatIds = [...updated[ticker].chatIds];
+    }
+
     watchlist = updated;
     console.log(`[stockWatcher] Watching ${Object.keys(watchlist).length} stocks`);
   } catch (err) {
@@ -92,10 +113,14 @@ async function poll() {
       watchlist[ticker].alerted[dir] = step;
       if (!initialized) continue; // seed state on first poll without alerting
 
+      const chatIds = watchlist[ticker].chatIds;
+      if (!chatIds.length) continue;
+
       const arrow = dir === 'up' ? '🚀' : '🔻';
       const sign  = dir === 'up' ? '+' : '';
-      await sendAlert(`${arrow} *${ticker}* ${sign}${changePct.toFixed(2)}% today\n₹${prevClose.toLocaleString('en-IN')} → ₹${last.toLocaleString('en-IN')}`);
-      console.log(`[stockWatcher] Alert: ${ticker} ${sign}${changePct.toFixed(2)}%`);
+      const msg   = `${arrow} *${ticker}* ${sign}${changePct.toFixed(2)}% today\n₹${prevClose.toLocaleString('en-IN')} → ₹${last.toLocaleString('en-IN')}`;
+      await sendToMany(chatIds, msg);
+      console.log(`[stockWatcher] Alert: ${ticker} ${sign}${changePct.toFixed(2)}% → ${chatIds.length} user(s)`);
     }
     if (!initialized) initialized = true;
   } catch (err) {

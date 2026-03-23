@@ -1,8 +1,8 @@
-// filingWatcher.js — polls BSE for new filings on watchlist stocks every 10 min, 24/7
+// filingWatcher.js — polls BSE for new filings, alerts users watching that stock
 require('dotenv').config({ path: '../.env.local' });
 
 const { createClient } = require('@supabase/supabase-js');
-const { sendAlert }     = require('./telegramAlert');
+const { sendToMany }   = require('./telegramAlert');
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -13,31 +13,55 @@ const supabase = createClient(
 const POLL_INTERVAL_MS  = 10 * 60 * 1000; // 10 min
 const REFRESH_STOCKS_MS = 15 * 60 * 1000; // 15 min
 
-let bseCodes   = {};  // { bseCode: ticker }
+// { bseCode: { ticker, chatIds: string[] } }
+let bseMap     = {};
 const seenIds  = new Set();
 let initialLoad = true;
 
 async function loadBSECodes() {
   try {
-    const { data } = await supabase
+    // Load all user_stocks with BSE codes
+    const { data: rows } = await supabase
       .from('user_stocks')
-      .select('stocks(ticker, bse_code)');
+      .select('user_id, stocks(ticker, bse_code)');
 
-    bseCodes = {};
-    for (const row of data ?? []) {
+    // Load users with Telegram linked + filing alerts enabled
+    const { data: prefs } = await supabase
+      .from('user_alert_preferences')
+      .select('user_id, telegram_chat_id')
+      .not('telegram_chat_id', 'is', null)
+      .eq('new_filing_alert', true);
+
+    const chatIdByUser = {};
+    for (const p of prefs ?? []) chatIdByUser[p.user_id] = p.telegram_chat_id;
+
+    const updated = {};
+    for (const row of rows ?? []) {
       const s = row.stocks;
-      if (s?.bse_code) bseCodes[String(parseInt(s.bse_code))] = s.ticker;
+      if (!s?.bse_code) continue;
+      const code = String(parseInt(s.bse_code));
+
+      if (!updated[code]) updated[code] = { ticker: s.ticker, chatIds: new Set() };
+
+      const chatId = chatIdByUser[row.user_id];
+      if (chatId) updated[code].chatIds.add(chatId);
     }
-    console.log(`[filingWatcher] Watching ${Object.keys(bseCodes).length} stocks with BSE codes`);
+
+    // Convert Sets to arrays
+    for (const code of Object.keys(updated)) {
+      updated[code].chatIds = [...updated[code].chatIds];
+    }
+
+    bseMap = updated;
+    console.log(`[filingWatcher] Watching ${Object.keys(bseMap).length} stocks with BSE codes`);
   } catch (err) {
     console.error('[filingWatcher] Load error:', err.message);
   }
 }
 
 async function poll() {
-  if (!Object.keys(bseCodes).length) return;
+  if (!Object.keys(bseMap).length) return;
   try {
-    // BSE announcements API — returns recent filings across all listed companies
     const res = await fetch(
       'https://api.bseindia.com/BseIndiaAPI/api/AnnSubCategoryGetData/w?strCat=-1&strPrevDate=&strScrip=&strSearch=P&strToDate=&strType=C&subcategory=-1',
       {
@@ -50,18 +74,21 @@ async function poll() {
     const filings = json.Table ?? [];
 
     for (const f of filings) {
-      const scrip   = String(parseInt(f.SCRIP_CD ?? '0'));
-      const id      = f.NEWSID ?? f.DT_TM ?? `${scrip}-${f.HEADLINE}`;
-      const ticker  = bseCodes[scrip];
+      const scrip  = String(parseInt(f.SCRIP_CD ?? '0'));
+      const id     = f.NEWSID ?? f.DT_TM ?? `${scrip}-${f.HEADLINE}`;
+      const entry  = bseMap[scrip];
 
-      if (!ticker || seenIds.has(id)) continue;
+      if (!entry || seenIds.has(id)) continue;
       seenIds.add(id);
 
-      if (initialLoad) continue; // don't alert for filings already present on startup
+      if (initialLoad) continue;
+
+      const chatIds = entry.chatIds;
+      if (!chatIds.length) continue;
 
       const headline = f.HEADLINE ?? 'New Filing';
-      await sendAlert(`📋 *${ticker}* — BSE Filing\n${headline}`);
-      console.log(`[filingWatcher] Alert: ${ticker} — ${headline}`);
+      await sendToMany(chatIds, `📋 *${entry.ticker}* — BSE Filing\n${headline}`);
+      console.log(`[filingWatcher] Alert: ${entry.ticker} — ${headline} → ${chatIds.length} user(s)`);
     }
 
     if (initialLoad) {

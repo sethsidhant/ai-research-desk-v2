@@ -1,7 +1,6 @@
 // listener.js
 // Polls Supabase every 30s for watchlist stocks that need onboarding.
-// Replaces Realtime WebSocket approach which is unreliable on Railway.
-// Run permanently with: pm2 start listener.js --name ai-desk-listener
+// Also polls Telegram bot for /link commands to connect user accounts.
 
 require('dotenv').config({ path: '../.env.local' });
 const { execSync }     = require('child_process');
@@ -13,8 +12,11 @@ const supabase = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
 
-const POLL_INTERVAL_MS = 30000;
+const POLL_INTERVAL_MS     = 30000;
+const BOT_POLL_INTERVAL_MS = 10000;
 const processing = new Set();
+
+// ── Onboarding ────────────────────────────────────────────────────────────────
 
 function onboard(ticker) {
   if (processing.has(ticker)) {
@@ -57,14 +59,107 @@ async function poll() {
   }
 }
 
-async function start() {
-  console.log(`[listener] Starting — ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST`);
-  console.log(`[listener] Polling every ${POLL_INTERVAL_MS / 1000}s for stocks needing onboarding`);
-  await poll();
-  setInterval(poll, POLL_INTERVAL_MS);
+// ── Telegram bot ──────────────────────────────────────────────────────────────
+
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+let botOffset   = 0;
+
+async function botReply(chatId, text) {
+  if (!BOT_TOKEN) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown' }),
+    });
+  } catch (err) {
+    console.error('[bot] Reply error:', err.message);
+  }
 }
 
-// Auto-start when run directly; also start when required (index.js)
+async function handleLinkCode(chatId, code) {
+  const key = `telegram_link_${code.toUpperCase()}`;
+  const { data } = await supabase.from('app_settings').select('value').eq('key', key).single();
+
+  if (!data?.value) {
+    await botReply(chatId, '❌ Invalid or expired code. Generate a new one from Settings.');
+    return;
+  }
+
+  let payload;
+  try { payload = JSON.parse(data.value); } catch {
+    await botReply(chatId, '❌ Invalid code.');
+    return;
+  }
+
+  if (new Date(payload.expires) < new Date()) {
+    await botReply(chatId, '❌ Code expired. Generate a new one from Settings.');
+    await supabase.from('app_settings').delete().eq('key', key);
+    return;
+  }
+
+  await supabase.from('user_alert_preferences').upsert(
+    { user_id: payload.user_id, telegram_chat_id: String(chatId) },
+    { onConflict: 'user_id' }
+  );
+  await supabase.from('app_settings').delete().eq('key', key);
+
+  await botReply(chatId, '✅ Linked! You\'ll now receive alerts for your watchlist stocks and market moves.');
+  console.log(`[bot] Linked chat ${chatId} to user ${payload.user_id}`);
+}
+
+async function seedBotOffset() {
+  if (!BOT_TOKEN) return;
+  try {
+    const res  = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getUpdates?limit=1&offset=-1`);
+    const json = await res.json();
+    const updates = json.result ?? [];
+    if (updates.length) botOffset = updates[updates.length - 1].update_id + 1;
+    console.log(`[bot] Offset seeded at ${botOffset}`);
+  } catch (err) {
+    console.error('[bot] Seed offset error:', err.message);
+  }
+}
+
+async function pollBot() {
+  if (!BOT_TOKEN) return;
+  try {
+    const res  = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getUpdates?offset=${botOffset}&limit=10&timeout=0`);
+    const json = await res.json();
+    for (const update of json.result ?? []) {
+      botOffset = update.update_id + 1;
+      const msg = update.message;
+      if (!msg?.text) continue;
+      const chatId = String(msg.chat.id);
+      const text   = msg.text.trim();
+
+      if (text.startsWith('/link ')) {
+        const code = text.slice(6).trim();
+        await handleLinkCode(chatId, code);
+      } else if (text.startsWith('/start')) {
+        await botReply(chatId,
+          '👋 Welcome to *AI Research Desk*!\n\nTo connect your account:\n1. Go to Settings on the dashboard\n2. Click *Generate Code*\n3. Send `/link YOUR_CODE` here\n\nYou\'ll then receive stock move and market alerts directly here.'
+        );
+      }
+    }
+  } catch (err) {
+    console.error('[bot] Poll error:', err.message);
+  }
+}
+
+// ── Start ─────────────────────────────────────────────────────────────────────
+
+async function start() {
+  console.log(`[listener] Starting — ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST`);
+  await seedBotOffset();
+  await poll();
+  setInterval(poll, POLL_INTERVAL_MS);
+  if (BOT_TOKEN) {
+    setInterval(pollBot, BOT_POLL_INTERVAL_MS);
+    console.log('[listener] Telegram bot polling started');
+  }
+}
+
 start();
 
 module.exports = {};

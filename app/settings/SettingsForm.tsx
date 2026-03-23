@@ -19,6 +19,85 @@ type Prefs = {
   telegram_chat_id:         string | null
 }
 
+function TelegramConnect({ linked }: { linked: boolean }) {
+  const [code, setCode]         = useState<string | null>(null)
+  const [botUser, setBotUser]   = useState('')
+  const [expiresAt, setExpires] = useState<Date | null>(null)
+  const [loading, setLoading]   = useState(false)
+  const [copied, setCopied]     = useState(false)
+
+  async function generate() {
+    setLoading(true)
+    try {
+      const res  = await fetch('/api/telegram-link')
+      const json = await res.json()
+      setCode(json.code)
+      setBotUser(json.botUsername)
+      setExpires(new Date(json.expiresAt))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function copy() {
+    if (!code) return
+    navigator.clipboard.writeText(`/link ${code}`)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  if (linked) {
+    return <div className="text-xs text-emerald-600 mt-0.5">✓ Connected — you'll receive alerts in Telegram</div>
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="text-xs text-gray-500">Not connected — generate a code and send it to the bot to link your account.</div>
+      {!code ? (
+        <button
+          type="button"
+          onClick={generate}
+          disabled={loading}
+          className="px-4 py-2 rounded-lg bg-blue-500 hover:bg-blue-400 text-white text-sm font-medium disabled:opacity-50 transition-colors"
+        >
+          {loading ? 'Generating...' : 'Generate Code'}
+        </button>
+      ) : (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 space-y-2">
+          <div className="text-xs text-gray-500">Send this command to the bot:</div>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 text-sm font-mono bg-white border border-gray-200 rounded px-3 py-1.5 text-gray-900">
+              /link {code}
+            </code>
+            <button
+              type="button"
+              onClick={copy}
+              className="px-3 py-1.5 rounded bg-gray-100 hover:bg-gray-200 text-xs text-gray-700 transition-colors"
+            >
+              {copied ? 'Copied!' : 'Copy'}
+            </button>
+          </div>
+          {botUser && (
+            <a
+              href={`https://t.me/${botUser}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block text-xs text-blue-600 hover:underline"
+            >
+              Open @{botUser} in Telegram →
+            </a>
+          )}
+          {expiresAt && (
+            <div className="text-xs text-gray-400">
+              Expires at {expiresAt.toLocaleTimeString()} — refresh page after linking
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function SettingsForm({ prefs }: { prefs: Prefs }) {
   const [status, setStatus]   = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
@@ -92,31 +171,8 @@ export default function SettingsForm({ prefs }: { prefs: Prefs }) {
           {/* Telegram connect — shown only when telegram or both */}
           {(channel === 'telegram' || channel === 'both') && (
             <div className="rounded-lg border border-gray-200 p-4 bg-gray-50">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <div className="text-sm font-medium text-gray-700">Telegram</div>
-                  {prefs.telegram_chat_id ? (
-                    <div className="text-xs text-emerald-600 mt-0.5">✓ Connected (chat ID: {prefs.telegram_chat_id})</div>
-                  ) : (
-                    <div className="text-xs text-gray-500 mt-0.5">Not connected — open the bot and send your email to link your account</div>
-                  )}
-                </div>
-                <a
-                  href={`https://t.me/${process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? 'airesearchdesk_bot'}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="shrink-0 px-4 py-2 rounded-lg bg-blue-500 hover:bg-blue-400 text-white text-sm font-medium transition-colors"
-                >
-                  {prefs.telegram_chat_id ? 'Open bot' : 'Connect Telegram'}
-                </a>
-              </div>
-              {!prefs.telegram_chat_id && (
-                <ol className="mt-3 text-xs text-gray-400 space-y-1 list-decimal list-inside">
-                  <li>Click "Connect Telegram" to open the bot</li>
-                  <li>Send <code className="bg-gray-200 px-1 rounded">/start</code> then your login email</li>
-                  <li>Refresh this page — status will update to Connected</li>
-                </ol>
-              )}
+              <div className="text-sm font-medium text-gray-700 mb-2">Telegram</div>
+              <TelegramConnect linked={!!prefs.telegram_chat_id} />
             </div>
           )}
 
