@@ -10,7 +10,13 @@ const { createClient } = require('@supabase/supabase-js');
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY,
-  { auth: { autoRefreshToken: false, persistSession: false } }
+  {
+    auth: { autoRefreshToken: false, persistSession: false },
+    realtime: {
+      params: { apikey: process.env.SUPABASE_SERVICE_KEY },
+      heartbeatIntervalMs: 15000,
+    },
+  }
 );
 
 const processing = new Set(); // prevent duplicate concurrent runs
