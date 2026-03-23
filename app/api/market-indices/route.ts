@@ -96,7 +96,9 @@ export async function GET() {
       const last      = d?.last_price   ?? 0
       const prevClose = d?.ohlc?.close  ?? 0
       const change    = d?.net_change   ?? 0
-      const changePct = prevClose > 0 ? (change / prevClose) * 100 : 0
+      // fallback: derive prevClose from last - change if ohlc.close is missing (e.g. NSEIX)
+      const effectivePrev = prevClose > 0 ? prevClose : (last - change > 0 ? last - change : 0)
+      const changePct = effectivePrev > 0 ? (change / effectivePrev) * 100 : 0
       return { name: idx.label, last, prevClose, change, changePct, group: idx.group }
     })
 
