@@ -30,6 +30,8 @@ export type IndexQuote = {
 }
 
 const INDICES = [
+  // GIFT Nifty (pre-market indicator, trades 24h on NSEIX)
+  { key: 'NSEIX:GIFT NIFTY',      label: 'GIFT NIFTY',   group: 'gift'  },
   // Broad market
   { key: 'NSE:NIFTY 50',          label: 'NIFTY 50',     group: 'broad' },
   { key: 'BSE:SENSEX',            label: 'SENSEX',        group: 'broad' },
