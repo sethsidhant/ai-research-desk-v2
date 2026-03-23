@@ -88,9 +88,11 @@ async function poll() {
       const sign  = dir === 'up' ? '+' : '';
       const msg   = `${arrow} *${idx.label}* ${sign}${changePct.toFixed(2)}% today\n${prevClose.toLocaleString('en-IN')} → ${last.toLocaleString('en-IN')}`;
 
-      // Admin always gets index alerts; also broadcast to all linked users
+      // Admin always gets index alerts; broadcast to linked users excluding admin to avoid duplicate
       await sendAlert(msg);
-      if (userChatIds.length) await sendToMany(userChatIds, msg);
+      const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
+      const otherChats  = userChatIds.filter(id => id !== adminChatId);
+      if (otherChats.length) await sendToMany(otherChats, msg);
       console.log(`[indexWatcher] Alert: ${idx.label} ${sign}${changePct.toFixed(2)}% → admin + ${userChatIds.length} user(s)`);
     }
     if (!initialized) {
