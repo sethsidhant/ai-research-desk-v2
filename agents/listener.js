@@ -82,8 +82,8 @@ function subscribeRealtime() {
     })
     .subscribe((status) => {
       console.log(`[listener] Realtime status: ${status}`);
-      if (status === 'CLOSED') {
-        console.log(`[listener] Channel closed — reconnecting in 10s...`);
+      if (status === 'CLOSED' || status === 'TIMED_OUT' || status === 'CHANNEL_ERROR') {
+        console.log(`[listener] Channel ${status} — reconnecting in 10s...`);
         supabase.removeChannel(channel);
         setTimeout(subscribeRealtime, 10000);
       }
