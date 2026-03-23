@@ -103,7 +103,8 @@ export async function GET() {
     })
 
     cache = { data: indices, ts: Date.now() }
-    return NextResponse.json({ indices })
+    const giftRaw = kiteMap['NSEIX:GIFT NIFTY']
+    return NextResponse.json({ indices, _debug_gift: giftRaw ? { last_price: giftRaw.last_price, net_change: giftRaw.net_change, ohlc: giftRaw.ohlc } : null })
 
   } catch (err: any) {
     if (cache && Date.now() - cache.ts < CACHE_STALE_TTL_MS) {
