@@ -38,3 +38,12 @@ jobs:
       - name: Refresh Kite token
         run: node refreshKiteToken.js
         working-directory: agents
+
+      - name: Write heartbeat
+        run: |
+          curl -s -X POST "${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}/rest/v1/app_settings" \
+            -H "apikey: ${{ secrets.SUPABASE_SERVICE_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: resolution=merge-duplicates" \
+            -d "{\"key\":\"cron_token_last_run\",\"value\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
