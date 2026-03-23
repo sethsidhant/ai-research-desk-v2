@@ -231,13 +231,16 @@ export default async function DashboardPage() {
         byDate[h.date][h.stock_id] = h.closing_price
       }
 
-      // For each date, only include stocks that were already added by that date
-      chartData = Object.entries(byDate)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([date, prices]) => {
+      const sortedDates = Object.keys(byDate).sort()
+
+      // Anchor Nifty 50 / 500 to the first chart date (simple index % from chart start)
+      const firstIdx = nearestIndex(sortedDates[0])
+
+      chartData = sortedDates
+        .map((date, i) => {
+          const prices = byDate[date]
           let currentVal = 0, investedOnDay = 0
-          let n50Weighted = 0, n500Weighted = 0, benchmarkWeight = 0
-          const idxNow = nearestIndex(date.slice(0, 10))
+          const idxNow = nearestIndex(date)
 
           for (const r of portfolioRowsWithHistory) {
             const addedAt = addedAtMap[r.stock_id] ?? '2000-01-01'
@@ -246,25 +249,19 @@ export default async function DashboardPage() {
             if (!price) continue
             currentVal    += (price / r.entry_price!) * r.invested_amount!
             investedOnDay += r.invested_amount!
-
-            // Benchmark: use stored entry index values at time stock was added
-            if (idxNow && r.nifty50_entry && r.nifty500_entry) {
-              const w = r.invested_amount!
-              n50Weighted  += ((idxNow.n50  / r.nifty50_entry)  - 1) * w
-              n500Weighted += ((idxNow.n500 / r.nifty500_entry) - 1) * w
-              benchmarkWeight += w
-            }
           }
           if (investedOnDay === 0) return null
-          const returnPct  = ((currentVal - investedOnDay) / investedOnDay) * 100
-          const nifty50Pct  = benchmarkWeight > 0 ? parseFloat((n50Weighted  / benchmarkWeight * 100).toFixed(2)) : undefined
-          const nifty500Pct = benchmarkWeight > 0 ? parseFloat((n500Weighted / benchmarkWeight * 100).toFixed(2)) : undefined
+
+          const returnPct   = ((currentVal - investedOnDay) / investedOnDay) * 100
+          // Nifty lines: simple % change from first chart date
+          const nifty50Pct  = (firstIdx && idxNow) ? parseFloat(((idxNow.n50  / firstIdx.n50  - 1) * 100).toFixed(2)) : undefined
+          const nifty500Pct = (firstIdx && idxNow) ? parseFloat(((idxNow.n500 / firstIdx.n500 - 1) * 100).toFixed(2)) : undefined
+
           const d = new Date(date)
           const label = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
           return { date: label, returnPct: parseFloat(returnPct.toFixed(2)), nifty50Pct, nifty500Pct }
         })
         .filter(Boolean) as ChartPoint[]
-
     }
   }
 
