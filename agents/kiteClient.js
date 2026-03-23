@@ -25,8 +25,8 @@ async function refreshToken() {
   }
 }
 
-// Refresh token every hour
-refreshToken();
+// Refresh token on startup + every hour
+const ready = refreshToken();
 setInterval(refreshToken, 60 * 60 * 1000);
 
 async function quoteMultiple(instruments) {
@@ -41,4 +41,4 @@ async function quoteMultiple(instruments) {
   return json.data ?? {};
 }
 
-module.exports = { quoteMultiple, refreshToken };
+module.exports = { quoteMultiple, refreshToken, ready };
