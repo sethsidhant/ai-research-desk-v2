@@ -45,7 +45,7 @@ function BroadCard({ idx, flash }: { idx: IndexQuote; flash: 'up' | 'down' | nul
       <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5 whitespace-nowrap">{idx.name}</span>
       <span className="text-sm font-bold font-mono text-gray-900">{fmt(idx.last)}</span>
       <span className={`text-[10px] font-mono font-medium mt-0.5 ${up ? 'text-emerald-600' : 'text-red-500'}`}>
-        {up ? '▲' : '▼'} {Math.abs(idx.changePct).toFixed(2)}%
+        {up ? '▲' : '▼'} {Math.abs(idx.change).toFixed(1)} ({Math.abs(idx.changePct).toFixed(2)}%)
       </span>
     </div>
   )
@@ -117,7 +117,7 @@ export default function MarketIndicesBar() {
             <span className="text-[10px] font-semibold text-indigo-400 uppercase tracking-wider mb-0.5 whitespace-nowrap">GIFT NIFTY</span>
             <span className="text-sm font-bold font-mono text-gray-900">{fmt(idx.last)}</span>
             <span className={`text-[10px] font-mono font-medium mt-0.5 ${idx.change >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-              {idx.change >= 0 ? '▲' : '▼'} {Math.abs(idx.changePct).toFixed(2)}%
+              {idx.change >= 0 ? '▲' : '▼'} {Math.abs(idx.change).toFixed(1)} ({Math.abs(idx.changePct).toFixed(2)}%)
             </span>
           </div>
         ))}
