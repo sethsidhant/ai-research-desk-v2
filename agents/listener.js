@@ -64,4 +64,7 @@ async function start() {
   setInterval(poll, POLL_INTERVAL_MS);
 }
 
+// Auto-start when run directly; also start when required (index.js)
 start();
+
+module.exports = {};

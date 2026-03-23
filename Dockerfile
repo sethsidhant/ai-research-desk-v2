@@ -14,4 +14,4 @@ RUN npm ci
 # Copy agent scripts
 COPY agents/ .
 
-CMD ["node", "listener.js"]
+CMD ["node", "index.js"]
