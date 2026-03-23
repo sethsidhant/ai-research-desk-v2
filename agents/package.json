@@ -5,6 +5,7 @@
   "main": "engine.js",
   "type": "commonjs",
   "scripts": {
+    "start": "node listener.js",
     "engine": "node engine.js",
     "news": "node newsAgent.js",
     "summary": "node summaryAgent.js",
