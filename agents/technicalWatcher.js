@@ -22,7 +22,7 @@ let dmaState  = {}; // keyed by ticker
 let userPrefs = []; // [{ user_id, telegram_chat_id, dma_cross_alert, rsi_oversold_threshold, rsi_overbought_threshold, stockIds: [] }]
 let stockMap  = {}; // ticker -> { stockId, instrumentKey, dma50, dma200 }
 
-let rsiAlertedDate = ''; // YYYY-MM-DD, reset daily
+let rsiAlertedDate = ''; // YYYY-MM-DD, persisted to Supabase to survive restarts
 let dmaInitialized = false;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -121,6 +121,26 @@ async function loadDMAValues() {
   }
 }
 
+async function loadRsiAlertedDate() {
+  try {
+    const { data } = await supabase
+      .from('app_settings')
+      .select('value')
+      .eq('key', 'rsi_alerted_date')
+      .single();
+    if (data?.value) rsiAlertedDate = data.value;
+    console.log(`[technicalWatcher] RSI alerted date loaded: ${rsiAlertedDate || 'none'}`);
+  } catch { /* ignore */ }
+}
+
+async function saveRsiAlertedDate(date) {
+  rsiAlertedDate = date;
+  await supabase.from('app_settings').upsert(
+    { key: 'rsi_alerted_date', value: date },
+    { onConflict: 'key' }
+  );
+}
+
 // ── RSI check (once per day at 10 AM IST) ────────────────────────────────────
 
 async function checkRSI() {
@@ -130,7 +150,7 @@ async function checkRSI() {
   if (!isMarketHours()) return;
   if (ist.getHours() < RSI_CHECK_HOUR_IST) return; // wait until 10 AM
 
-  rsiAlertedDate = today;
+  await saveRsiAlertedDate(today);
   console.log('[technicalWatcher] Running RSI check...');
 
   try {
@@ -187,8 +207,8 @@ function resetAtMidnight() {
   const ist = istNow();
   const msToMidnight = (24 * 60 * 60 * 1000)
     - (ist.getHours() * 3600 + ist.getMinutes() * 60 + ist.getSeconds()) * 1000;
-  setTimeout(() => {
-    rsiAlertedDate = '';
+  setTimeout(async () => {
+    await saveRsiAlertedDate('');
     resetDMAAlerts();
     resetAtMidnight();
   }, msToMidnight);
@@ -280,6 +300,7 @@ async function poll() {
 // ── Start ─────────────────────────────────────────────────────────────────────
 
 async function start() {
+  await loadRsiAlertedDate();
   await loadUsers();
   await loadDMAValues();
   resetAtMidnight();
