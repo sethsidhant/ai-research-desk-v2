@@ -60,6 +60,12 @@ export default function FiiFlowChart({ data }: { data: Point[] }) {
   const periodChange = parseFloat((latest - first).toFixed(2))
   const isPositive   = periodChange >= 0
 
+  // Zero-crossing offset for dual-colour gradient (blue above 0, red below 0)
+  const maxVal = Math.max(...filtered.map(p => p.value), 0)
+  const minVal = Math.min(...filtered.map(p => p.value), 0)
+  const range  = maxVal - minVal
+  const zeroPct = range > 0 ? `${((maxVal / range) * 100).toFixed(1)}%` : '0%'
+
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
       <div className="flex items-center justify-between mb-4">
@@ -94,9 +100,17 @@ export default function FiiFlowChart({ data }: { data: Point[] }) {
       <ResponsiveContainer width="100%" height={260}>
         <AreaChart data={filtered} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
           <defs>
-            <linearGradient id="fiiGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor={isPositive ? '#10b981' : '#ef4444'} stopOpacity={0.15} />
-              <stop offset="95%" stopColor={isPositive ? '#10b981' : '#ef4444'} stopOpacity={0} />
+            {/* Stroke: blue above 0, red below 0 */}
+            <linearGradient id="fiiStroke" x1="0" y1="0" x2="0" y2="1">
+              <stop offset={zeroPct} stopColor="#3b82f6" stopOpacity={1} />
+              <stop offset={zeroPct} stopColor="#ef4444" stopOpacity={1} />
+            </linearGradient>
+            {/* Fill: light blue above 0, light red below 0 */}
+            <linearGradient id="fiiFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%"    stopColor="#3b82f6" stopOpacity={0.15} />
+              <stop offset={zeroPct} stopColor="#3b82f6" stopOpacity={0.05} />
+              <stop offset={zeroPct} stopColor="#ef4444" stopOpacity={0.05} />
+              <stop offset="100%" stopColor="#ef4444"  stopOpacity={0} />
             </linearGradient>
           </defs>
           <XAxis
@@ -146,9 +160,9 @@ export default function FiiFlowChart({ data }: { data: Point[] }) {
           <Area
             type="monotone"
             dataKey="value"
-            stroke={isPositive ? '#10b981' : '#ef4444'}
+            stroke="url(#fiiStroke)"
             strokeWidth={2}
-            fill="url(#fiiGradient)"
+            fill="url(#fiiFill)"
             dot={false}
           />
         </AreaChart>
