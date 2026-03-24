@@ -269,6 +269,15 @@ export default async function DashboardPage() {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
   })
 
+  const { data: fiiDiiRow } = await supabase
+    .from('fii_dii_daily')
+    .select('date, fii_net, dii_net')
+    .order('date', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const fiiDii = fiiDiiRow ?? null
+
   return (
     <div className="min-h-screen bg-white">
       {/* Header */}
@@ -280,6 +289,17 @@ export default async function DashboardPage() {
             <p className="text-xs text-gray-400 mt-0.5 hidden sm:block">{today}</p>
           </div>
           <div className="flex items-center gap-2 sm:gap-4">
+            {fiiDii && (
+              <div className="hidden sm:flex items-center gap-2 text-xs font-mono border border-gray-200 rounded-lg px-2.5 py-1.5 bg-gray-50">
+                <span className={fiiDii.fii_net >= 0 ? 'text-emerald-600' : 'text-red-600'}>
+                  FII {fiiDii.fii_net >= 0 ? '▲' : '▼'} ₹{Math.abs(fiiDii.fii_net).toLocaleString('en-IN', { maximumFractionDigits: 0 })} Cr
+                </span>
+                <span className="text-gray-300">|</span>
+                <span className={fiiDii.dii_net >= 0 ? 'text-emerald-600' : 'text-red-600'}>
+                  DII {fiiDii.dii_net >= 0 ? '▲' : '▼'} ₹{Math.abs(fiiDii.dii_net).toLocaleString('en-IN', { maximumFractionDigits: 0 })} Cr
+                </span>
+              </div>
+            )}
             <span className="text-xs sm:text-sm text-gray-500 hidden sm:block">{user.email}</span>
             {user.email === process.env.ADMIN_EMAIL && (
               <Link
