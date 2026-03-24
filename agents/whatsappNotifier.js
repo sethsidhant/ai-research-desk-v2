@@ -13,20 +13,6 @@ const supabase = createClient(
 
 const FROM_NUMBER    = process.env.TWILIO_WHATSAPP_FROM || "whatsapp:+14155238886";
 const DASHBOARD_URL  = process.env.DASHBOARD_URL || "https://your-app.vercel.app";
-const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-
-async function sendTelegram(chatId, text) {
-  if (!TELEGRAM_TOKEN || !chatId) return;
-  try {
-    await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, text, parse_mode: "Markdown" }),
-    });
-  } catch (err) {
-    console.error(`  [telegram] Send error:`, err.message);
-  }
-}
 
 const twilioClient = (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN)
   ? twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
@@ -213,11 +199,6 @@ async function main() {
       if ((channel === "whatsapp" || channel === "both") && prefs.whatsapp_number && twilioClient) {
         const msg = await twilioClient.messages.create({ from: FROM_NUMBER, to: recipient, body });
         console.log(`  ✓ WhatsApp sent — SID: ${msg.sid}`);
-      }
-      // Telegram
-      if ((channel === "telegram" || channel === "both") && prefs.telegram_chat_id) {
-        await sendTelegram(prefs.telegram_chat_id, body);
-        console.log(`  ✓ Telegram sent → chat_id ${prefs.telegram_chat_id}`);
       }
     }
 
