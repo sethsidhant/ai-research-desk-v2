@@ -11,6 +11,17 @@ export default async function MarketPulsePage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
+  // Fetch user's watchlist industries for sector correlation
+  const { data: watchlistRaw } = await supabase
+    .from('user_stocks')
+    .select('stocks(ticker, stock_name, industry)')
+    .eq('user_id', user.id)
+
+  const userStocks = (watchlistRaw ?? []).map((w: any) => {
+    const s = Array.isArray(w.stocks) ? w.stocks[0] : w.stocks
+    return { ticker: s?.ticker ?? '', stock_name: s?.stock_name ?? '', industry: s?.industry ?? null }
+  }).filter(s => s.ticker)
+
   const [fiiFlowRes, fiiDiiRes, sectorsRes] = await Promise.all([
     supabase
       .from('fii_flow')
@@ -63,7 +74,7 @@ export default async function MarketPulsePage() {
         {fiiDii.length > 0 && <DailyFlowChart data={fiiDii} />}
 
         {sectors.length > 0 ? (
-          <SectorGrid sectors={sectors} />
+          <SectorGrid sectors={sectors} userStocks={userStocks} />
         ) : (
           <div className="bg-white border border-gray-200 rounded-xl p-8 text-center text-gray-400 text-sm">
             No sector data yet — will populate after first FII Data Refresh run.

@@ -13,6 +13,36 @@ type Sector = {
   sparkline_labels: string | null
 }
 
+type UserStock = { ticker: string; stock_name: string; industry: string | null }
+
+// Maps screener stock industry → FII sector name (best-effort)
+const INDUSTRY_TO_FII_SECTOR: Record<string, string> = {
+  'Private Sector Bank':                    'Financial Services',
+  'Other Bank':                             'Financial Services',
+  'Non Banking Financial Company (NBFC)':   'Financial Services',
+  'Life Insurance':                         'Financial Services',
+  'Financial Institution':                  'Financial Services',
+  'Investment Company':                     'Financial Services',
+  'Computers - Software & Consulting':      'Information Technology',
+  'Oil Exploration & Production':           'Oil, Gas & Consumable Fuels',
+  'Refineries & Marketing':                 'Oil, Gas & Consumable Fuels',
+  'Power Generation':                       'Power',
+  'Residential, Commercial Projects':       'Realty',
+  'Civil Construction':                     'Construction',
+  'Passenger Cars & Utility Vehicles':      'Automobile and Auto Components',
+  'Auto Components & Equipments':           'Automobile and Auto Components',
+  'Tractors':                               'Automobile and Auto Components',
+  'Heavy Electrical Equipment':             'Capital Goods',
+  'Compressors, Pumps & Diesel Engines':    'Capital Goods',
+  'Aerospace & Defense':                    'Capital Goods',
+  'Hotels & Resorts':                       'Consumer Services',
+  'E-Retail/ E-Commerce':                   'Consumer Services',
+  'Dairy Products':                         'Fast Moving Consumer Goods',
+  'Personal Care':                          'Fast Moving Consumer Goods',
+  'Plastic Products - Industrial':          'Chemicals',
+  'Telecom':                                'Telecommunication',
+}
+
 function formatCr(val: number | null) {
   if (val == null) return '—'
   const abs = Math.abs(val)
@@ -40,7 +70,15 @@ function Sparkline({ values }: { values: string }) {
   )
 }
 
-export default function SectorGrid({ sectors }: { sectors: Sector[] }) {
+export default function SectorGrid({ sectors, userStocks = [] }: { sectors: Sector[]; userStocks?: UserStock[] }) {
+  // Group user stocks by mapped FII sector
+  const stocksBySector: Record<string, UserStock[]> = {}
+  for (const s of userStocks) {
+    const fiiSector = s.industry ? INDUSTRY_TO_FII_SECTOR[s.industry] : null
+    if (!fiiSector) continue
+    if (!stocksBySector[fiiSector]) stocksBySector[fiiSector] = []
+    stocksBySector[fiiSector].push(s)
+  }
   const [sortBy, setSortBy] = useState<'fortnight' | 'oneyear' | 'aum'>('fortnight')
 
   const sorted = [...sectors].sort((a, b) => {
@@ -70,10 +108,12 @@ export default function SectorGrid({ sectors }: { sectors: Sector[] }) {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {sorted.map(s => {
-          const fortnightUp = (s.fortnight_flow ?? 0) >= 0
-          const oneyearUp   = (s.oneyear_flow   ?? 0) >= 0
+          const fortnightUp  = (s.fortnight_flow ?? 0) >= 0
+          const oneyearUp    = (s.oneyear_flow   ?? 0) >= 0
+          const myStocks     = stocksBySector[s.sector] ?? []
+          const hasMyStocks  = myStocks.length > 0
           return (
-            <div key={s.sector} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+            <div key={s.sector} className={`bg-white border rounded-xl p-4 shadow-sm ${hasMyStocks ? 'border-blue-200 ring-1 ring-blue-100' : 'border-gray-200'}`}>
               <div className="flex justify-between items-start gap-2 mb-1">
                 <div>
                   <div className="text-sm font-semibold text-gray-900 leading-tight">{s.sector}</div>
@@ -95,6 +135,27 @@ export default function SectorGrid({ sectors }: { sectors: Sector[] }) {
                 </div>
                 <div className="text-[10px] text-gray-400">1Y net flow</div>
               </div>
+
+              {hasMyStocks && (
+                <div className="mt-2.5 pt-2.5 border-t border-blue-100">
+                  <div className="text-[9px] font-semibold uppercase tracking-wide text-blue-400 mb-1.5">Your stocks</div>
+                  <div className="flex flex-wrap gap-1">
+                    {myStocks.map(st => (
+                      <span key={st.ticker} title={st.stock_name}
+                        className={`text-[10px] font-mono font-medium px-1.5 py-0.5 rounded-md ${
+                          fortnightUp
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : 'bg-red-50 text-red-700 border border-red-200'
+                        }`}>
+                        {st.ticker}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="text-[9px] text-gray-400 mt-1.5 leading-tight">
+                    FII {fortnightUp ? 'buying' : 'selling'} this sector — {fortnightUp ? 'tailwind' : 'headwind'} for your holdings
+                  </div>
+                </div>
+              )}
             </div>
           )
         })}
