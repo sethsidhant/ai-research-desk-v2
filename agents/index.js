@@ -2,6 +2,7 @@
 // Runs all watchers in a single process
 require('dotenv').config({ path: '../.env.local' });
 
+const userCache         = require('./userCache');
 const listener          = require('./listener');
 const indexWatcher      = require('./indexWatcher');
 const stockWatcher      = require('./stockWatcher');
@@ -31,6 +32,7 @@ async function heartbeat() {
 
 async function main() {
   console.log('[main] Starting all watchers...');
+  userCache.start(); // start shared cache refresh (5 min cycle)
   await ready; // wait for fresh Kite token before first poll
   indexWatcher.start();
   stockWatcher.start();

@@ -43,6 +43,9 @@ const INDUSTRY_TO_FII_SECTOR: Record<string, string> = {
   'Telecom':                                'Telecommunication',
 }
 
+// Sectors from DB may have HTML-encoded ampersands (e.g. "Oil, Gas &amp; Consumable Fuels")
+function decodeSector(s: string) { return s.replace(/&amp;/g, '&') }
+
 function formatCr(val: number | null) {
   if (val == null) return '—'
   const abs = Math.abs(val)
@@ -110,14 +113,15 @@ export default function SectorGrid({ sectors, userStocks = [] }: { sectors: Sect
         {sorted.map(s => {
           const fortnightUp  = (s.fortnight_flow ?? 0) >= 0
           const oneyearUp    = (s.oneyear_flow   ?? 0) >= 0
-          const myStocks     = stocksBySector[s.sector] ?? []
+          const sectorName   = decodeSector(s.sector)
+          const myStocks     = stocksBySector[sectorName] ?? []
           const hasMyStocks  = myStocks.length > 0
-          const anchorId     = 'sector-' + s.sector.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+          const anchorId     = 'sector-' + sectorName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
           return (
             <div key={s.sector} id={anchorId} className={`bg-white border rounded-xl p-4 shadow-sm scroll-mt-6 ${hasMyStocks ? 'border-blue-200 ring-1 ring-blue-100' : 'border-gray-200'}`}>
               <div className="flex justify-between items-start gap-2 mb-1">
                 <div>
-                  <div className="text-sm font-semibold text-gray-900 leading-tight">{s.sector}</div>
+                  <div className="text-sm font-semibold text-gray-900 leading-tight">{sectorName}</div>
                   <div className="text-xs text-gray-400 mt-0.5">{s.aum_pct?.toFixed(1)}% of AUM</div>
                 </div>
                 <div className="text-right shrink-0">

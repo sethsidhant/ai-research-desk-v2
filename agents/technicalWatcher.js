@@ -6,7 +6,9 @@ require('dotenv').config({ path: '../.env.local' });
 const { createClient } = require('@supabase/supabase-js');
 const { quoteMultiple } = require('./kiteClient');
 const { sendToMany }    = require('./telegramAlert');
+const userCache         = require('./userCache');
 
+// Supabase still needed for daily_scores and app_settings (not user prefs)
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY,
@@ -45,24 +47,16 @@ function todayIST() {
 
 // ── Load user prefs + watchlists ──────────────────────────────────────────────
 
-async function loadUsers() {
+function loadUsers() {
   try {
-    const { data: prefs } = await supabase
-      .from('user_alert_preferences')
-      .select('user_id, telegram_chat_id, dma_cross_alert, rsi_oversold_threshold, rsi_overbought_threshold')
-      .not('telegram_chat_id', 'is', null);
+    const prefs = userCache.getPrefs().filter(p => p.telegram_chat_id);
+    if (!prefs.length) { userPrefs = []; return; }
 
-    if (!prefs?.length) { userPrefs = []; return; }
+    const rows = userCache.getUserStocks();
 
-    // Load all user_stocks with instrument tokens in one query
-    const { data: rows } = await supabase
-      .from('user_stocks')
-      .select('user_id, stocks(id, ticker, instrument_token)')
-      .in('user_id', prefs.map(p => p.user_id));
-
-    // Map user_id -> stockIds
+    // Map user_id -> stocks array
     const userStockMap = {};
-    for (const r of rows ?? []) {
+    for (const r of rows) {
       const s = r.stocks;
       if (!s?.ticker || !s?.instrument_token) continue;
       if (!userStockMap[r.user_id]) userStockMap[r.user_id] = [];
@@ -301,7 +295,8 @@ async function poll() {
 
 async function start() {
   await loadRsiAlertedDate();
-  await loadUsers();
+  await userCache.ensureLoaded();
+  loadUsers();
   await loadDMAValues();
   resetAtMidnight();
   setInterval(loadUsers,    REFRESH_USERS_MS);

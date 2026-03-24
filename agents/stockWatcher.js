@@ -1,15 +1,9 @@
 // stockWatcher.js — alerts each user when their watchlist stock moves ±5%, ±10%, ±15% etc intraday
 require('dotenv').config({ path: '../.env.local' });
 
-const { createClient } = require('@supabase/supabase-js');
 const { quoteMultiple } = require('./kiteClient');
 const { sendToMany }    = require('./telegramAlert');
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY,
-  { auth: { autoRefreshToken: false, persistSession: false } }
-);
+const userCache         = require('./userCache');
 
 const THRESHOLD_PCT     = 5.0;   // alert every 5% step
 const POLL_INTERVAL_MS  = 60000;
@@ -19,24 +13,13 @@ const REFRESH_STOCKS_MS = 5 * 60 * 1000;
 let watchlist = {};
 let initialized = false;
 
-async function loadWatchlist() {
+function loadWatchlist() {
   try {
-    // Load all user_stocks with stock data
-    const { data: rows } = await supabase
-      .from('user_stocks')
-      .select('user_id, stocks(ticker, instrument_token)');
-
-    // Load all users with a linked Telegram
-    const { data: prefs } = await supabase
-      .from('user_alert_preferences')
-      .select('user_id, telegram_chat_id')
-      .not('telegram_chat_id', 'is', null);
-
-    const chatIdByUser = {};
-    for (const p of prefs ?? []) chatIdByUser[p.user_id] = p.telegram_chat_id;
+    const rows         = userCache.getUserStocks();
+    const chatIdByUser = userCache.getChatIdByUser();
 
     const updated = {};
-    for (const row of rows ?? []) {
+    for (const row of rows) {
       const s = row.stocks;
       if (!s?.ticker || !s?.instrument_token) continue;
 
@@ -129,7 +112,8 @@ async function poll() {
 }
 
 async function start() {
-  await loadWatchlist();
+  await userCache.ensureLoaded();
+  loadWatchlist();
   resetAtMidnight();
   setInterval(loadWatchlist, REFRESH_STOCKS_MS);
   poll();

@@ -181,10 +181,10 @@ export default function WatchlistTable({
   priceChanges?: Record<string, PriceChange>
   fiiSectors?: { sector: string; fortnight_flow: number | null }[]
 }) {
-  // Build lookup: FII sector name → fortnight_flow
+  // Build lookup: FII sector name → fortnight_flow (decode &amp; → & to match mapping keys)
   const fiiFlowMap: Record<string, number> = {}
   for (const s of fiiSectors) {
-    if (s.sector && s.fortnight_flow != null) fiiFlowMap[s.sector] = s.fortnight_flow
+    if (s.sector && s.fortnight_flow != null) fiiFlowMap[s.sector.replace(/&amp;/g, '&')] = s.fortnight_flow
   }
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null)
   const [panelMode, setPanelMode] = useState<'summary' | 'filings'>('summary')

@@ -1,14 +1,8 @@
 // filingWatcher.js — polls BSE for new filings, alerts users watching that stock
 require('dotenv').config({ path: '../.env.local' });
 
-const { createClient } = require('@supabase/supabase-js');
-const { sendToMany }   = require('./telegramAlert');
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY,
-  { auth: { autoRefreshToken: false, persistSession: false } }
-);
+const { sendToMany } = require('./telegramAlert');
+const userCache      = require('./userCache');
 
 const POLL_INTERVAL_MS  = 10 * 60 * 1000; // 10 min
 const REFRESH_STOCKS_MS = 15 * 60 * 1000; // 15 min
@@ -18,25 +12,19 @@ let bseMap     = {};
 const seenIds  = new Set();
 let initialLoad = true;
 
-async function loadBSECodes() {
+function loadBSECodes() {
   try {
-    // Load all user_stocks with BSE codes
-    const { data: rows } = await supabase
-      .from('user_stocks')
-      .select('user_id, stocks(ticker, bse_code)');
+    const rows  = userCache.getUserStocks();
+    const prefs = userCache.getPrefs();
 
-    // Load users with Telegram linked + filing alerts enabled
-    const { data: prefs } = await supabase
-      .from('user_alert_preferences')
-      .select('user_id, telegram_chat_id')
-      .not('telegram_chat_id', 'is', null)
-      .eq('new_filing_alert', true);
-
+    // Only users with Telegram linked + filing alerts enabled
     const chatIdByUser = {};
-    for (const p of prefs ?? []) chatIdByUser[p.user_id] = p.telegram_chat_id;
+    for (const p of prefs) {
+      if (p.telegram_chat_id && p.new_filing_alert) chatIdByUser[p.user_id] = p.telegram_chat_id;
+    }
 
     const updated = {};
-    for (const row of rows ?? []) {
+    for (const row of rows) {
       const s = row.stocks;
       if (!s?.bse_code) continue;
       const code = String(parseInt(s.bse_code));
@@ -104,7 +92,8 @@ async function poll() {
 }
 
 async function start() {
-  await loadBSECodes();
+  await userCache.ensureLoaded();
+  loadBSECodes();
   setInterval(loadBSECodes, REFRESH_STOCKS_MS);
   await poll(); // initial load to seed seenIds
   setInterval(poll, POLL_INTERVAL_MS);
