@@ -289,22 +289,6 @@ export default async function DashboardPage() {
             <p className="text-xs text-gray-400 mt-0.5 hidden sm:block">{today}</p>
           </div>
           <div className="flex items-center gap-2 sm:gap-4">
-            {fiiDii && (
-              <div className="flex flex-col items-end border border-gray-200 rounded-lg px-2.5 py-1.5 bg-gray-50">
-                <div className="flex items-center gap-2 text-xs font-mono">
-                  <span className={fiiDii.fii_net >= 0 ? 'text-emerald-600' : 'text-red-600'}>
-                    FII {fiiDii.fii_net >= 0 ? '▲' : '▼'} ₹{Math.abs(fiiDii.fii_net).toLocaleString('en-IN', { maximumFractionDigits: 0 })} Cr
-                  </span>
-                  <span className="text-gray-300">|</span>
-                  <span className={fiiDii.dii_net >= 0 ? 'text-emerald-600' : 'text-red-600'}>
-                    DII {fiiDii.dii_net >= 0 ? '▲' : '▼'} ₹{Math.abs(fiiDii.dii_net).toLocaleString('en-IN', { maximumFractionDigits: 0 })} Cr
-                  </span>
-                </div>
-                <div className="text-[10px] text-gray-400 mt-0.5">
-                  {new Date(fiiDii.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                </div>
-              </div>
-            )}
             <span className="text-xs sm:text-sm text-gray-500 hidden sm:block">{user.email}</span>
             {user.email === process.env.ADMIN_EMAIL && (
               <Link
@@ -335,9 +319,32 @@ export default async function DashboardPage() {
             <SignOutButton />
           </div>
         </div>
-        {/* Indices bar — scrollable on mobile */}
-        <div className="mt-2 sm:mt-3 overflow-x-auto">
-          <MarketIndicesBar />
+        {/* Indices bar + FII/DII pill */}
+        <div className="mt-2 sm:mt-3 flex items-center gap-3">
+          <div className="flex-1 overflow-x-auto">
+            <MarketIndicesBar />
+          </div>
+          {fiiDii && (
+            <div className="shrink-0 flex items-center gap-2.5 bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5">
+              <div className="flex flex-col items-center">
+                <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-400">FII</span>
+                <span className={`text-xs font-mono font-semibold ${fiiDii.fii_net >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                  {fiiDii.fii_net >= 0 ? '▲' : '▼'} ₹{Math.abs(fiiDii.fii_net).toLocaleString('en-IN', { maximumFractionDigits: 0 })} Cr
+                </span>
+              </div>
+              <div className="w-px h-6 bg-gray-200" />
+              <div className="flex flex-col items-center">
+                <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-400">DII</span>
+                <span className={`text-xs font-mono font-semibold ${fiiDii.dii_net >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                  {fiiDii.dii_net >= 0 ? '▲' : '▼'} ₹{Math.abs(fiiDii.dii_net).toLocaleString('en-IN', { maximumFractionDigits: 0 })} Cr
+                </span>
+              </div>
+              <div className="w-px h-6 bg-gray-200" />
+              <span className="text-[9px] text-gray-400 leading-tight text-right">
+                {new Date(fiiDii.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+              </span>
+            </div>
+          )}
         </div>
       </header>
 
