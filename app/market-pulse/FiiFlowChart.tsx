@@ -33,9 +33,14 @@ export default function FiiFlowChart({ data }: { data: Point[] }) {
       .filter(d => d.cumulative_net != null && new Date(d.date) >= cutoff)
       .map(d => ({ date: d.date, value: d.cumulative_net as number }))
     // Normalize to start at 0 for the selected period (same as Screener)
+    // Also compute per-period flow (delta from prev point) for tooltip
     if (pts.length > 0) {
       const base = pts[0].value
-      return pts.map(p => ({ ...p, value: parseFloat((p.value - base).toFixed(2)) }))
+      return pts.map((p, i) => ({
+        ...p,
+        value: parseFloat((p.value - base).toFixed(2)),
+        flow: i === 0 ? 0 : parseFloat((p.value - pts[i - 1].value).toFixed(2)),
+      }))
     }
     return pts
   }, [data, period])
@@ -96,13 +101,24 @@ export default function FiiFlowChart({ data }: { data: Point[] }) {
           <Tooltip
             content={({ active, payload }) => {
               if (!active || !payload?.length) return null
-              const v = payload[0].value as number
+              const pt = payload[0].payload
+              const cumVal = pt.value as number
+              const flow   = pt.flow as number
               return (
-                <div className="bg-white border border-gray-200 rounded-lg px-3 py-2 shadow text-xs">
-                  <p className="text-gray-500">{formatDate(payload[0].payload.date)}</p>
-                  <p className={`font-semibold font-mono ${v >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                    {v >= 0 ? '+' : ''}{formatCr(v)}
-                  </p>
+                <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5 shadow text-xs space-y-1">
+                  <p className="text-gray-500 font-medium">{formatDate(pt.date)}</p>
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-gray-400">Period flow</span>
+                    <span className={`font-mono font-semibold ${flow >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                      {flow >= 0 ? '+' : ''}{formatCr(flow)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-gray-400">Cumulative</span>
+                    <span className={`font-mono font-semibold ${cumVal >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                      {cumVal >= 0 ? '+' : ''}{formatCr(cumVal)}
+                    </span>
+                  </div>
                 </div>
               )
             }}
