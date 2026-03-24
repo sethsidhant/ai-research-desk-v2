@@ -29,9 +29,15 @@ export default function FiiFlowChart({ data }: { data: Point[] }) {
     const days = PERIODS.find(p => p.label === period)?.days ?? 365
     const cutoff = new Date()
     cutoff.setDate(cutoff.getDate() - days)
-    return data
+    const pts = data
       .filter(d => d.cumulative_net != null && new Date(d.date) >= cutoff)
       .map(d => ({ date: d.date, value: d.cumulative_net as number }))
+    // Normalize to start at 0 for the selected period (same as Screener)
+    if (pts.length > 0) {
+      const base = pts[0].value
+      return pts.map(p => ({ ...p, value: parseFloat((p.value - base).toFixed(2)) }))
+    }
+    return pts
   }, [data, period])
 
   const latest = filtered[filtered.length - 1]?.value ?? 0
