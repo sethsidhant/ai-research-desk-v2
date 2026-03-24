@@ -42,7 +42,7 @@ export default function DailyFlowChart({ data }: { data: Row[] }) {
               if (!active || !payload?.length) return null
               return (
                 <div className="bg-white border border-gray-200 rounded-lg px-3 py-2 shadow text-xs space-y-1">
-                  <p className="text-gray-500">{new Date(label).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })}</p>
+                  <p className="text-gray-500">{label ? new Date(label).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' }) : ''}</p>
                   {payload.map(p => (
                     <p key={p.name} className="font-mono font-semibold" style={{ color: p.color }}>
                       {p.name}: {(p.value as number) >= 0 ? '+' : ''}₹{((p.value as number) / 1).toLocaleString('en-IN')} Cr
