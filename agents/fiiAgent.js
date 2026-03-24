@@ -148,6 +148,7 @@ async function fetchFIIDIIDaily(nseCookies) {
     .upsert(row, { onConflict: 'date' });
   if (error) throw new Error('fii_dii_daily upsert: ' + error.message);
   console.log(`  ✓ FII/DII daily: ${row.date} | FII net ₹${row.fii_net} Cr | DII net ₹${row.dii_net} Cr`);
+  return row;
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -166,7 +167,28 @@ async function main() {
 
   console.log('Fetching NSE FII/DII daily...');
   const nseSession = await getNSESession();
-  await fetchFIIDIIDaily(nseSession);
+  const dailyRow = await fetchFIIDIIDaily(nseSession);
+
+  // Extend fii_flow with today's NSE data (cumulative = last known + today's fii_net)
+  if (dailyRow) {
+    const { data: latest } = await supabase
+      .from('fii_flow')
+      .select('date, cumulative_net')
+      .order('date', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (latest && dailyRow.date > latest.date) {
+      const newCumulative = parseFloat((latest.cumulative_net + dailyRow.fii_net).toFixed(2));
+      const { error } = await supabase
+        .from('fii_flow')
+        .upsert({ date: dailyRow.date, cumulative_net: newCumulative }, { onConflict: 'date' });
+      if (error) console.warn('  ⚠ fii_flow extend:', error.message);
+      else console.log(`  ✓ fii_flow extended: ${dailyRow.date} cumulative = ${newCumulative}`);
+    } else {
+      console.log(`  · fii_flow already up to date (${latest?.date})`);
+    }
+  }
 
   console.log('\n✅ fiiAgent complete.');
 }
