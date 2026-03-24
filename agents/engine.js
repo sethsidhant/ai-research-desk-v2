@@ -91,6 +91,10 @@ function getDateDimensions(dateStr) {
 
 async function runDailyScoring() {
   try {
+    // Sync Kite token from file (refreshed by cron) into technicalService before any Kite calls
+    const { setKiteToken } = require('./technicalService');
+    setKiteToken(getKiteAccessToken());
+
     const stocks   = await getWatchlistedStocks();
     const todayStr = new Date().toISOString().slice(0, 10);
     const dim      = getDateDimensions(todayStr);

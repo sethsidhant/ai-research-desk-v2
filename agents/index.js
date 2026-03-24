@@ -2,10 +2,11 @@
 // Runs all watchers in a single process
 require('dotenv').config({ path: '../.env.local' });
 
-const listener      = require('./listener');
-const indexWatcher  = require('./indexWatcher');
-const stockWatcher  = require('./stockWatcher');
-const filingWatcher = require('./filingWatcher');
+const listener          = require('./listener');
+const indexWatcher      = require('./indexWatcher');
+const stockWatcher      = require('./stockWatcher');
+const filingWatcher     = require('./filingWatcher');
+const technicalWatcher  = require('./technicalWatcher');
 
 const { ready }    = require('./kiteClient');
 const { createClient } = require('@supabase/supabase-js');
@@ -33,6 +34,7 @@ async function main() {
   indexWatcher.start();
   stockWatcher.start();
   filingWatcher.start();
+  technicalWatcher.start();
   // listener.js starts itself on require
   heartbeat();
   setInterval(heartbeat, 60 * 1000); // update every 60s
