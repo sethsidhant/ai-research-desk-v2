@@ -14,6 +14,7 @@ type Prefs = {
   pl_alert_daily:           boolean
   pl_alert_weekly:          boolean
   pl_alert_monthly:         boolean
+  trump_alerts:             boolean
   telegram_chat_id:         string | null
 }
 
@@ -201,6 +202,20 @@ export default function SettingsForm({ prefs }: { prefs: Prefs }) {
             label="New BSE filing alert"
             description="Alert when a new corporate announcement is filed on BSE"
             defaultChecked={prefs.new_filing_alert}
+          />
+        </div>
+      </section>
+
+      {/* Trump / Market News Alerts */}
+      <section>
+        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">Trump Market Alerts</h2>
+        <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm space-y-4">
+          <p className="text-xs text-gray-400">Get instant Telegram alerts when Trump posts on Truth Social about tariffs, trade, China, Fed, energy, pharma, tech, or other market-moving topics.</p>
+          <Toggle
+            name="trump_alerts"
+            label="🇺🇸 Trump post alerts"
+            description="Real-time alert when a market-relevant Truth Social post is detected"
+            defaultChecked={prefs.trump_alerts}
           />
         </div>
       </section>

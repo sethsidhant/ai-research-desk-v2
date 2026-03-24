@@ -16,6 +16,7 @@ const DEFAULT_PREFS = {
   pl_alert_daily:           false,
   pl_alert_weekly:          false,
   pl_alert_monthly:         false,
+  trump_alerts:             false,
 }
 
 export default async function SettingsPage() {

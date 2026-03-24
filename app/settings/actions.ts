@@ -19,6 +19,7 @@ export async function saveAlertPreferences(formData: FormData) {
     pl_alert_daily:           formData.get('pl_alert_daily')   === 'on',
     pl_alert_weekly:          formData.get('pl_alert_weekly')  === 'on',
     pl_alert_monthly:         formData.get('pl_alert_monthly') === 'on',
+    trump_alerts:             formData.get('trump_alerts')     === 'on',
   }
 
   const { error } = await supabase
