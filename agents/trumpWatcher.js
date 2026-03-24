@@ -1,6 +1,5 @@
 // trumpWatcher.js — monitors Trump's Truth Social posts for market-relevant content
 require('dotenv').config({ path: '../.env.local' });
-const Parser    = require('rss-parser');
 const { createClient } = require('@supabase/supabase-js');
 const { sendToMany }   = require('./telegramAlert');
 
@@ -70,7 +69,7 @@ async function getOptedInChatIds() {
 
 // ── Build Telegram message ─────────────────────────────────────────────────────
 function buildMessage(item, matchedCategories) {
-  const content = (item.contentSnippet || item.content || item.title || '').replace(/<[^>]+>/g, '').trim()
+  const content = (item.content || item.title || '').trim()
   const preview = content.length > 600 ? content.slice(0, 597) + '...' : content
   const date    = item.pubDate ? new Date(item.pubDate).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''
 
@@ -89,19 +88,46 @@ function buildMessage(item, matchedCategories) {
   return lines.join('\n')
 }
 
+// ── Manual RSS parser (handles malformed XML from Truth Social) ───────────────
+function extractTag(xml, tag) {
+  const m = xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'))
+  return m ? m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim() : ''
+}
+
+function extractAttr(xml, tag, attr) {
+  const m = xml.match(new RegExp(`<${tag}[^>]*\\s${attr}="([^"]*)"`, 'i'))
+  return m ? m[1] : ''
+}
+
+function parseItems(raw) {
+  const items = []
+  const itemRe = /<item>([\s\S]*?)<\/item>/gi
+  let m
+  while ((m = itemRe.exec(raw)) !== null) {
+    const chunk = m[1]
+    const title   = extractTag(chunk, 'title')
+    const link    = extractTag(chunk, 'link') || extractAttr(chunk, 'link', 'href')
+    const guid    = extractTag(chunk, 'guid') || link
+    const pubDate = extractTag(chunk, 'pubDate')
+    const content = extractTag(chunk, 'content:encoded') || extractTag(chunk, 'description')
+    const snippet = content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 800)
+    items.push({ title, link, guid, pubDate, content: snippet })
+  }
+  return items
+}
+
 // ── Poll RSS ───────────────────────────────────────────────────────────────────
 async function poll() {
   try {
-    const parser = new Parser({
+    const res = await fetch(RSS_URL, {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RSS reader)' },
-      timeout: 15000,
+      signal: AbortSignal.timeout(15000),
     })
-    const feed = await parser.parseURL(RSS_URL)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const raw = await res.text()
+    const items = parseItems(raw)
 
-    const newItems = (feed.items ?? []).filter(item => {
-      const guid = item.guid || item.link || item.title
-      return guid && !seenGuids.has(guid)
-    })
+    const newItems = items.filter(item => item.guid && !seenGuids.has(item.guid))
 
     if (newItems.length === 0) {
       console.log(`[trumpWatcher] No new posts`)
@@ -115,7 +141,7 @@ async function poll() {
       const guid = item.guid || item.link || item.title
       seenGuids.add(guid)
 
-      const text = [item.title, item.contentSnippet, item.content].filter(Boolean).join(' ')
+      const text = [item.title, item.content].filter(Boolean).join(' ')
       const matched = detectCategories(text)
 
       if (matched.length === 0) {
