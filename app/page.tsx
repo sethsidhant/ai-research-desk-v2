@@ -319,29 +319,29 @@ export default async function DashboardPage() {
             <SignOutButton />
           </div>
         </div>
-        {/* Indices bar + FII/DII pill */}
-        <div className="mt-2 sm:mt-3 flex items-center gap-3">
+        {/* Indices bar + FII/DII: stacked on mobile, side-by-side on desktop */}
+        <div className="mt-2 sm:mt-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
           <div className="flex-1 overflow-x-auto">
             <MarketIndicesBar />
           </div>
           {fiiDii && (
-            <div className="shrink-0 flex items-center gap-2.5 bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5">
-              <div className="flex flex-col items-center">
+            <div className="shrink-0 flex items-center gap-2.5 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 sm:py-1.5">
+              <div className="flex items-center gap-1.5 sm:flex-col sm:items-center sm:gap-0">
                 <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-400">FII</span>
                 <span className={`text-xs font-mono font-semibold ${fiiDii.fii_net >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
                   {fiiDii.fii_net >= 0 ? '▲' : '▼'} ₹{Math.abs(fiiDii.fii_net).toLocaleString('en-IN', { maximumFractionDigits: 0 })} Cr
                 </span>
               </div>
-              <div className="w-px h-6 bg-gray-200" />
-              <div className="flex flex-col items-center">
+              <div className="w-px h-5 bg-gray-200" />
+              <div className="flex items-center gap-1.5 sm:flex-col sm:items-center sm:gap-0">
                 <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-400">DII</span>
                 <span className={`text-xs font-mono font-semibold ${fiiDii.dii_net >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
                   {fiiDii.dii_net >= 0 ? '▲' : '▼'} ₹{Math.abs(fiiDii.dii_net).toLocaleString('en-IN', { maximumFractionDigits: 0 })} Cr
                 </span>
               </div>
-              <div className="w-px h-6 bg-gray-200" />
-              <span className="text-[9px] text-gray-400 leading-tight text-right">
-                {new Date(fiiDii.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+              <div className="w-px h-5 bg-gray-200" />
+              <span className="text-[9px] text-gray-400 leading-tight">
+                {new Date(fiiDii.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
               </span>
             </div>
           )}
