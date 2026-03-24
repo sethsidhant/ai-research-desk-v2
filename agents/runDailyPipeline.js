@@ -3,7 +3,6 @@
 //   1. engine       — score all watchlisted stocks
 //   2. newsAgent    — fetch BSE filings + news
 //   3. summaryAgent — generate AI summaries
-//   4. whatsappNotifier — send alerts
 //
 // Run daily at ~3:05 AM Dublin (8:35 AM IST), after refreshKiteToken.js
 
@@ -76,7 +75,6 @@ async function main() {
   run('engine.js');
   run('newsAgent.js');
   run('summaryAgent.js');
-  run('whatsappNotifier.js');
 
   console.log(`\n${'═'.repeat(60)}`);
   console.log(`✅ Daily pipeline complete — ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST`);

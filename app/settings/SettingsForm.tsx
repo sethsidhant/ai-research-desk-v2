@@ -11,8 +11,6 @@ type Prefs = {
   pct_from_high_threshold:  number
   new_filing_alert:         boolean
   digest_time:              string
-  whatsapp_number:          string | null
-  alert_channel:            string | null
   pl_alert_daily:           boolean
   pl_alert_weekly:          boolean
   pl_alert_monthly:         boolean
@@ -101,7 +99,6 @@ function TelegramConnect({ linked }: { linked: boolean }) {
 export default function SettingsForm({ prefs }: { prefs: Prefs }) {
   const [status, setStatus]   = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
-  const [channel, setChannel] = useState(prefs.alert_channel ?? 'whatsapp')
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -125,56 +122,11 @@ export default function SettingsForm({ prefs }: { prefs: Prefs }) {
         <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">Notifications</h2>
         <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm space-y-5">
 
-          {/* Channel selector */}
-          <div>
-            <label className="block text-sm text-gray-600 mb-3">Alert channel</label>
-            <input type="hidden" name="alert_channel" value={channel} />
-            <div className="flex flex-wrap gap-2">
-              {(['email', 'whatsapp', 'telegram', 'both'] as const).map(opt => (
-                <button
-                  key={opt}
-                  type="button"
-                  onClick={() => setChannel(opt)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors capitalize ${
-                    channel === opt
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
-                  }`}
-                >
-                  {opt === 'both' ? 'All channels' : opt.charAt(0).toUpperCase() + opt.slice(1)}
-                </button>
-              ))}
-            </div>
-            <p className="text-xs text-gray-400 mt-2">
-              {channel === 'email'    && 'Alerts sent to your login email address.'}
-              {channel === 'whatsapp' && 'Alerts sent via WhatsApp. Enter your number below.'}
-              {channel === 'telegram' && 'Alerts sent via Telegram. Connect your account below.'}
-              {channel === 'both'     && 'Alerts sent via WhatsApp, Telegram, and email.'}
-            </p>
+          {/* Telegram connect */}
+          <div className="rounded-lg border border-gray-200 p-4 bg-gray-50">
+            <div className="text-sm font-medium text-gray-700 mb-2">Telegram</div>
+            <TelegramConnect linked={!!prefs.telegram_chat_id} />
           </div>
-
-          {/* WhatsApp number — shown only when whatsapp or both */}
-          {(channel === 'whatsapp' || channel === 'both') && (
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">WhatsApp number</label>
-              <input
-                type="text"
-                name="whatsapp_number"
-                defaultValue={prefs.whatsapp_number ?? ''}
-                placeholder="+919876543210"
-                className="w-full px-4 py-2.5 rounded-lg bg-white text-gray-900 border border-gray-300 focus:outline-none focus:border-blue-500 text-sm"
-              />
-              <p className="text-xs text-gray-400 mt-1">Include country code. E.g. +919876543210</p>
-            </div>
-          )}
-
-          {/* Telegram connect — shown only when telegram or both */}
-          {(channel === 'telegram' || channel === 'both') && (
-            <div className="rounded-lg border border-gray-200 p-4 bg-gray-50">
-              <div className="text-sm font-medium text-gray-700 mb-2">Telegram</div>
-              <TelegramConnect linked={!!prefs.telegram_chat_id} />
-            </div>
-          )}
 
           {/* Digest time */}
           <div>

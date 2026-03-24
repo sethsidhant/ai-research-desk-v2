@@ -31,7 +31,7 @@ jobs:
           EOF
 
       - name: Send daily digest
-        run: node whatsappNotifier.js
+        run: node telegramNotifier.js
         working-directory: agents
 
       - name: Write heartbeat
