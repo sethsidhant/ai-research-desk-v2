@@ -39,6 +39,18 @@ jobs:
           ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
           EOF
 
+      - name: Fetch fresh Kite token from Supabase
+        run: |
+          TOKEN=$(curl -s "${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}/rest/v1/app_settings?key=eq.kite_access_token&select=value" \
+            -H "apikey: ${{ secrets.SUPABASE_SERVICE_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}" | jq -r '.[0].value')
+          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+            echo "⚠ Could not fetch token from Supabase — falling back to secret"
+          else
+            echo "$TOKEN" > .kite_token
+            echo "✓ Fresh token written to .kite_token (${TOKEN:0:8}...)"
+          fi
+
       - name: Backfill EOD closes (Kite historical)
         run: node backfillHistory.js
         working-directory: agents
