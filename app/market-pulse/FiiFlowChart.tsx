@@ -6,16 +6,22 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip, ReferenceLine, ResponsiveContai
 type Point = { date: string; cumulative_net: number | null }
 
 const PERIODS = [
-  { label: '1Y', days: 365 },
-  { label: '3Y', days: 1095 },
-  { label: '5Y', days: 1825 },
+  { label: '1Y', years: 1 },
+  { label: '3Y', years: 3 },
+  { label: '5Y', years: 5 },
 ]
 
+// Compact format for Y-axis ticks
 function formatCr(val: number) {
   const abs = Math.abs(val)
-  if (abs >= 100000) return `${(val / 100000).toFixed(1)}L Cr`
-  if (abs >= 1000)   return `${(val / 1000).toFixed(1)}k Cr`
-  return `${val.toFixed(0)} Cr`
+  if (abs >= 100000) return `${(val / 100000).toFixed(1)}L`
+  if (abs >= 1000)   return `${(val / 1000).toFixed(1)}k`
+  return `${val.toFixed(0)}`
+}
+
+// Exact format for tooltip (e.g. -10,414 Cr)
+function exactCr(val: number) {
+  return `${val >= 0 ? '+' : ''}₹${Math.round(val).toLocaleString('en-IN')} Cr`
 }
 
 function formatDate(d: string) {
@@ -26,9 +32,11 @@ export default function FiiFlowChart({ data }: { data: Point[] }) {
   const [period, setPeriod] = useState('1Y')
 
   const filtered = useMemo(() => {
-    const days = PERIODS.find(p => p.label === period)?.days ?? 365
-    const cutoff = new Date()
-    cutoff.setDate(cutoff.getDate() - days)
+    const years = PERIODS.find(p => p.label === period)?.years ?? 1
+    // Anchor to last data point date (not today), subtract whole years — matches Screener
+    const lastDataDate = data.length ? new Date(data[data.length - 1].date) : new Date()
+    const cutoff = new Date(lastDataDate)
+    cutoff.setFullYear(cutoff.getFullYear() - years)
     const pts = data
       .filter(d => d.cumulative_net != null && new Date(d.date) >= cutoff)
       .map(d => ({ date: d.date, value: d.cumulative_net as number }))
@@ -59,11 +67,11 @@ export default function FiiFlowChart({ data }: { data: Point[] }) {
           <h2 className="text-base font-semibold text-gray-900">Cumulative FII Net Flow (₹ Cr)</h2>
           <div className="flex items-center gap-2 mt-0.5">
             <p className={`text-sm font-mono font-semibold ${isPositive ? 'text-emerald-600' : 'text-red-600'}`}>
-              {isPositive ? '+' : ''}{formatCr(periodChange)}
+              {exactCr(periodChange)}
             </p>
             <span className="text-xs text-gray-400">{period} change</span>
             <span className="text-xs text-gray-300">·</span>
-            <span className="text-xs text-gray-400 font-mono">{formatCr(latest)} total</span>
+            <span className="text-xs text-gray-400 font-mono">{exactCr(latest)} total</span>
           </div>
         </div>
         <div className="flex gap-1">
@@ -117,18 +125,18 @@ export default function FiiFlowChart({ data }: { data: Point[] }) {
                   <div className="flex items-center justify-between gap-4">
                     <span className="text-gray-400">Day flow</span>
                     <span className={`font-mono font-semibold ${pt.dayFlow >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                      {pt.dayFlow >= 0 ? '+' : ''}{formatCr(pt.dayFlow)}
+                      {exactCr(pt.dayFlow)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-4">
                     <span className="text-gray-400">1W flow</span>
                     <span className={`font-mono font-semibold ${pt.weekFlow >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                      {pt.weekFlow >= 0 ? '+' : ''}{formatCr(pt.weekFlow)}
+                      {exactCr(pt.weekFlow)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-4 pt-0.5 border-t border-gray-100">
                     <span className="text-gray-400">Cumulative</span>
-                    <span className="font-mono text-gray-600">{formatCr(pt.value)}</span>
+                    <span className="font-mono text-gray-600">{exactCr(pt.value)}</span>
                   </div>
                 </div>
               )
