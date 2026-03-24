@@ -93,4 +93,21 @@ async function getIndexHistory(fromDate) {
   return data ?? [];
 }
 
-module.exports = { getAllStocks, getWatchlistedStocks, upsertStock, upsertDailyScore, insertHistory, closePool, logApiUsage, upsertIndexHistory, getIndexHistory };
+async function upsertFiiFlow(rows) {
+  if (!rows.length) return;
+  const { error } = await supabase.from('fii_flow').upsert(rows, { onConflict: 'date' });
+  if (error) console.error('[upsertFiiFlow]', error.message);
+}
+
+async function upsertFiiSectors(rows) {
+  if (!rows.length) return;
+  const { error } = await supabase.from('fii_sector').upsert(rows, { onConflict: 'sector' });
+  if (error) console.error('[upsertFiiSectors]', error.message);
+}
+
+async function upsertFiiDiiDaily(row) {
+  const { error } = await supabase.from('fii_dii_daily').upsert(row, { onConflict: 'date' });
+  if (error) console.error('[upsertFiiDiiDaily]', error.message);
+}
+
+module.exports = { getAllStocks, getWatchlistedStocks, upsertStock, upsertDailyScore, insertHistory, closePool, logApiUsage, upsertIndexHistory, getIndexHistory, upsertFiiFlow, upsertFiiSectors, upsertFiiDiiDaily };
