@@ -25,7 +25,7 @@ function applyFilter(rows: WatchlistRow[], filter: FilterKey): WatchlistRow[] {
   }
 }
 
-export default function LivePriceTable({ initialRows, chartData }: { initialRows: WatchlistRow[]; chartData: ChartPoint[] }) {
+export default function LivePriceTable({ initialRows, chartData, fiiSectors = [] }: { initialRows: WatchlistRow[]; chartData: ChartPoint[]; fiiSectors?: { sector: string; fortnight_flow: number | null }[] }) {
   const [rows, setRows]             = useState<WatchlistRow[]>(initialRows)
   const [marketOpen, setMarketOpen] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
@@ -184,7 +184,7 @@ export default function LivePriceTable({ initialRows, chartData }: { initialRows
         })}
       </div>
 
-      <WatchlistTable rows={applyFilter(rows, activeFilter)} priceFlashes={flashes} priceChanges={changes} />
+      <WatchlistTable rows={applyFilter(rows, activeFilter)} priceFlashes={flashes} priceChanges={changes} fiiSectors={fiiSectors} />
     </div>
   )
 }

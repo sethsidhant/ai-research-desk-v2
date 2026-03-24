@@ -112,8 +112,9 @@ export default function SectorGrid({ sectors, userStocks = [] }: { sectors: Sect
           const oneyearUp    = (s.oneyear_flow   ?? 0) >= 0
           const myStocks     = stocksBySector[s.sector] ?? []
           const hasMyStocks  = myStocks.length > 0
+          const anchorId     = 'sector-' + s.sector.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
           return (
-            <div key={s.sector} className={`bg-white border rounded-xl p-4 shadow-sm ${hasMyStocks ? 'border-blue-200 ring-1 ring-blue-100' : 'border-gray-200'}`}>
+            <div key={s.sector} id={anchorId} className={`bg-white border rounded-xl p-4 shadow-sm scroll-mt-6 ${hasMyStocks ? 'border-blue-200 ring-1 ring-blue-100' : 'border-gray-200'}`}>
               <div className="flex justify-between items-start gap-2 mb-1">
                 <div>
                   <div className="text-sm font-semibold text-gray-900 leading-tight">{s.sector}</div>

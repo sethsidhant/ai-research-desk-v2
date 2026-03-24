@@ -1,7 +1,40 @@
 'use client'
 
 import React, { useState } from 'react'
+import Link from 'next/link'
 import ClassificationBadge, { getValuationBand, peDeviationColor } from './ClassificationBadge'
+
+// Maps stock industry → FII sector name (shared with SectorGrid)
+const INDUSTRY_TO_FII_SECTOR: Record<string, string> = {
+  'Private Sector Bank':                    'Financial Services',
+  'Other Bank':                             'Financial Services',
+  'Non Banking Financial Company (NBFC)':   'Financial Services',
+  'Life Insurance':                         'Financial Services',
+  'Financial Institution':                  'Financial Services',
+  'Investment Company':                     'Financial Services',
+  'Computers - Software & Consulting':      'Information Technology',
+  'Oil Exploration & Production':           'Oil, Gas & Consumable Fuels',
+  'Refineries & Marketing':                 'Oil, Gas & Consumable Fuels',
+  'Power Generation':                       'Power',
+  'Residential, Commercial Projects':       'Realty',
+  'Civil Construction':                     'Construction',
+  'Passenger Cars & Utility Vehicles':      'Automobile and Auto Components',
+  'Auto Components & Equipments':           'Automobile and Auto Components',
+  'Tractors':                               'Automobile and Auto Components',
+  'Heavy Electrical Equipment':             'Capital Goods',
+  'Compressors, Pumps & Diesel Engines':    'Capital Goods',
+  'Aerospace & Defense':                    'Capital Goods',
+  'Hotels & Resorts':                       'Consumer Services',
+  'E-Retail/ E-Commerce':                   'Consumer Services',
+  'Dairy Products':                         'Fast Moving Consumer Goods',
+  'Personal Care':                          'Fast Moving Consumer Goods',
+  'Plastic Products - Industrial':          'Chemicals',
+  'Telecom':                                'Telecommunication',
+}
+
+function sectorSlug(name: string) {
+  return 'sector-' + name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+}
 import StockSummaryPanel from './StockSummaryPanel'
 import FundamentalsDrawer from './FundamentalsDrawer'
 import StockChartPanel from './StockChartPanel'
@@ -141,11 +174,18 @@ export default function WatchlistTable({
   rows,
   priceFlashes,
   priceChanges,
+  fiiSectors = [],
 }: {
   rows: WatchlistRow[]
   priceFlashes?: Record<string, 'up' | 'down' | null>
   priceChanges?: Record<string, PriceChange>
+  fiiSectors?: { sector: string; fortnight_flow: number | null }[]
 }) {
+  // Build lookup: FII sector name → fortnight_flow
+  const fiiFlowMap: Record<string, number> = {}
+  for (const s of fiiSectors) {
+    if (s.sector && s.fortnight_flow != null) fiiFlowMap[s.sector] = s.fortnight_flow
+  }
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null)
   const [panelMode, setPanelMode] = useState<'summary' | 'filings'>('summary')
   const [fundamentalsRow, setFundamentalsRow] = useState<WatchlistRow | null>(null)
@@ -218,16 +258,39 @@ export default function WatchlistTable({
 
             return (
               <React.Fragment key={r.stock_id}>
-              {showDivider && (
-                <tr className="bg-gray-50 border-t-2 border-gray-200">
-                  <td colSpan={14} className="px-4 py-1.5 text-xs font-semibold text-gray-400 uppercase tracking-widest">
-                    {r.industry ?? 'Other'}
-                    {r.industry_pe != null && (
-                      <span className="ml-2 normal-case text-gray-500 font-bold">· Ind PE {r.industry_pe.toFixed(1)}x</span>
-                    )}
-                  </td>
-                </tr>
-              )}
+              {showDivider && (() => {
+                const fiiSector  = r.industry ? INDUSTRY_TO_FII_SECTOR[r.industry] : null
+                const flow       = fiiSector ? fiiFlowMap[fiiSector] : undefined
+                const hasFlow    = flow != null
+                const flowUp     = hasFlow && flow >= 0
+                return (
+                  <tr className="bg-gray-50 border-t-2 border-gray-200">
+                    <td colSpan={14} className="px-4 py-1.5">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
+                          {r.industry ?? 'Other'}
+                        </span>
+                        {r.industry_pe != null && (
+                          <span className="text-xs text-gray-500 font-bold normal-case">· Ind PE {r.industry_pe.toFixed(1)}x</span>
+                        )}
+                        {hasFlow && fiiSector && (
+                          <Link
+                            href={`/market-pulse#${sectorSlug(fiiSector)}`}
+                            className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-md border transition-colors hover:opacity-80 ${
+                              flowUp
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : 'bg-red-50 text-red-700 border-red-200'
+                            }`}
+                          >
+                            {flowUp ? '▲' : '▼'} FII {flowUp ? '+' : ''}₹{Math.round(flow).toLocaleString('en-IN')} Cr
+                            <span className="opacity-60">↗</span>
+                          </Link>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })()}
               {isPending ? (
                 <tr className={`border-b border-gray-100 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
                   <td className="px-4 py-3">

@@ -269,6 +269,10 @@ export default async function DashboardPage() {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
   })
 
+  const { data: fiiSectors } = await supabase
+    .from('fii_sector')
+    .select('sector, fortnight_flow')
+
   const { data: fiiDiiRow } = await supabase
     .from('fii_dii_daily')
     .select('date, fii_net, dii_net')
@@ -350,7 +354,7 @@ export default async function DashboardPage() {
 
       {/* Main content */}
       <main className="px-3 sm:px-6 py-4 sm:py-8 max-w-screen-xl mx-auto">
-        <LivePriceTable initialRows={rows} chartData={chartData} />
+        <LivePriceTable initialRows={rows} chartData={chartData} fiiSectors={fiiSectors ?? []} />
       </main>
     </div>
   )
