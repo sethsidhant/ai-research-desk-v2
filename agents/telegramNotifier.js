@@ -52,8 +52,24 @@ function buildPlDigest(plStocks, label) {
   return lines.join("\n");
 }
 
+// ── FII/DII section ───────────────────────────────────────────────────────────
+function buildFiiDiiSection(fiiDii) {
+  if (!fiiDii) return null;
+  const fiiNet = fiiDii.fii_net;
+  const diiNet = fiiDii.dii_net;
+  const fiiUp  = fiiNet >= 0;
+  const diiUp  = diiNet >= 0;
+  const fmt    = v => `₹${Math.abs(v).toLocaleString("en-IN", { maximumFractionDigits: 0 })} Cr`;
+  return [
+    "🌍 *FII / DII Activity*",
+    "",
+    `${fiiUp ? "🟢" : "🔴"} FII: ${fiiUp ? "+" : "-"}${fmt(fiiNet)} net ${fiiUp ? "buying" : "selling"}`,
+    `${diiUp ? "🟢" : "🔴"} DII: ${diiUp ? "+" : "-"}${fmt(diiNet)} net ${diiUp ? "buying" : "selling"}`,
+  ].join("\n");
+}
+
 // ── Build digest for one user ─────────────────────────────────────────────────
-function buildDigest(stocks, prefs) {
+function buildDigest(stocks, prefs, fiiDii) {
   const oversoldThreshold   = prefs?.rsi_oversold_threshold   ?? 30;
   const overboughtThreshold = prefs?.rsi_overbought_threshold ?? 70;
 
@@ -64,6 +80,10 @@ function buildDigest(stocks, prefs) {
   const lines = [];
   lines.push(`📊 *Research Desk — ${today}*`);
   lines.push("");
+
+  // FII/DII
+  const fiiSection = buildFiiDiiSection(fiiDii);
+  if (fiiSection) { lines.push(fiiSection); lines.push(""); lines.push("─────────────────────"); lines.push(""); }
 
   // RSI Signals
   const oversold       = stocks.filter(s => s.rsi != null && s.rsi < oversoldThreshold);
@@ -130,6 +150,15 @@ async function main() {
 
   console.log(`Found ${allPrefs.length} user(s) with Telegram\n`);
 
+  // Fetch today's FII/DII — shown to all users
+  const { data: fiiDiiRows } = await supabase
+    .from("fii_dii_daily")
+    .select("date, fii_net, dii_net")
+    .order("date", { ascending: false })
+    .limit(1);
+  const fiiDii = fiiDiiRows?.[0] ?? null;
+  if (fiiDii) console.log(`FII/DII: ${fiiDii.date} | FII ${fiiDii.fii_net} | DII ${fiiDii.dii_net}`);
+
   for (const prefs of allPrefs) {
     console.log(`Processing user ${prefs.user_id}...`);
 
@@ -178,7 +207,7 @@ async function main() {
       .filter(Boolean);
 
     // 1. Main RSI/DMA digest
-    const message = buildDigest(digestStocks, prefs);
+    const message = buildDigest(digestStocks, prefs, fiiDii);
     await sendToMany([prefs.telegram_chat_id], message);
     console.log(`  ✓ Digest sent`);
 

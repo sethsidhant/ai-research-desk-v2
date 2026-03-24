@@ -1,12 +1,12 @@
-name: Daily Digest
+name: Evening Digest
 
 on:
-  workflow_dispatch:            # triggered via cron-job.org or manually from GitHub UI
+  workflow_dispatch:   # triggered via cron-job.org daily at 7:00 PM IST (1:30 PM UTC)
 
 jobs:
   digest:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v5
@@ -26,11 +26,17 @@ jobs:
           cat > .env.local << 'EOF'
           NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_KEY=${{ secrets.SUPABASE_SERVICE_KEY }}
+          SCREENER_EMAIL=${{ secrets.SCREENER_EMAIL }}
+          SCREENER_PASSWORD=${{ secrets.SCREENER_PASSWORD }}
           TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
           DASHBOARD_URL=${{ secrets.DASHBOARD_URL }}
           EOF
 
-      - name: Send daily digest
+      - name: Fetch FII/DII data
+        run: node fiiAgent.js
+        working-directory: agents
+
+      - name: Send evening digest
         run: node telegramNotifier.js
         working-directory: agents
 
@@ -42,3 +48,10 @@ jobs:
             -H "Content-Type: application/json" \
             -H "Prefer: resolution=merge-duplicates" \
             -d "{\"key\":\"cron_digest_last_run\",\"value\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "{\"chat_id\":\"${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}\",\"text\":\"❌ Evening Digest failed\nhttps://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\",\"parse_mode\":\"Markdown\"}"
