@@ -65,20 +65,36 @@ export type AlertPrefs = {
   new_filing_alert:         boolean
 }
 
+const DEFAULT_INVESTED = 50000
+
 export async function addToWatchlist(stockId: string, alerts: AlertPrefs, investedAmount?: number, entryPrice?: number) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Not authenticated' }
 
-  // Fetch index levels from Kite for relative performance tracking
-  let nifty50: number | null = null
-  let nifty500: number | null = null
+  // Fetch stock details (needed for Kite price + onboarding)
+  const { data: stock } = await supabase
+    .from('stocks')
+    .select('ticker, instrument_token, current_price, fundamentals_updated_at')
+    .eq('id', stockId)
+    .single()
 
-  const kite = await fetchKitePrices(null)
-  nifty50  = kite.nifty50
-  nifty500 = kite.nifty500
+  // Fetch Kite prices — stock + indices in one call
+  const kite = await fetchKitePrices(stock?.instrument_token ?? null)
 
-  // If Kite failed, fall back to latest index_history close
+  // Default entry price: Kite live price → DB current_price
+  const resolvedEntryPrice = (entryPrice && entryPrice > 0)
+    ? entryPrice
+    : (kite.stockPrice ?? stock?.current_price ?? null)
+
+  // Default invested amount: ₹50,000
+  const resolvedInvestedAmount = (investedAmount && investedAmount > 0)
+    ? investedAmount
+    : DEFAULT_INVESTED
+
+  // Nifty entry levels — fall back to index_history if Kite failed
+  let nifty50  = kite.nifty50
+  let nifty500 = kite.nifty500
   if (!nifty50 || !nifty500) {
     const admin = createAdminClient()
     const { data: idx } = await admin
@@ -101,8 +117,8 @@ export async function addToWatchlist(stockId: string, alerts: AlertPrefs, invest
       dma_cross_alert:          alerts.dma_cross_alert,
       pct_from_high_threshold:  alerts.pct_from_high_threshold,
       new_filing_alert:         alerts.new_filing_alert,
-      invested_amount:  investedAmount && investedAmount > 0 ? investedAmount : null,
-      entry_price:      entryPrice && entryPrice > 0 ? entryPrice : null,
+      invested_amount:  resolvedInvestedAmount,
+      entry_price:      resolvedEntryPrice,
       nifty50_entry:    nifty50,
       nifty500_entry:   nifty500,
     })
@@ -110,11 +126,6 @@ export async function addToWatchlist(stockId: string, alerts: AlertPrefs, invest
   if (error) return { error: error.message }
 
   // Trigger on-demand scoring in background (fire-and-forget)
-  const { data: stock } = await supabase
-    .from('stocks')
-    .select('ticker, fundamentals_updated_at')
-    .eq('id', stockId)
-    .single()
 
   if (stock?.ticker) {
     const today = new Date().toISOString().slice(0, 10)

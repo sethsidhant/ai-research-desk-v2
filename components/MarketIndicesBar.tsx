@@ -139,14 +139,16 @@ function HeatmapModal({
 }
 
 function BroadCard({
-  idx, flash, breadth, stale, onClick, active,
+  idx, flash, breadth, stale, onClick, active, topMover, topLoser,
 }: {
-  idx:      IndexQuote
-  flash:    'up' | 'down' | null
-  breadth?: Breadth | null
-  stale?:   boolean
-  onClick?: () => void
-  active?:  boolean
+  idx:       IndexQuote
+  flash:     'up' | 'down' | null
+  breadth?:  Breadth | null
+  stale?:    boolean
+  onClick?:  () => void
+  active?:   boolean
+  topMover?: StockTile | null
+  topLoser?: StockTile | null
 }) {
   const up          = idx.change >= 0
   const bgFlash     = flash === 'up' ? 'bg-emerald-50' : flash === 'down' ? 'bg-red-50' : 'bg-white'
@@ -186,6 +188,22 @@ function BroadCard({
         {up ? '▲' : '▼'} {Math.abs(idx.change).toFixed(1)} ({Math.abs(idx.changePct).toFixed(2)}%)
       </span>
       {showBreadth && <BreadthBar breadth={breadth!} stale={stale} />}
+      {(topMover || topLoser) && (
+        <div className="mt-1.5 pt-1.5 border-t border-gray-100 space-y-0.5">
+          {topMover && (
+            <div className="flex items-center justify-between gap-1">
+              <span className="text-[9px] font-mono text-gray-500 truncate">{topMover.sym}</span>
+              <span className="text-[9px] font-bold font-mono text-emerald-600">+{topMover.changePct.toFixed(1)}%</span>
+            </div>
+          )}
+          {topLoser && (
+            <div className="flex items-center justify-between gap-1">
+              <span className="text-[9px] font-mono text-gray-500 truncate">{topLoser.sym}</span>
+              <span className="text-[9px] font-bold font-mono text-red-500">{topLoser.changePct.toFixed(1)}%</span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -211,6 +229,7 @@ export default function MarketIndicesBar() {
   const [bankTiles, setBankTiles]     = useState<StockTile[]>([])
   const [stale, setStale]             = useState(false)
   const [openModal, setOpenModal]     = useState<'nifty50' | 'banknifty' | null>(null)
+  const [loading, setLoading]         = useState(true)
   const prevRef                       = useRef<Record<string, number>>({})
   const [flashes, setFlashes]         = useState<Record<string, 'up' | 'down' | null>>({})
 
@@ -240,7 +259,9 @@ export default function MarketIndicesBar() {
         setFlashes(newFlashes)
         setTimeout(() => setFlashes({}), 1000)
       }
-    } catch { /* silent */ }
+    } catch { /* silent */ } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => {
@@ -249,7 +270,25 @@ export default function MarketIndicesBar() {
     return () => clearInterval(id)
   }, [])
 
-  if (indices.length === 0) return null
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 py-1">
+        {[90, 110, 110, 110, 90, 90, 90].map((w, i) => (
+          <div key={i} className="rounded-xl border border-gray-100 bg-gray-50 animate-pulse" style={{ width: w, height: 60 }} />
+        ))}
+      </div>
+    )
+  }
+
+  if (indices.length === 0) {
+    return (
+      <div className="flex items-center gap-2 py-2">
+        <span className="text-xs text-gray-400 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-lg">
+          Indices unavailable · Kite credentials not configured
+        </span>
+      </div>
+    )
+  }
 
   const gift    = indices.filter(i => i.group === 'gift')
   const broad   = indices.filter(i => i.group === 'broad' || i.group === 'vix')
@@ -279,6 +318,14 @@ export default function MarketIndicesBar() {
                 idx.name === 'BANK NIFTY' ? bankBreadth : null
               }
               stale={stale}
+              topMover={
+                idx.name === 'NIFTY 50'   && tiles.length     > 0 ? tiles[0]                     :
+                idx.name === 'BANK NIFTY' && bankTiles.length > 0 ? bankTiles[0]                 : null
+              }
+              topLoser={
+                idx.name === 'NIFTY 50'   && tiles.length     > 0 ? tiles[tiles.length - 1]          :
+                idx.name === 'BANK NIFTY' && bankTiles.length > 0 ? bankTiles[bankTiles.length - 1]  : null
+              }
               onClick={
                 idx.name === 'NIFTY 50'   && tiles.length     > 0 ? () => setOpenModal(o => o === 'nifty50'   ? null : 'nifty50')   :
                 idx.name === 'BANK NIFTY' && bankTiles.length > 0 ? () => setOpenModal(o => o === 'banknifty' ? null : 'banknifty') :

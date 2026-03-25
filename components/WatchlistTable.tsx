@@ -4,39 +4,7 @@ import React, { useState } from 'react'
 import Link from 'next/link'
 import ClassificationBadge, { getValuationBand, peDeviationColor } from './ClassificationBadge'
 
-// Maps stock industry → FII sector name (shared with SectorGrid)
-const INDUSTRY_TO_FII_SECTOR: Record<string, string> = {
-  'Private Sector Bank':                    'Financial Services',
-  'Other Bank':                             'Financial Services',
-  'Non Banking Financial Company (NBFC)':   'Financial Services',
-  'Life Insurance':                         'Financial Services',
-  'Financial Institution':                  'Financial Services',
-  'Investment Company':                     'Financial Services',
-  'Computers - Software & Consulting':      'Information Technology',
-  'IT Enabled Services':                    'Information Technology',
-  'Computer Hardware':                      'Information Technology',
-  'Oil Exploration & Production':           'Oil, Gas & Consumable Fuels',
-  'Refineries & Marketing':                 'Oil, Gas & Consumable Fuels',
-  'Power Generation':                       'Power',
-  'Residential, Commercial Projects':       'Realty',
-  'Civil Construction':                     'Construction',
-  'Passenger Cars & Utility Vehicles':      'Automobile and Auto Components',
-  'Auto Components & Equipments':           'Automobile and Auto Components',
-  'Tractors':                               'Automobile and Auto Components',
-  'Heavy Electrical Equipment':             'Capital Goods',
-  'Compressors, Pumps & Diesel Engines':    'Capital Goods',
-  'Aerospace & Defense':                    'Capital Goods',
-  'Hotels & Resorts':                       'Consumer Services',
-  'E-Retail/ E-Commerce':                   'Consumer Services',
-  'Dairy Products':                         'Fast Moving Consumer Goods',
-  'Personal Care':                          'Fast Moving Consumer Goods',
-  'Plastic Products - Industrial':          'Chemicals',
-  'Telecom':                                'Telecommunication',
-  'Industrial Minerals':                    'Metals & Mining',
-  'Iron & Steel/Interm.Products':           'Metals & Mining',
-  'Mining & Mineral products':              'Metals & Mining',
-  'Non Ferrous Metals':                     'Metals & Mining',
-}
+import { INDUSTRY_TO_FII_SECTOR } from '@/lib/fiiSectorMap'
 
 function sectorSlug(name: string) {
   return 'sector-' + name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')

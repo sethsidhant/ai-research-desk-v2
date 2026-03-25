@@ -1,292 +1,182 @@
 import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import SignOutButton from '@/components/SignOutButton'
-import LivePriceTable from '@/components/LivePriceTable'
 import MarketIndicesBar from '@/components/MarketIndicesBar'
-import { type ChartPoint } from '@/components/PortfolioChart'
+import { INDUSTRY_TO_FII_SECTOR } from '@/lib/fiiSectorMap'
+
+// ─── helpers ────────────────────────────────────────────────────────────────
+
+function fmtCr(n: number) {
+  const abs = Math.abs(n)
+  if (abs >= 100000) return `₹${(n / 100000).toFixed(1)}L Cr`
+  if (abs >= 1000)   return `₹${(n / 1000).toFixed(1)}k Cr`
+  return `₹${n.toLocaleString('en-IN')} Cr`
+}
+
+function decodeSector(s: string) { return s.replace(/&amp;/g, '&') }
+
+const SHORT_SECTOR: Record<string, string> = {
+  'Financial Services':                'Financials',
+  'Information Technology':            'IT',
+  'Oil, Gas & Consumable Fuels':       'Oil & Gas',
+  'Automobile and Auto Components':    'Auto',
+  'Fast Moving Consumer Goods':        'FMCG',
+  'Capital Goods':                     'Cap Goods',
+  'Consumer Services':                 'Consumer Svcs',
+  'Metals & Mining':                   'Metals',
+  'Telecommunication':                 'Telecom',
+  'Realty':                            'Realty',
+  'Power':                             'Power',
+  'Construction':                      'Construction',
+  'Chemicals':                         'Chemicals',
+  'Healthcare':                        'Healthcare',
+  'Media Entertainment & Publication': 'Media',
+}
+
+
+// ─── page ───────────────────────────────────────────────────────────────────
 
 export default async function DashboardPage() {
-  const supabase      = await createClient()
-  const adminSupabase = createAdminClient()
-
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // 1. Fetch user's watchlist with stock details
+  // Full watchlist with industry + price data
   const { data: watchlist } = await supabase
     .from('user_stocks')
-    .select(`
-      stock_id,
-      invested_amount,
-      entry_price,
-      nifty50_entry,
-      nifty500_entry,
-      notes,
-      stocks (
-        ticker,
-        stock_name,
-        industry,
-        current_price,
-        high_52w,
-        low_52w,
-        pct_from_52w_high,
-        stock_pe,
-        industry_pe,
-        roe,
-        roce,
-        eps,
-        pb,
-        dividend_yield,
-        market_cap,
-        debt_to_equity,
-        promoter_holding,
-        current_ratio,
-        total_debt,
-        revenue_growth_1y,
-        revenue_growth_3y,
-        revenue_growth_5y,
-        profit_growth_1y,
-        profit_growth_3y,
-        profit_growth_5y,
-        reserves,
-        borrowings,
-        fii_holding,
-        dii_holding,
-        mc_scid,
-        analyst_rating,
-        analyst_buy_pct,
-        analyst_hold_pct,
-        analyst_sell_pct,
-        analyst_count,
-        target_mean,
-        target_high,
-        target_low
-      )
-    `)
+    .select('stock_id, invested_amount, entry_price, stocks(ticker, industry, current_price, last_news_update)')
     .eq('user_id', user.id)
 
-  const stockIds = (watchlist ?? []).map((w: any) => w.stock_id)
+  const today_date = new Date().toISOString().slice(0, 10)
 
-  // 2. Fetch latest daily_score per stock (separate query)
+  const allRows = (watchlist ?? []).map((w: any) => {
+    const stock = Array.isArray(w.stocks) ? w.stocks[0] : w.stocks
+    return { ...w, stock }
+  })
+
+  // ── P&L ──────────────────────────────────────────────────────────────────
+  const portfolioRows = allRows.filter(w => w.invested_amount && w.entry_price && w.stock?.current_price)
+  const totalInvested = portfolioRows.reduce((s: number, w: any) => s + w.invested_amount, 0)
+  const totalCurrent  = portfolioRows.reduce((s: number, w: any) =>
+    s + (w.stock.current_price / w.entry_price) * w.invested_amount, 0)
+  const totalPnl    = totalCurrent - totalInvested
+  const totalPnlPct = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0
+
+  // ── Signals: latest score per stock ─────────────────────────────────────
+  const stockIds = allRows.map((w: any) => w.stock_id).filter(Boolean)
   const { data: scores } = stockIds.length > 0
     ? await supabase
         .from('daily_scores')
-        .select('stock_id, pe_deviation, rsi, rsi_signal, dma_50, dma_200, above_50_dma, above_200_dma, composite_score, classification, suggested_action, stock_6m, stock_1y, nifty50_6m, nifty50_1y, nifty500_6m, nifty500_1y, date')
+        .select('stock_id, rsi, above_200_dma')
         .in('stock_id', stockIds)
         .order('date', { ascending: false })
     : { data: [] }
 
-  // Keep only the latest score per stock
   const latestScore: Record<string, any> = {}
   for (const s of (scores ?? [])) {
     if (!latestScore[s.stock_id]) latestScore[s.stock_id] = s
   }
 
-  const rows = (watchlist ?? []).map((w: any) => {
-    const stock = Array.isArray(w.stocks) ? w.stocks[0] : w.stocks
-    const score = latestScore[w.stock_id] ?? null
-    return {
-      stock_id:          w.stock_id,
-      ticker:            stock?.ticker ?? '',
-      stock_name:        stock?.stock_name ?? '',
-      industry:          stock?.industry ?? null,
-      current_price:     stock?.current_price ?? null,
-      high_52w:          stock?.high_52w ?? null,
-      low_52w:           stock?.low_52w ?? null,
-      pct_from_52w_high: stock?.pct_from_52w_high ?? null,
-      stock_pe:          stock?.stock_pe ?? null,
-      industry_pe:       stock?.industry_pe ?? null,
-      pe_deviation:      score?.pe_deviation ?? null,
-      rsi:               score?.rsi ?? null,
-      rsi_signal:        score?.rsi_signal ?? null,
-      dma_50:            score?.dma_50 ?? null,
-      dma_200:           score?.dma_200 ?? null,
-      above_50_dma:      score?.above_50_dma ?? null,
-      above_200_dma:     score?.above_200_dma ?? null,
-      composite_score:   score?.composite_score ?? null,
-      classification:    score?.classification ?? null,
-      suggested_action:  score?.suggested_action ?? null,
-      stock_6m:          score?.stock_6m ?? null,
-      stock_1y:          score?.stock_1y ?? null,
-      nifty50_6m:        score?.nifty50_6m ?? null,
-      nifty50_1y:        score?.nifty50_1y ?? null,
-      score_date:        score?.date ?? null,
-      invested_amount:   w.invested_amount ?? null,
-      entry_price:       w.entry_price ?? null,
-      nifty50_entry:     w.nifty50_entry ?? null,
-      nifty500_entry:    w.nifty500_entry ?? null,
-      roe:               stock?.roe ?? null,
-      roce:              stock?.roce ?? null,
-      eps:               stock?.eps ?? null,
-      pb:                stock?.pb ?? null,
-      dividend_yield:    stock?.dividend_yield ?? null,
-      market_cap:        stock?.market_cap ?? null,
-      debt_to_equity:    stock?.debt_to_equity ?? null,
-      promoter_holding:  stock?.promoter_holding ?? null,
-      current_ratio:     stock?.current_ratio ?? null,
-      total_debt:        stock?.total_debt ?? null,
-      revenue_growth_1y: stock?.revenue_growth_1y ?? null,
-      revenue_growth_3y: stock?.revenue_growth_3y ?? null,
-      revenue_growth_5y: stock?.revenue_growth_5y ?? null,
-      profit_growth_1y:  stock?.profit_growth_1y ?? null,
-      profit_growth_3y:  stock?.profit_growth_3y ?? null,
-      profit_growth_5y:  stock?.profit_growth_5y ?? null,
-      reserves:          stock?.reserves ?? null,
-      borrowings:        stock?.borrowings ?? null,
-      fii_holding:       stock?.fii_holding ?? null,
-      dii_holding:       stock?.dii_holding ?? null,
-      nifty500_6m:       score?.nifty500_6m ?? null,
-      nifty500_1y:       score?.nifty500_1y ?? null,
-      notes:             w.notes ?? null,
-      mc_scid:           stock?.mc_scid ?? null,
-      analyst_rating:    stock?.analyst_rating ?? null,
-      analyst_buy_pct:   stock?.analyst_buy_pct ?? null,
-      analyst_hold_pct:  stock?.analyst_hold_pct ?? null,
-      analyst_sell_pct:  stock?.analyst_sell_pct ?? null,
-      analyst_count:     stock?.analyst_count ?? null,
-      target_mean:       stock?.target_mean ?? null,
-      target_high:       stock?.target_high ?? null,
-      target_low:        stock?.target_low ?? null,
-      mc_earnings_json:  null,
-    }
-  }).sort((a, b) => {
-    // Group by industry, then by stock name within industry
-    const ia = a.industry ?? 'zzz'
-    const ib = b.industry ?? 'zzz'
-    if (ia !== ib) return ia.localeCompare(ib)
-    return a.stock_name.localeCompare(b.stock_name)
-  })
+  const filingTickers: string[] = allRows
+    .filter((w: any) => w.stock?.last_news_update === today_date)
+    .map((w: any) => w.stock.ticker)
 
-  // Portfolio P&L calculation
-  const portfolioRows = rows.filter(r => r.invested_amount && r.entry_price && r.current_price)
-  const totalInvested = portfolioRows.reduce((s, r) => s + r.invested_amount!, 0)
-  const totalCurrent  = portfolioRows.reduce((s, r) => s + (r.current_price! / r.entry_price!) * r.invested_amount!, 0)
-  const totalPnl      = totalCurrent - totalInvested
-  const totalPnlPct   = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0
+  const oversoldTickers: string[] = allRows
+    .filter((w: any) => (latestScore[w.stock_id]?.rsi ?? 999) < 30)
+    .map((w: any) => w.stock?.ticker).filter(Boolean)
 
-  // Portfolio chart — % return over time for stocks with invested_amount
-  // Only use daily_history from each stock's added_at date onwards
-  let chartData: ChartPoint[] = []
-  const portfolioRowsWithHistory = rows.filter(r => r.invested_amount && r.entry_price)
-  if (portfolioRowsWithHistory.length > 0) {
-    // Fetch added_at per stock for this user
-    const { data: userStocksMeta } = await supabase
-      .from('user_stocks')
-      .select('stock_id, added_at')
-      .eq('user_id', user.id)
-      .in('stock_id', portfolioRowsWithHistory.map(r => r.stock_id))
+  const overboughtTickers: string[] = allRows
+    .filter((w: any) => (latestScore[w.stock_id]?.rsi ?? 0) > 70)
+    .map((w: any) => w.stock?.ticker).filter(Boolean)
 
-    const addedAtMap: Record<string, string> = {}
-    for (const us of userStocksMeta ?? []) {
-      addedAtMap[us.stock_id] = us.added_at?.slice(0, 10) ?? '2000-01-01'
-    }
+  const below200Tickers: string[] = allRows
+    .filter((w: any) => latestScore[w.stock_id]?.above_200_dma === false)
+    .map((w: any) => w.stock?.ticker).filter(Boolean)
 
-    // Earliest date we care about
-    const earliestDate = Object.values(addedAtMap).sort()[0] ?? '2000-01-01'
-
-    const [{ data: history }, { data: indexHistory }] = await Promise.all([
-      supabase
-        .from('daily_history')
-        .select('stock_id, date, closing_price')
-        .in('stock_id', portfolioRowsWithHistory.map(r => r.stock_id))
-        .not('closing_price', 'is', null)
-        .gte('date', earliestDate)
-        .order('date', { ascending: true }),
-      adminSupabase
-        .from('index_history')
-        .select('date, nifty50_close, nifty500_close')
-        .gte('date', earliestDate)
-        .order('date', { ascending: true }),
-    ])
-
-    // Build date -> index lookup (slice to YYYY-MM-DD to handle any timestamp format)
-    const indexByDate: Record<string, { n50: number; n500: number }> = {}
-    const sortedIndexDates: string[] = []
-    for (const row of indexHistory ?? []) {
-      const d = row.date.slice(0, 10)
-      indexByDate[d] = { n50: row.nifty50_close, n500: row.nifty500_close }
-      sortedIndexDates.push(d)
-    }
-    sortedIndexDates.sort()
-
-    // Returns nearest available index on or before targetDate (handles days with no close yet)
-    function nearestIndex(targetDate: string) {
-      let result: { n50: number; n500: number } | undefined
-      for (const d of sortedIndexDates) {
-        if (d <= targetDate) result = indexByDate[d]
-        else break
-      }
-      return result
-    }
-
-    if (history && history.length > 0) {
-      // Group closing prices by date, only from each stock's added_at onwards
-      const byDate: Record<string, Record<string, number>> = {}
-      for (const h of history) {
-        const addedAt = addedAtMap[h.stock_id] ?? '2000-01-01'
-        if (h.date < addedAt) continue   // skip history before user added this stock
-        if (!byDate[h.date]) byDate[h.date] = {}
-        byDate[h.date][h.stock_id] = h.closing_price
-      }
-
-      const sortedDates = Object.keys(byDate).sort()
-
-      // Anchor Nifty 50 / 500 to the first chart date (simple index % from chart start)
-      const firstIdx = nearestIndex(sortedDates[0])
-
-      chartData = sortedDates
-        .map((date, i) => {
-          const prices = byDate[date]
-          let currentVal = 0, investedOnDay = 0
-          const idxNow = nearestIndex(date)
-
-          for (const r of portfolioRowsWithHistory) {
-            const addedAt = addedAtMap[r.stock_id] ?? '2000-01-01'
-            if (date < addedAt) continue    // stock not yet added on this date
-            const price = prices[r.stock_id]
-            if (!price) continue
-            currentVal    += (price / r.entry_price!) * r.invested_amount!
-            investedOnDay += r.invested_amount!
-          }
-          if (investedOnDay === 0) return null
-
-          const returnPct   = ((currentVal - investedOnDay) / investedOnDay) * 100
-          // Nifty lines: simple % change from first chart date
-          const nifty50Pct  = (firstIdx && idxNow) ? parseFloat(((idxNow.n50  / firstIdx.n50  - 1) * 100).toFixed(2)) : undefined
-          const nifty500Pct = (firstIdx && idxNow) ? parseFloat(((idxNow.n500 / firstIdx.n500 - 1) * 100).toFixed(2)) : undefined
-
-          const d = new Date(date)
-          const label = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
-          return { date: label, returnPct: parseFloat(returnPct.toFixed(2)), nifty50Pct, nifty500Pct }
-        })
-        .filter(Boolean) as ChartPoint[]
-    }
+  // ── Sector exposure ──────────────────────────────────────────────────────
+  // Group by FII sector name (via shared map), not raw BSE sub-industry
+  const sectorMap: Record<string, { count: number; invested: number }> = {}
+  for (const w of allRows) {
+    const ind = w.stock?.industry
+    const fiiSectorName = ind ? (INDUSTRY_TO_FII_SECTOR[ind] ?? ind) : null
+    if (!fiiSectorName) continue
+    if (!sectorMap[fiiSectorName]) sectorMap[fiiSectorName] = { count: 0, invested: 0 }
+    sectorMap[fiiSectorName].count++
+    sectorMap[fiiSectorName].invested += w.invested_amount ?? 0
   }
+
+  const totalSectorInvested = Object.values(sectorMap).reduce((s, v) => s + v.invested, 0)
+  // fallback: if no invested amounts, weight by stock count
+  const totalSectorWeight   = totalSectorInvested > 0 ? totalSectorInvested : allRows.length
+
+  // Sort by invested (fallback to count) descending — top 3
+  const sectorExposure = Object.entries(sectorMap)
+    .sort(([, a], [, b]) => (b.invested !== a.invested ? b.invested - a.invested : b.count - a.count))
+    .slice(0, 5)
+    .map(([industry, { count, invested }]) => ({
+      industry,
+      count,
+      invested,
+      pct: totalSectorWeight > 0
+        ? Math.round((totalSectorInvested > 0 ? invested : count) / totalSectorWeight * 100)
+        : 0,
+    }))
+
+  // ── FII data ─────────────────────────────────────────────────────────────
+  const [{ data: fiiSectors }, { data: fiiDiiRows }] = await Promise.all([
+    supabase.from('fii_sector').select('sector, fortnight_flow'),
+    supabase.from('fii_dii_daily')
+      .select('date, fii_net, dii_net')
+      .order('date', { ascending: false })
+      .limit(7),
+  ])
+
+  const fiiDiiRow  = fiiDiiRows?.[0] ?? null
+  const fiiDiiYest = fiiDiiRows?.[1] ?? null
+
+  // 5-day rolling net
+  const fii5d = (fiiDiiRows ?? []).slice(0, 5).reduce((s, r) => s + r.fii_net, 0)
+  const dii5d = (fiiDiiRows ?? []).slice(0, 5).reduce((s, r) => s + r.dii_net, 0)
+
+  // Consecutive FII streak (buying or selling)
+  let fiiStreak = 0
+  let fiiStreakDir: 'buying' | 'selling' | null = null
+  for (const r of (fiiDiiRows ?? [])) {
+    const dir = r.fii_net >= 0 ? 'buying' : 'selling'
+    if (fiiStreakDir === null) { fiiStreakDir = dir; fiiStreak = 1 }
+    else if (dir === fiiStreakDir) fiiStreak++
+    else break
+  }
+
+  // Build FII sector name → flow map (decoded)
+  const fiiFlowMap: Record<string, number> = {}
+  for (const s of (fiiSectors ?? [])) {
+    fiiFlowMap[decodeSector(s.sector)] = s.fortnight_flow ?? 0
+  }
+
+  const validSectors = Object.entries(fiiFlowMap)
+    .map(([name, flow]) => ({ name, flow }))
+    .filter(s => s.flow !== 0)
+    .sort((a, b) => b.flow - a.flow)
+
+  const top3 = validSectors.slice(0, 3)
+  const bot3 = validSectors.slice(-3).reverse()
+  const sectorBuyCount  = validSectors.filter(s => s.flow > 0).length
+  const sectorSellCount = validSectors.filter(s => s.flow < 0).length
 
   const today = new Date().toLocaleDateString('en-IN', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
   })
 
-  const { data: fiiSectors } = await supabase
-    .from('fii_sector')
-    .select('sector, fortnight_flow')
-
-  const { data: fiiDiiRow } = await supabase
-    .from('fii_dii_daily')
-    .select('date, fii_net, dii_net')
-    .order('date', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  const fiiDii = fiiDiiRow ?? null
+  const watchlistCount = allRows.length
+  const hasSignals = filingTickers.length > 0 || oversoldTickers.length > 0 ||
+                     overboughtTickers.length > 0 || below200Tickers.length > 0
 
   return (
     <div className="min-h-screen bg-white">
       {/* Header */}
       <header className="border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4 bg-white">
-        {/* Top row: title + nav */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-lg sm:text-xl font-bold text-gray-900">AI Research Desk</h1>
@@ -295,68 +185,296 @@ export default async function DashboardPage() {
           <div className="flex items-center gap-2 sm:gap-4">
             <span className="text-xs sm:text-sm text-gray-500 hidden sm:block">{user.email}</span>
             {user.email === process.env.ADMIN_EMAIL && (
-              <Link
-                href="/admin"
-                className="text-xs sm:text-sm text-gray-500 hover:text-gray-900 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-gray-100"
-              >
+              <Link href="/admin" className="text-xs sm:text-sm text-gray-500 hover:text-gray-900 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-gray-100">
                 Admin
               </Link>
             )}
-            <Link
-              href="/market-pulse"
-              className="text-xs sm:text-sm text-gray-500 hover:text-gray-900 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-gray-100"
-            >
+            <Link href="/market-pulse" className="text-xs sm:text-sm text-gray-500 hover:text-gray-900 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-gray-100">
               Market Pulse
             </Link>
-            <Link
-              href="/watchlist"
-              className="text-xs sm:text-sm text-gray-500 hover:text-gray-900 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-gray-100"
-            >
+            <Link href="/watchlist" className="text-xs sm:text-sm text-gray-500 hover:text-gray-900 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-gray-100">
               Watchlist
             </Link>
-            <Link
-              href="/settings"
-              className="text-xs sm:text-sm text-gray-500 hover:text-gray-900 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-gray-100"
-            >
+            <span className="text-xs sm:text-sm text-gray-300 px-2 sm:px-3 py-1.5 rounded-lg cursor-not-allowed hidden sm:inline-flex items-center gap-1.5">
+              Portfolio
+              <span className="text-[9px] bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded-full font-semibold">Soon</span>
+            </span>
+            <Link href="/settings" className="text-xs sm:text-sm text-gray-500 hover:text-gray-900 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-gray-100">
               Settings
             </Link>
             <SignOutButton />
           </div>
         </div>
-        {/* Indices bar + FII/DII: stacked on mobile, side-by-side on desktop */}
-        <div className="mt-2 sm:mt-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-          <div className="flex-1 overflow-x-auto">
-            <MarketIndicesBar />
-          </div>
-          {fiiDii && (
-            <div className="shrink-0 flex items-center gap-2.5 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 sm:py-1.5">
-              <div className="flex items-center gap-1.5 sm:flex-col sm:items-center sm:gap-0">
-                <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-400">FII</span>
-                <span className={`text-xs font-mono font-semibold ${fiiDii.fii_net >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                  {fiiDii.fii_net >= 0 ? '▲' : '▼'} ₹{Math.abs(fiiDii.fii_net).toLocaleString('en-IN', { maximumFractionDigits: 0 })} Cr
-                </span>
-              </div>
-              <div className="w-px h-5 bg-gray-200" />
-              <div className="flex items-center gap-1.5 sm:flex-col sm:items-center sm:gap-0">
-                <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-400">DII</span>
-                <span className={`text-xs font-mono font-semibold ${fiiDii.dii_net >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                  {fiiDii.dii_net >= 0 ? '▲' : '▼'} ₹{Math.abs(fiiDii.dii_net).toLocaleString('en-IN', { maximumFractionDigits: 0 })} Cr
-                </span>
-              </div>
-              <div className="w-px h-5 bg-gray-200" />
-              <span className="text-[9px] text-gray-400 leading-tight">
-                {new Date(fiiDii.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-              </span>
-            </div>
-          )}
+        <div className="mt-2 sm:mt-3 overflow-x-auto">
+          <MarketIndicesBar />
         </div>
       </header>
 
-      {/* Main content */}
-      <main className="px-3 sm:px-6 py-4 sm:py-8 max-w-screen-xl mx-auto">
-        <LivePriceTable initialRows={rows} chartData={chartData} fiiSectors={fiiSectors ?? []} />
+      {/* Main */}
+      <main className="px-3 sm:px-6 py-5 sm:py-8 max-w-screen-xl mx-auto">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+
+          {/* ── Watchlist Portfolio card ──────────────────────────────── */}
+          <div className="sm:col-span-1">
+            <Link href="/watchlist" className="block bg-white border border-gray-200 rounded-xl px-4 py-4 shadow-sm hover:border-gray-300 hover:shadow-md transition-all group h-full">
+              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-3">Watchlist Portfolio</div>
+
+              {watchlistCount === 0 ? (
+                <div className="text-sm text-gray-400">No stocks yet. Add some to your watchlist →</div>
+              ) : (
+                <div className="space-y-3">
+
+                  {/* P&L */}
+                  {totalInvested > 0 ? (
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-gray-500">Invested</span>
+                        <span className="text-sm font-mono font-semibold text-gray-800">
+                          ₹{totalInvested.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-gray-500">Current</span>
+                        <span className="text-sm font-mono font-semibold text-gray-800">
+                          ₹{totalCurrent.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center pt-1 border-t border-gray-100">
+                        <span className="text-xs text-gray-500">Total Return</span>
+                        <div className="text-right">
+                          <span className={`text-base font-bold font-mono ${totalPnl >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                            {totalPnl >= 0 ? '+' : ''}{totalPnlPct.toFixed(1)}%
+                          </span>
+                          <div className={`text-[11px] font-mono ${totalPnl >= 0 ? 'text-emerald-500' : 'text-red-400'}`}>
+                            {totalPnl >= 0 ? '+' : ''}₹{Math.abs(totalPnl).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-400">Set entry prices to track P&amp;L.</p>
+                  )}
+
+                  {/* Sector exposure vs FII */}
+                  {sectorExposure.length > 0 && (
+                    <div className="pt-2 border-t border-gray-100">
+                      <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">
+                        Sector Exposure vs FII
+                      </div>
+                      <div className="space-y-1.5">
+                        {sectorExposure.map(({ industry, count, pct }) => {
+                          const fiiFlow  = fiiFlowMap[industry] ?? null
+                          const short    = SHORT_SECTOR[industry] ?? industry
+                          const buying   = fiiFlow != null && fiiFlow > 1000
+                          const selling  = fiiFlow != null && fiiFlow < -1000
+                          const mismatch = selling && pct >= 20
+                          const barColor = buying ? 'bg-emerald-400' : selling ? 'bg-red-400' : 'bg-gray-300'
+                          return (
+                            <div key={industry} className="space-y-0.5">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${barColor}`} />
+                                  <span className="text-[11px] text-gray-700 truncate">{short}</span>
+                                  <span className="text-[10px] text-gray-400">{count} stock{count !== 1 ? 's' : ''}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <span className={`text-[11px] font-bold font-mono ${pct >= 40 ? 'text-orange-500' : 'text-gray-600'}`}>
+                                    {pct}%
+                                  </span>
+                                  {fiiFlow != null ? (
+                                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                                      buying  ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' :
+                                      selling ? 'bg-red-50 text-red-500 border border-red-100' :
+                                                'bg-gray-50 text-gray-400 border border-gray-100'
+                                    }`}>
+                                      {buying ? '▲ FII in' : selling ? '▼ FII out' : '— neutral'}
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] text-gray-300">—</span>
+                                  )}
+                                  {mismatch && <span title="Heavy exposure + FII selling">⚠️</span>}
+                                </div>
+                              </div>
+                              {/* exposure bar */}
+                              <div className="h-0.5 w-full bg-gray-100 rounded-full overflow-hidden">
+                                <div className={`h-full rounded-full transition-all ${barColor} opacity-60`} style={{ width: `${pct}%` }} />
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Signals */}
+                  {hasSignals && (
+                    <div className="pt-2 border-t border-gray-100 space-y-1.5">
+                      {filingTickers.length > 0 && (
+                        <SignalRow
+                          label={`📋 ${filingTickers.length} filing${filingTickers.length > 1 ? 's' : ''} today`}
+                          tickers={filingTickers}
+                          color="amber"
+                        />
+                      )}
+                      {oversoldTickers.length > 0 && (
+                        <SignalRow
+                          label={`📉 ${oversoldTickers.length} oversold`}
+                          tickers={oversoldTickers}
+                          color="blue"
+                        />
+                      )}
+                      {overboughtTickers.length > 0 && (
+                        <SignalRow
+                          label={`📈 ${overboughtTickers.length} overbought`}
+                          tickers={overboughtTickers}
+                          color="orange"
+                        />
+                      )}
+                      {below200Tickers.length > 0 && (
+                        <SignalRow
+                          label={`📊 ${below200Tickers.length} below 200 DMA`}
+                          tickers={below200Tickers}
+                          color="red"
+                        />
+                      )}
+                    </div>
+                  )}
+
+                  <div className="pt-1 text-xs text-gray-400 group-hover:text-gray-600 transition-colors">
+                    {watchlistCount} stock{watchlistCount !== 1 ? 's' : ''} · View watchlist →
+                  </div>
+
+                </div>
+              )}
+            </Link>
+          </div>
+
+          {/* ── FII/DII + Sector flow card ────────────────────────────── */}
+          <div className="sm:col-span-2">
+            <div className="bg-white border border-gray-200 rounded-xl px-4 py-4 shadow-sm">
+
+              {/* Row 1 — FII / DII boxes */}
+              {fiiDiiRow && (
+                <div className="mb-4">
+                  <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">
+                    FII / DII · {new Date(fiiDiiRow.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* FII */}
+                    <div className={`rounded-lg px-3 py-2.5 ${fiiDiiRow.fii_net >= 0 ? 'bg-emerald-50 border border-emerald-100' : 'bg-red-50 border border-red-100'}`}>
+                      <div className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 mb-0.5">FII Net</div>
+                      <div className={`text-sm font-bold font-mono ${fiiDiiRow.fii_net >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                        {fiiDiiRow.fii_net >= 0 ? '▲' : '▼'} {fmtCr(Math.abs(fiiDiiRow.fii_net))}
+                      </div>
+                      <div className="flex items-center gap-3 mt-1 flex-wrap">
+                        {fiiDiiYest && (() => {
+                          const chg = fiiDiiRow.fii_net - fiiDiiYest.fii_net
+                          return <span className={`text-[10px] font-mono ${chg >= 0 ? 'text-emerald-500' : 'text-red-400'}`}>{chg >= 0 ? '▲' : '▼'} {fmtCr(Math.abs(chg))} vs yest</span>
+                        })()}
+                        <span className="text-[10px] text-gray-400 font-mono">
+                          5d: <span className={fii5d >= 0 ? 'text-emerald-500' : 'text-red-400'}>{fii5d >= 0 ? '+' : ''}{fmtCr(fii5d)}</span>
+                        </span>
+                      </div>
+                    </div>
+                    {/* DII */}
+                    <div className={`rounded-lg px-3 py-2.5 ${fiiDiiRow.dii_net >= 0 ? 'bg-emerald-50 border border-emerald-100' : 'bg-red-50 border border-red-100'}`}>
+                      <div className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 mb-0.5">DII Net</div>
+                      <div className={`text-sm font-bold font-mono ${fiiDiiRow.dii_net >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                        {fiiDiiRow.dii_net >= 0 ? '▲' : '▼'} {fmtCr(Math.abs(fiiDiiRow.dii_net))}
+                      </div>
+                      <div className="flex items-center gap-3 mt-1 flex-wrap">
+                        {fiiDiiYest && (() => {
+                          const chg = fiiDiiRow.dii_net - fiiDiiYest.dii_net
+                          return <span className={`text-[10px] font-mono ${chg >= 0 ? 'text-emerald-500' : 'text-red-400'}`}>{chg >= 0 ? '▲' : '▼'} {fmtCr(Math.abs(chg))} vs yest</span>
+                        })()}
+                        <span className="text-[10px] text-gray-400 font-mono">
+                          5d: <span className={dii5d >= 0 ? 'text-emerald-500' : 'text-red-400'}>{dii5d >= 0 ? '+' : ''}{fmtCr(dii5d)}</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  {fiiStreakDir && fiiStreak >= 2 && (
+                    <div className={`mt-2 text-[10px] font-semibold px-2 py-1 rounded-lg inline-block ${fiiStreakDir === 'buying' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'}`}>
+                      FII {fiiStreakDir} for {fiiStreak} days straight
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Row 2 — Sector flow, buying | selling side by side */}
+              {validSectors.length > 0 && (
+                <div className="border-t border-gray-100 pt-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Sector Flow · Fortnight</div>
+                    <div className="text-[10px] text-gray-400">
+                      <span className="text-emerald-600 font-semibold">{sectorBuyCount}</span> buying ·{' '}
+                      <span className="text-red-500 font-semibold">{sectorSellCount}</span> selling
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                    {/* Buying column */}
+                    <div className="space-y-1.5">
+                      {top3.map(s => (
+                        <div key={s.name} className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                            <span className="text-[11px] text-gray-700 truncate">{SHORT_SECTOR[s.name] ?? s.name}</span>
+                          </div>
+                          <span className="text-[11px] font-mono font-semibold text-emerald-600 shrink-0">{fmtCr(s.flow)}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {/* Selling column */}
+                    <div className="space-y-1.5">
+                      {bot3.map(s => (
+                        <div key={s.name} className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
+                            <span className="text-[11px] text-gray-700 truncate">{SHORT_SECTOR[s.name] ?? s.name}</span>
+                          </div>
+                          <span className="text-[11px] font-mono font-semibold text-red-500 shrink-0">{fmtCr(s.flow)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+            </div>
+          </div>
+
+        </div>
       </main>
     </div>
   )
 }
 
+// ─── small helper component ──────────────────────────────────────────────────
+
+function SignalRow({ label, tickers, color }: {
+  label:   string
+  tickers: string[]
+  color:   'amber' | 'blue' | 'orange' | 'red'
+}) {
+  const styles = {
+    amber:  'bg-amber-50 text-amber-600 border-amber-200',
+    blue:   'bg-blue-50 text-blue-600 border-blue-200',
+    orange: 'bg-orange-50 text-orange-600 border-orange-200',
+    red:    'bg-red-50 text-red-500 border-red-200',
+  }
+  return (
+    <div className="flex items-start gap-1.5 flex-wrap">
+      <span className={`text-[10px] border px-1.5 py-0.5 rounded font-semibold shrink-0 ${styles[color]}`}>
+        {label}
+      </span>
+      <div className="flex flex-wrap gap-1">
+        {tickers.slice(0, 4).map(t => (
+          <span key={t} className="text-[10px] font-mono font-semibold text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded">
+            {t}
+          </span>
+        ))}
+        {tickers.length > 4 && <span className="text-[10px] text-gray-400 self-center">+{tickers.length - 4}</span>}
+      </div>
+    </div>
+  )
+}

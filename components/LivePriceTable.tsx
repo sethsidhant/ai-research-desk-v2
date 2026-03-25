@@ -53,41 +53,75 @@ function fmtCr(n: number) {
   return `₹${n.toLocaleString('en-IN')} Cr`
 }
 
-function FIISectorPulse({ sectors }: { sectors: { sector: string; fortnight_flow: number | null }[] }) {
+type FiiDiiRow = { date: string; fii_net: number; dii_net: number }
+
+function FIIOverviewCard({
+  sectors, fiiDii,
+}: {
+  sectors: { sector: string; fortnight_flow: number | null }[]
+  fiiDii:  FiiDiiRow | null
+}) {
   const valid = sectors
     .map(s => ({ name: decodeSector(s.sector), flow: s.fortnight_flow ?? 0 }))
     .filter(s => s.flow !== 0)
     .sort((a, b) => b.flow - a.flow)
-
-  if (valid.length === 0) return null
 
   const top2 = valid.slice(0, 2)
   const bot2 = valid.slice(-2).reverse()
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 shadow-sm">
-      <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2.5">FII Sector Flow · Fortnight</div>
-      <div className="space-y-1.5">
-        {top2.map(s => (
-          <div key={s.name} className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-              <span className="text-[11px] text-gray-700 truncate">{SHORT_SECTOR[s.name] ?? s.name}</span>
-            </div>
-            <span className="text-[11px] font-mono font-semibold text-emerald-600 shrink-0">{fmtCr(s.flow)}</span>
+
+      {/* FII / DII daily row */}
+      {fiiDii && (
+        <>
+          <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">
+            FII / DII · {new Date(fiiDii.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
           </div>
-        ))}
-        <div className="border-t border-gray-100 my-1" />
-        {bot2.map(s => (
-          <div key={s.name} className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
-              <span className="text-[11px] text-gray-700 truncate">{SHORT_SECTOR[s.name] ?? s.name}</span>
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            <div className={`rounded-lg px-3 py-2 ${fiiDii.fii_net >= 0 ? 'bg-emerald-50 border border-emerald-100' : 'bg-red-50 border border-red-100'}`}>
+              <div className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 mb-0.5">FII Net</div>
+              <div className={`text-sm font-bold font-mono ${fiiDii.fii_net >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                {fiiDii.fii_net >= 0 ? '▲' : '▼'} {fmtCr(Math.abs(fiiDii.fii_net))}
+              </div>
             </div>
-            <span className="text-[11px] font-mono font-semibold text-red-500 shrink-0">{fmtCr(s.flow)}</span>
+            <div className={`rounded-lg px-3 py-2 ${fiiDii.dii_net >= 0 ? 'bg-emerald-50 border border-emerald-100' : 'bg-red-50 border border-red-100'}`}>
+              <div className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 mb-0.5">DII Net</div>
+              <div className={`text-sm font-bold font-mono ${fiiDii.dii_net >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                {fiiDii.dii_net >= 0 ? '▲' : '▼'} {fmtCr(Math.abs(fiiDii.dii_net))}
+              </div>
+            </div>
           </div>
-        ))}
-      </div>
+        </>
+      )}
+
+      {/* Sector flow */}
+      {valid.length > 0 && (
+        <>
+          <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">Sector Flow · Fortnight</div>
+          <div className="space-y-1.5">
+            {top2.map(s => (
+              <div key={s.name} className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                  <span className="text-[11px] text-gray-700 truncate">{SHORT_SECTOR[s.name] ?? s.name}</span>
+                </div>
+                <span className="text-[11px] font-mono font-semibold text-emerald-600 shrink-0">{fmtCr(s.flow)}</span>
+              </div>
+            ))}
+            <div className="border-t border-gray-100 my-1" />
+            {bot2.map(s => (
+              <div key={s.name} className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
+                  <span className="text-[11px] text-gray-700 truncate">{SHORT_SECTOR[s.name] ?? s.name}</span>
+                </div>
+                <span className="text-[11px] font-mono font-semibold text-red-500 shrink-0">{fmtCr(s.flow)}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   )
 }
@@ -137,11 +171,12 @@ function MoversStrip({
 }
 
 export default function LivePriceTable({
-  initialRows, chartData, fiiSectors = [],
+  initialRows, chartData, fiiSectors = [], fiiDii = null,
 }: {
   initialRows: WatchlistRow[]
   chartData:   ChartPoint[]
   fiiSectors?: { sector: string; fortnight_flow: number | null }[]
+  fiiDii?:     FiiDiiRow | null
 }) {
   const router                        = useRouter()
   const [rows, setRows]               = useState<WatchlistRow[]>(initialRows)
@@ -255,37 +290,31 @@ export default function LivePriceTable({
         </div>
       )}
 
-      {/* FII Sector Pulse + Movers — side by side */}
-      {(fiiSectors.length > 0 || showMovers) && (
+      {/* FII Overview + Movers — side by side */}
+      {(fiiSectors.length > 0 || fiiDii || showMovers) && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
-          {fiiSectors.length > 0 && <FIISectorPulse sectors={fiiSectors} />}
+          {(fiiSectors.length > 0 || fiiDii) && <FIIOverviewCard sectors={fiiSectors} fiiDii={fiiDii} />}
           {showMovers && <MoversStrip rows={rows} changes={changes} />}
         </div>
       )}
 
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-lg font-semibold text-gray-900">
-          Watchlist
-          <span className="ml-2 text-sm font-normal text-gray-400">{rows.length} stocks</span>
-        </h2>
-        <div className="flex items-center gap-3">
-          {marketOpen ? (
-            <span className="flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              LIVE · 15s
-            </span>
-          ) : (
-            <span className="flex items-center gap-1.5 text-xs text-gray-400 bg-gray-100 border border-gray-200 px-2.5 py-1 rounded-full">
-              <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
-              MARKET CLOSED
-            </span>
-          )}
-          {lastUpdated && (
-            <span className="text-xs text-gray-400">
-              {lastUpdated.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-            </span>
-          )}
-        </div>
+      <div className="flex items-center justify-end mb-3 gap-3">
+        {marketOpen ? (
+          <span className="flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            LIVE · 15s
+          </span>
+        ) : (
+          <span className="flex items-center gap-1.5 text-xs text-gray-400 bg-gray-100 border border-gray-200 px-2.5 py-1 rounded-full">
+            <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+            MARKET CLOSED
+          </span>
+        )}
+        {lastUpdated && (
+          <span className="text-xs text-gray-400">
+            {lastUpdated.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          </span>
+        )}
       </div>
 
       {/* Filter chips */}
