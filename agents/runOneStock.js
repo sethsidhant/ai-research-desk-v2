@@ -5,7 +5,7 @@
 require("dotenv").config({ path: "../.env.local" });
 const Anthropic    = require("@anthropic-ai/sdk");
 const { execSync } = require("child_process");
-const { getTechnicals, getReturns, NIFTY50_TOKEN } = require("./technicalService");
+const { getTechnicals, getReturns, NIFTY50_TOKEN, NIFTY500_TOKEN } = require("./technicalService");
 const { upsertStock, upsertDailyScore, insertHistory } = require("./pgHelper");
 const { createClient } = require("@supabase/supabase-js");
 
@@ -115,9 +115,10 @@ async function main() {
   } : null;
 
   // 6. Returns
-  const [stockReturns, niftyReturns] = await Promise.all([
+  const [stockReturns, niftyReturns, nifty500Returns] = await Promise.all([
     stock.instrument_token ? getReturns(stock.instrument_token) : Promise.resolve({ r6m: null, r1y: null }),
     getReturns(NIFTY50_TOKEN),
+    getReturns(NIFTY500_TOKEN),
   ]);
 
   // 7. Claude scoring
@@ -145,6 +146,7 @@ Return ONLY valid JSON: {"composite_score":<1-10>,"classification":"<Undervalued
     suggested_action: result.suggested_action,
     stock_6m: stockReturns.r6m, stock_1y: stockReturns.r1y,
     nifty50_6m: niftyReturns.r6m, nifty50_1y: niftyReturns.r1y,
+    nifty500_6m: nifty500Returns.r6m, nifty500_1y: nifty500Returns.r1y,
   });
 
   const ohlc = await getKiteOHLC(stock.instrument_token);
@@ -160,6 +162,7 @@ Return ONLY valid JSON: {"composite_score":<1-10>,"classification":"<Undervalued
     suggested_action: result.suggested_action,
     stock_6m: stockReturns.r6m, stock_1y: stockReturns.r1y,
     nifty50_6m: niftyReturns.r6m, nifty50_1y: niftyReturns.r1y,
+    nifty500_6m: nifty500Returns.r6m, nifty500_1y: nifty500Returns.r1y,
   });
 
   console.log(`[runOneStock] ✓ ${ticker} — ${result.classification} | ${result.suggested_action} | Score: ${result.composite_score}`);

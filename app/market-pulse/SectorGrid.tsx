@@ -41,6 +41,10 @@ const INDUSTRY_TO_FII_SECTOR: Record<string, string> = {
   'Personal Care':                          'Fast Moving Consumer Goods',
   'Plastic Products - Industrial':          'Chemicals',
   'Telecom':                                'Telecommunication',
+  'Industrial Minerals':                    'Metals & Mining',
+  'Iron & Steel/Interm.Products':           'Metals & Mining',
+  'Mining & Mineral products':              'Metals & Mining',
+  'Non Ferrous Metals':                     'Metals & Mining',
 }
 
 // Sectors from DB may have HTML-encoded ampersands (e.g. "Oil, Gas &amp; Consumable Fuels")
