@@ -209,43 +209,41 @@ export default function LivePriceTable({
     return [...chartData, todayPoint]
   })()
 
-  async function fetchPrices() {
-    try {
-      const res  = await fetch('/api/live-prices')
-      const json = await res.json()
-      setMarketOpen(json.marketOpen ?? false)
-      if (!json.marketOpen || !json.prices) return
-
+  useEffect(() => {
+    let id: ReturnType<typeof setInterval>
+    async function poll() {
+      const res  = await fetch('/api/live-prices').catch(() => null)
+      if (!res) return
+      const json = await res.json().catch(() => null)
+      if (!json) return
+      const isOpen = json.marketOpen ?? false
+      setMarketOpen(isOpen)
+      if (!json.prices) return
       const prices: Record<string, { last: number; change: number; changePct: number }> = json.prices
       const newFlashes: Record<string, PriceFlash>  = {}
       const newChanges: Record<string, PriceChange> = {}
-
       for (const [ticker, live] of Object.entries(prices)) {
         const prev_ = prevPrices.current[ticker]
-        if (prev_ != null && live.last !== prev_) {
+        if (isOpen && prev_ != null && live.last !== prev_) {
           newFlashes[ticker] = live.last > prev_ ? 'up' : 'down'
         }
         prevPrices.current[ticker] = live.last
         newChanges[ticker] = { change: live.change, changePct: live.changePct }
       }
-
       setRows(prev => prev.map(row => {
         const live = prices[row.ticker]
         return live ? { ...row, current_price: live.last } : row
       }))
       setChanges(newChanges)
-
       if (Object.keys(newFlashes).length > 0) {
         setFlashes(newFlashes)
         setTimeout(() => setFlashes({}), 1500)
       }
       setLastUpdated(new Date())
-    } catch { /* silent */ }
-  }
-
-  useEffect(() => {
-    fetchPrices()
-    const id = setInterval(fetchPrices, POLL_INTERVAL)
+      if (!isOpen) clearInterval(id)
+    }
+    poll()
+    id = setInterval(poll, POLL_INTERVAL)
     return () => clearInterval(id)
   }, [])
 

@@ -49,11 +49,11 @@ export async function GET() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  if (!isMarketOpen()) return NextResponse.json({ marketOpen: false, prices: {} })
+  const marketOpen = isMarketOpen()
 
   const cache = userCaches.get(user.id)
   if (cache && Date.now() - cache.ts < CACHE_TTL_MS) {
-    return NextResponse.json({ marketOpen: true, prices: cache.data, cached: true })
+    return NextResponse.json({ marketOpen, prices: cache.data, cached: true })
   }
 
   const kite = await getKiteToken()
@@ -67,7 +67,7 @@ export async function GET() {
     .eq('user_id', user.id)
 
   const stockIds = (watchlist ?? []).map(w => w.stock_id)
-  if (!stockIds.length) return NextResponse.json({ marketOpen: true, prices: {} })
+  if (!stockIds.length) return NextResponse.json({ marketOpen, prices: {} })
 
   const { data: stocks } = await supabase
     .from('stocks')
@@ -75,7 +75,7 @@ export async function GET() {
     .in('id', stockIds)
     .not('instrument_token', 'is', null)
 
-  if (!stocks?.length) return NextResponse.json({ marketOpen: true, prices: {} })
+  if (!stocks?.length) return NextResponse.json({ marketOpen, prices: {} })
 
   const tokens = stocks.map(s => s.instrument_token).join('&i=')
 
@@ -104,7 +104,7 @@ export async function GET() {
     }
 
     userCaches.set(user.id, { data: prices, ts: Date.now() })
-    return NextResponse.json({ marketOpen: true, prices })
+    return NextResponse.json({ marketOpen, prices })
 
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 502 })
