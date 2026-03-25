@@ -29,6 +29,20 @@ export type IndexQuote = {
   group:      string
 }
 
+// Nifty 50 constituents for advance/decline breadth (hardcoded — changes ~twice/year)
+const NIFTY50_SYMBOLS = [
+  'NSE:ADANIENT',  'NSE:ADANIPORTS', 'NSE:APOLLOHOSP', 'NSE:ASIANPAINT', 'NSE:AXISBANK',
+  'NSE:BAJAJ-AUTO','NSE:BAJAJFINSV', 'NSE:BAJFINANCE',  'NSE:BEL',        'NSE:BHARTIARTL',
+  'NSE:BPCL',      'NSE:BRITANNIA',  'NSE:CIPLA',       'NSE:COALINDIA',  'NSE:DRREDDY',
+  'NSE:EICHERMOT', 'NSE:ETERNAL',    'NSE:GRASIM',      'NSE:HCLTECH',    'NSE:HDFCBANK',
+  'NSE:HDFCLIFE',  'NSE:HEROMOTOCO', 'NSE:HINDALCO',    'NSE:HINDUNILVR', 'NSE:ICICIBANK',
+  'NSE:INDUSINDBK','NSE:INFY',       'NSE:ITC',         'NSE:JIOFIN',     'NSE:JSWSTEEL',
+  'NSE:KOTAKBANK', 'NSE:LT',         'NSE:M&M',         'NSE:MARUTI',     'NSE:NESTLEIND',
+  'NSE:NTPC',      'NSE:ONGC',       'NSE:POWERGRID',   'NSE:RELIANCE',   'NSE:SBILIFE',
+  'NSE:SBIN',      'NSE:SHRIRAMFIN', 'NSE:SUNPHARMA',   'NSE:TATACONSUM', 'NSE:TATAMOTORS',
+  'NSE:TATASTEEL', 'NSE:TCS',        'NSE:TECHM',        'NSE:TITAN',      'NSE:ULTRACEMCO',
+]
+
 const INDICES = [
   // GIFT Nifty (pre-market indicator, trades 24h on NSEIX)
   { key: 'NSEIX:GIFT NIFTY',      label: 'GIFT NIFTY',   group: 'gift'  },
@@ -48,7 +62,9 @@ const INDICES = [
   { key: 'NSE:NIFTY METAL',       label: 'METAL',        group: 'sector' },
 ]
 
-let cache: { data: IndexQuote[]; ts: number } | null = null
+export type Breadth = { advances: number; declines: number; unchanged: number; total: number }
+
+let cache: { data: IndexQuote[]; breadth: Breadth | null; ts: number } | null = null
 const CACHE_TTL_MS = 15000
 const CACHE_STALE_TTL_MS = 24 * 60 * 60 * 1000 // serve stale cache for up to 24h if Kite fails
 
@@ -58,7 +74,7 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   if (cache && Date.now() - cache.ts < CACHE_TTL_MS) {
-    return NextResponse.json({ indices: cache.data, cached: true })
+    return NextResponse.json({ indices: cache.data, breadth: cache.breadth, cached: true })
   }
 
   const kite = await getKiteToken()
@@ -70,7 +86,11 @@ export async function GET() {
   }
   const { apiKey, accessToken } = kite
 
-  const query = INDICES.map(i => `i=${encodeURIComponent(i.key)}`).join('&')
+  const allSymbols = [
+    ...INDICES.map(i => i.key),
+    ...NIFTY50_SYMBOLS,
+  ]
+  const query = allSymbols.map(s => `i=${encodeURIComponent(s)}`).join('&')
 
   try {
     const res = await fetch(`https://api.kite.trade/quote?${query}`, {
@@ -83,7 +103,7 @@ export async function GET() {
 
     if (!res.ok) {
       if (cache && Date.now() - cache.ts < CACHE_STALE_TTL_MS) {
-        return NextResponse.json({ indices: cache.data, stale: true })
+        return NextResponse.json({ indices: cache.data, breadth: cache.breadth, stale: true })
       }
       return NextResponse.json({ error: `Kite error: ${res.status}` }, { status: 502 })
     }
@@ -101,12 +121,25 @@ export async function GET() {
       return { name: idx.label, last, prevClose, change, changePct, group: idx.group }
     })
 
-    cache = { data: indices, ts: Date.now() }
-    return NextResponse.json({ indices })
+    // Compute Nifty 50 breadth — advances/declines vs previous close
+    let advances = 0, declines = 0, unchanged = 0
+    for (const sym of NIFTY50_SYMBOLS) {
+      const d = kiteMap[sym]
+      if (!d?.last_price || !d?.ohlc?.close) continue
+      const diff = d.last_price - d.ohlc.close
+      if (diff > 0.01)       advances++
+      else if (diff < -0.01) declines++
+      else                   unchanged++
+    }
+    const total   = advances + declines + unchanged
+    const breadth: Breadth = { advances, declines, unchanged, total }
+
+    cache = { data: indices, breadth, ts: Date.now() }
+    return NextResponse.json({ indices, breadth })
 
   } catch (err: any) {
     if (cache && Date.now() - cache.ts < CACHE_STALE_TTL_MS) {
-      return NextResponse.json({ indices: cache.data, stale: true })
+      return NextResponse.json({ indices: cache.data, breadth: cache.breadth, stale: true })
     }
     return NextResponse.json({ error: err.message }, { status: 502 })
   }

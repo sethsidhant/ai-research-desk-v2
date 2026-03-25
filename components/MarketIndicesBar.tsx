@@ -11,6 +11,43 @@ type IndexQuote = {
   group:     string
 }
 
+type Breadth = { advances: number; declines: number; unchanged: number; total: number }
+
+function BreadthBar({ breadth }: { breadth: Breadth }) {
+  const { advances, declines, unchanged, total } = breadth
+  if (total === 0) return null
+  const advPct  = (advances  / total) * 100
+  const decPct  = (declines  / total) * 100
+  const unchPct = (unchanged / total) * 100
+  return (
+    <div className="mt-1.5">
+      {/* Segmented bar */}
+      <div className="flex h-1 rounded-full overflow-hidden gap-[1px]">
+        <div className="bg-emerald-400 rounded-l-full transition-all duration-500" style={{ width: `${advPct}%` }} />
+        {unchPct > 0 && <div className="bg-gray-300 transition-all duration-500" style={{ width: `${unchPct}%` }} />}
+        <div className="bg-red-400 rounded-r-full transition-all duration-500" style={{ width: `${decPct}%` }} />
+      </div>
+      {/* Counts */}
+      <div className="flex justify-between items-center mt-1">
+        <span className="text-[9px] font-bold text-emerald-600 flex items-center gap-0.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
+          {advances}
+        </span>
+        {unchanged > 0 && (
+          <span className="text-[9px] text-gray-400 flex items-center gap-0.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-gray-300 inline-block" />
+            {unchanged}
+          </span>
+        )}
+        <span className="text-[9px] font-bold text-red-500 flex items-center gap-0.5">
+          {declines}
+          <span className="w-1.5 h-1.5 rounded-full bg-red-400 inline-block" />
+        </span>
+      </div>
+    </div>
+  )
+}
+
 function fmt(n: number) {
   return n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
@@ -25,9 +62,10 @@ function vixLabel(vix: number): { text: string; color: string; bg: string } {
   return               { text: 'Extreme Fear',     color: 'text-red-700',     bg: 'bg-red-100'    }
 }
 
-function BroadCard({ idx, flash }: { idx: IndexQuote; flash: 'up' | 'down' | null }) {
+function BroadCard({ idx, flash, breadth }: { idx: IndexQuote; flash: 'up' | 'down' | null; breadth?: Breadth | null }) {
   const up      = idx.change >= 0
   const bgFlash = flash === 'up' ? 'bg-emerald-50' : flash === 'down' ? 'bg-red-50' : 'bg-white'
+  const showBreadth = idx.name === 'NIFTY 50' && breadth && breadth.total > 0
 
   if (idx.group === 'vix') {
     const mood = vixLabel(idx.last)
@@ -41,12 +79,13 @@ function BroadCard({ idx, flash }: { idx: IndexQuote; flash: 'up' | 'down' | nul
   }
 
   return (
-    <div className={`flex flex-col px-3 py-2 rounded-xl border border-gray-200 min-w-[110px] transition-colors duration-300 ${bgFlash}`}>
+    <div className={`flex flex-col px-3 py-2 rounded-xl border border-gray-200 transition-colors duration-300 ${bgFlash} ${showBreadth ? 'min-w-[130px]' : 'min-w-[110px]'}`}>
       <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5 whitespace-nowrap">{idx.name}</span>
       <span className="text-sm font-bold font-mono text-gray-900">{fmt(idx.last)}</span>
       <span className={`text-[10px] font-mono font-medium mt-0.5 ${up ? 'text-emerald-600' : 'text-red-500'}`}>
         {up ? '▲' : '▼'} {Math.abs(idx.change).toFixed(1)} ({Math.abs(idx.changePct).toFixed(2)}%)
       </span>
+      {showBreadth && <BreadthBar breadth={breadth!} />}
     </div>
   )
 }
@@ -66,10 +105,11 @@ function SectorChip({ idx, flash }: { idx: IndexQuote; flash: 'up' | 'down' | nu
 }
 
 export default function MarketIndicesBar() {
-  const [indices, setIndices] = useState<IndexQuote[]>([])
-  const [stale, setStale]     = useState(false)
-  const prevRef               = useRef<Record<string, number>>({})
-  const [flashes, setFlashes] = useState<Record<string, 'up' | 'down' | null>>({})
+  const [indices, setIndices]   = useState<IndexQuote[]>([])
+  const [breadth, setBreadth]   = useState<Breadth | null>(null)
+  const [stale, setStale]       = useState(false)
+  const prevRef                 = useRef<Record<string, number>>({})
+  const [flashes, setFlashes]   = useState<Record<string, 'up' | 'down' | null>>({})
 
   async function fetchIndices() {
     try {
@@ -87,6 +127,7 @@ export default function MarketIndicesBar() {
       }
 
       setIndices(json.indices)
+      setBreadth(json.stale ? null : (json.breadth ?? null))
       setStale(!!json.stale)
 
       if (Object.keys(newFlashes).length > 0) {
@@ -122,7 +163,7 @@ export default function MarketIndicesBar() {
           </div>
         ))}
         {broad.map(idx => (
-          <BroadCard key={idx.name} idx={idx} flash={flashes[idx.name] ?? null} />
+          <BroadCard key={idx.name} idx={idx} flash={flashes[idx.name] ?? null} breadth={idx.name === 'NIFTY 50' ? breadth : null} />
         ))}
         {stale && (
           <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 border border-gray-200 px-2 py-1 rounded-full whitespace-nowrap">
