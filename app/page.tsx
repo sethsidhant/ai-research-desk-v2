@@ -132,12 +132,13 @@ export default async function DashboardPage() {
       .limit(7),
   ])
 
-  const fiiDiiRow  = fiiDiiRows?.[0] ?? null
-  const fiiDiiYest = fiiDiiRows?.[1] ?? null
+  // Skip rows with null fii_net/dii_net (can happen when scraper inserts partial row)
+  const fiiDiiRow  = (fiiDiiRows ?? []).find(r => r.fii_net != null && r.dii_net != null) ?? null
+  const fiiDiiYest = (fiiDiiRows ?? []).filter(r => r.fii_net != null && r.dii_net != null)[1] ?? null
 
-  // 5-day rolling net
-  const fii5d = (fiiDiiRows ?? []).slice(0, 5).reduce((s, r) => s + r.fii_net, 0)
-  const dii5d = (fiiDiiRows ?? []).slice(0, 5).reduce((s, r) => s + r.dii_net, 0)
+  // 5-day rolling net (guard against null values)
+  const fii5d = (fiiDiiRows ?? []).slice(0, 5).reduce((s, r) => s + (r.fii_net ?? 0), 0)
+  const dii5d = (fiiDiiRows ?? []).slice(0, 5).reduce((s, r) => s + (r.dii_net ?? 0), 0)
 
   // Consecutive FII streak (buying or selling)
   let fiiStreak = 0
@@ -367,10 +368,11 @@ export default async function DashboardPage() {
                         {fiiDiiRow.fii_net >= 0 ? '▲' : '▼'} {fmtCr(Math.abs(fiiDiiRow.fii_net))}
                       </div>
                       <div className="flex items-center gap-3 mt-1 flex-wrap">
-                        {fiiDiiYest && (() => {
-                          const chg = fiiDiiRow.fii_net - fiiDiiYest.fii_net
-                          return <span className={`text-[10px] font-mono ${chg >= 0 ? 'text-emerald-500' : 'text-red-400'}`}>{chg >= 0 ? '▲' : '▼'} {fmtCr(Math.abs(chg))} vs yest</span>
-                        })()}
+                        {fiiDiiYest && (
+                          <span className={`text-[10px] font-mono ${(fiiDiiRow.fii_net - fiiDiiYest.fii_net) >= 0 ? 'text-emerald-500' : 'text-red-400'}`}>
+                            {(fiiDiiRow.fii_net - fiiDiiYest.fii_net) >= 0 ? '▲' : '▼'} {fmtCr(Math.abs(fiiDiiRow.fii_net - fiiDiiYest.fii_net))} vs yest
+                          </span>
+                        )}
                         <span className="text-[10px] text-gray-400 font-mono">
                           5d: <span className={fii5d >= 0 ? 'text-emerald-500' : 'text-red-400'}>{fii5d >= 0 ? '+' : ''}{fmtCr(fii5d)}</span>
                         </span>
@@ -383,10 +385,11 @@ export default async function DashboardPage() {
                         {fiiDiiRow.dii_net >= 0 ? '▲' : '▼'} {fmtCr(Math.abs(fiiDiiRow.dii_net))}
                       </div>
                       <div className="flex items-center gap-3 mt-1 flex-wrap">
-                        {fiiDiiYest && (() => {
-                          const chg = fiiDiiRow.dii_net - fiiDiiYest.dii_net
-                          return <span className={`text-[10px] font-mono ${chg >= 0 ? 'text-emerald-500' : 'text-red-400'}`}>{chg >= 0 ? '▲' : '▼'} {fmtCr(Math.abs(chg))} vs yest</span>
-                        })()}
+                        {fiiDiiYest && (
+                          <span className={`text-[10px] font-mono ${(fiiDiiRow.dii_net - fiiDiiYest.dii_net) >= 0 ? 'text-emerald-500' : 'text-red-400'}`}>
+                            {(fiiDiiRow.dii_net - fiiDiiYest.dii_net) >= 0 ? '▲' : '▼'} {fmtCr(Math.abs(fiiDiiRow.dii_net - fiiDiiYest.dii_net))} vs yest
+                          </span>
+                        )}
                         <span className="text-[10px] text-gray-400 font-mono">
                           5d: <span className={dii5d >= 0 ? 'text-emerald-500' : 'text-red-400'}>{dii5d >= 0 ? '+' : ''}{fmtCr(dii5d)}</span>
                         </span>
