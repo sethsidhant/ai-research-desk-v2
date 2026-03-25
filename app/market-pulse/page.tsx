@@ -68,7 +68,7 @@ export default async function MarketPulsePage() {
             No FII flow data yet — run <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">node seedFiiHistory.js</code> to backfill 5 years, then trigger the FII Data Refresh workflow.
           </div>
         ) : (
-          <FiiFlowChart data={fiiFlow} />
+          <FiiFlowChart data={fiiFlow} dailyNet={fiiDii} />
         )}
 
         {fiiDii.length > 0 && <DailyFlowChart data={fiiDii} />}

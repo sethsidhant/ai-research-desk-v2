@@ -3,7 +3,8 @@
 import { useState, useMemo } from 'react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ReferenceLine, ResponsiveContainer } from 'recharts'
 
-type Point = { date: string; cumulative_net: number | null }
+type Point    = { date: string; cumulative_net: number | null }
+type DailyRow = { date: string; fii_net: number | null }
 
 const PERIODS = [
   { label: '1Y', years: 1 },
@@ -28,7 +29,15 @@ function formatDate(d: string) {
   return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })
 }
 
-export default function FiiFlowChart({ data }: { data: Point[] }) {
+export default function FiiFlowChart({ data, dailyNet = [] }: { data: Point[]; dailyNet?: DailyRow[] }) {
+  // Authoritative day-flow lookup from fii_dii_daily (NSE source, not Screener delta)
+  const dailyNetMap = useMemo(() => {
+    const m: Record<string, number> = {}
+    for (const r of dailyNet) {
+      if (r.fii_net != null) m[r.date] = r.fii_net
+    }
+    return m
+  }, [dailyNet])
   const [period, setPeriod] = useState('1Y')
 
   const filtered = useMemo(() => {
@@ -41,9 +50,12 @@ export default function FiiFlowChart({ data }: { data: Point[] }) {
       .filter(d => d.cumulative_net != null && new Date(d.date) >= cutoff)
       .map(d => ({ date: d.date, value: d.cumulative_net as number }))
 
-    // Compute day flow (delta) and 1W flow (sum of last 5 deltas) for tooltip
+    // Compute day flow and 1W flow for tooltip
+    // Prefer fii_dii_daily.fii_net (NSE authoritative) over Screener cumulative delta
     return pts.map((p, i) => {
-      const dayFlow = i === 0 ? 0 : parseFloat((p.value - pts[i - 1].value).toFixed(2))
+      const dayFlow = dailyNetMap[p.date] !== undefined
+        ? dailyNetMap[p.date]
+        : i === 0 ? 0 : parseFloat((p.value - pts[i - 1].value).toFixed(2))
       const weekFlow = parseFloat(
         [1,2,3,4,5].reduce((sum, k) => {
           const prev = pts[i - k]
