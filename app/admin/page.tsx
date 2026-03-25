@@ -53,10 +53,16 @@ export default async function AdminPage() {
   const uniqueStocks    = new Set(entries.map(r => r.stock_id)).size
   const avgStocksPerUser = usersWithStocks > 0 ? (entries.length / usersWithStocks) : 0
 
-  // Stock popularity
-  const stockCounts: Record<string, number> = {}
+  // Stock popularity + which users
+  const stockCounts:   Record<string, number>   = {}
+  const stockUsers:    Record<string, string[]>  = {}
+  const userEmailMap:  Record<string, string>    = {}
+  for (const u of allUsers) userEmailMap[u.id] = u.email ?? u.id
+
   for (const r of entries) {
     stockCounts[r.stock_id] = (stockCounts[r.stock_id] ?? 0) + 1
+    if (!stockUsers[r.stock_id]) stockUsers[r.stock_id] = []
+    stockUsers[r.stock_id].push(r.user_id)
   }
   const topStockIds = Object.entries(stockCounts)
     .sort((a, b) => b[1] - a[1])
@@ -69,7 +75,8 @@ export default async function AdminPage() {
 
   const topStocks = topStockIds.map(id => {
     const s = (topStockData ?? []).find(x => x.id === id)
-    return { ...s, count: stockCounts[id] }
+    const emails = (stockUsers[id] ?? []).map(uid => userEmailMap[uid] ?? uid)
+    return { ...s, count: stockCounts[id], emails }
   }).filter(s => s.ticker)
 
   // ── 3. Recent onboards (last 7 days) ──────────────────────────────────────
@@ -260,7 +267,8 @@ export default async function AdminPage() {
                   <th className="text-left px-5 py-2">Ticker</th>
                   <th className="text-left px-5 py-2">Name</th>
                   <th className="text-left px-5 py-2">Industry</th>
-                  <th className="text-right px-5 py-2">Users Watching</th>
+                  <th className="text-left px-5 py-2">Watched By</th>
+                  <th className="text-right px-5 py-2">Count</th>
                 </tr>
               </thead>
               <tbody>
@@ -270,6 +278,15 @@ export default async function AdminPage() {
                     <td className="px-5 py-2.5 font-mono font-semibold text-gray-900">{s.ticker}</td>
                     <td className="px-5 py-2.5 text-gray-700">{s.stock_name}</td>
                     <td className="px-5 py-2.5 text-gray-400 text-xs">{s.industry ?? '—'}</td>
+                    <td className="px-5 py-2.5">
+                      <div className="flex flex-wrap gap-1">
+                        {(s.emails ?? []).map((email: string) => (
+                          <span key={email} className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-mono">
+                            {email.split('@')[0]}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
                     <td className="px-5 py-2.5 text-right">
                       <span className="inline-block bg-blue-50 text-blue-700 text-xs font-semibold px-2 py-0.5 rounded-full">
                         {s.count}
