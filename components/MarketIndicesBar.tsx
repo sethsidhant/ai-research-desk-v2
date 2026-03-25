@@ -13,7 +13,7 @@ type IndexQuote = {
 
 type Breadth = { advances: number; declines: number; unchanged: number; total: number }
 
-function BreadthBar({ breadth }: { breadth: Breadth }) {
+function BreadthBar({ breadth, stale }: { breadth: Breadth; stale?: boolean }) {
   const { advances, declines, unchanged, total } = breadth
   if (total === 0) return null
   const advPct  = (advances  / total) * 100
@@ -21,6 +21,9 @@ function BreadthBar({ breadth }: { breadth: Breadth }) {
   const unchPct = (unchanged / total) * 100
   return (
     <div className="mt-1.5">
+      {stale && (
+        <div className="text-[8px] font-semibold text-gray-400 uppercase tracking-wide mb-1">At close</div>
+      )}
       {/* Segmented bar */}
       <div className="flex h-1 rounded-full overflow-hidden gap-[1px]">
         <div className="bg-emerald-400 rounded-l-full transition-all duration-500" style={{ width: `${advPct}%` }} />
@@ -62,7 +65,7 @@ function vixLabel(vix: number): { text: string; color: string; bg: string } {
   return               { text: 'Extreme Fear',     color: 'text-red-700',     bg: 'bg-red-100'    }
 }
 
-function BroadCard({ idx, flash, breadth }: { idx: IndexQuote; flash: 'up' | 'down' | null; breadth?: Breadth | null }) {
+function BroadCard({ idx, flash, breadth, stale }: { idx: IndexQuote; flash: 'up' | 'down' | null; breadth?: Breadth | null; stale?: boolean }) {
   const up      = idx.change >= 0
   const bgFlash = flash === 'up' ? 'bg-emerald-50' : flash === 'down' ? 'bg-red-50' : 'bg-white'
   const showBreadth = idx.name === 'NIFTY 50' && breadth && breadth.total > 0
@@ -85,7 +88,7 @@ function BroadCard({ idx, flash, breadth }: { idx: IndexQuote; flash: 'up' | 'do
       <span className={`text-[10px] font-mono font-medium mt-0.5 ${up ? 'text-emerald-600' : 'text-red-500'}`}>
         {up ? '▲' : '▼'} {Math.abs(idx.change).toFixed(1)} ({Math.abs(idx.changePct).toFixed(2)}%)
       </span>
-      {showBreadth && <BreadthBar breadth={breadth!} />}
+      {showBreadth && <BreadthBar breadth={breadth!} stale={idx.name === 'NIFTY 50' && stale} />}
     </div>
   )
 }
@@ -127,7 +130,7 @@ export default function MarketIndicesBar() {
       }
 
       setIndices(json.indices)
-      setBreadth(json.stale ? null : (json.breadth ?? null))
+      if (json.breadth) setBreadth(json.breadth)
       setStale(!!json.stale)
 
       if (Object.keys(newFlashes).length > 0) {
@@ -163,7 +166,7 @@ export default function MarketIndicesBar() {
           </div>
         ))}
         {broad.map(idx => (
-          <BroadCard key={idx.name} idx={idx} flash={flashes[idx.name] ?? null} breadth={idx.name === 'NIFTY 50' ? breadth : null} />
+          <BroadCard key={idx.name} idx={idx} flash={flashes[idx.name] ?? null} breadth={idx.name === 'NIFTY 50' ? breadth : null} stale={stale} />
         ))}
         {stale && (
           <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 border border-gray-200 px-2 py-1 rounded-full whitespace-nowrap">
