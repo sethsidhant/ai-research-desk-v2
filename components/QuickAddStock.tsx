@@ -94,7 +94,7 @@ export default function QuickAddStock() {
             value={query}
             onChange={e => setQuery(e.target.value)}
             placeholder="Search ticker or name…"
-            className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 w-56 focus:outline-none focus:ring-2 focus:ring-gray-300"
+            className="text-sm text-gray-900 border border-gray-300 rounded-lg px-3 py-1.5 w-56 focus:outline-none focus:ring-2 focus:ring-gray-300"
           />
           {searching && (
             <div className="absolute right-2.5 top-2 w-3 h-3 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
@@ -131,14 +131,14 @@ export default function QuickAddStock() {
             value={entryPrice}
             onChange={e => setEntryPrice(e.target.value)}
             placeholder="Entry price (opt)"
-            className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 w-36 focus:outline-none focus:ring-2 focus:ring-gray-300"
+            className="text-sm text-gray-900 border border-gray-300 rounded-lg px-3 py-1.5 w-36 focus:outline-none focus:ring-2 focus:ring-gray-300"
           />
           <input
             type="number"
             value={investedAmount}
             onChange={e => setInvestedAmount(e.target.value)}
             placeholder="Invested ₹ (opt)"
-            className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 w-36 focus:outline-none focus:ring-2 focus:ring-gray-300"
+            className="text-sm text-gray-900 border border-gray-300 rounded-lg px-3 py-1.5 w-36 focus:outline-none focus:ring-2 focus:ring-gray-300"
           />
           <button
             onClick={handleAdd}
