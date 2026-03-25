@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import BudgetForm from '@/components/BudgetForm'
+import AdminActions from '@/components/AdminActions'
 
 // ── Claude claude-sonnet-4-6 pricing (USD per 1M tokens) ────────────────────────────
 const PRICE_INPUT  = 3.00   // $3/M input tokens
@@ -243,6 +244,12 @@ export default async function AdminPage() {
               </div>
             ))}
           </div>
+        </section>
+
+        {/* ── Manual Controls ──────────────────────────────────── */}
+        <section>
+          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Manual Controls</h2>
+          <AdminActions />
         </section>
 
         {/* ── Stocks ────────────────────────────────────────────── */}
