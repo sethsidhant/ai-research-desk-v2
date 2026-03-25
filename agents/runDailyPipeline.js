@@ -75,6 +75,7 @@ async function main() {
   run('engine.js');
   run('newsAgent.js');
   run('summaryAgent.js');
+  run('mfSebiAgent.js');     // MF equity/debt flow from SEBI (3-5 day lag)
 
   console.log(`\n${'═'.repeat(60)}`);
   console.log(`✅ Daily pipeline complete — ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST`);

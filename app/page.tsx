@@ -124,13 +124,20 @@ export default async function DashboardPage() {
     }))
 
   // ── FII data ─────────────────────────────────────────────────────────────
-  const [{ data: fiiSectors }, { data: fiiDiiRows }] = await Promise.all([
+  const [{ data: fiiSectors }, { data: fiiDiiRows }, { data: mfRows }] = await Promise.all([
     supabase.from('fii_sector').select('sector, fortnight_flow'),
     supabase.from('fii_dii_daily')
       .select('date, fii_net, dii_net')
       .order('date', { ascending: false })
       .limit(7),
+    supabase.from('mf_sebi_daily')
+      .select('date, eq_net, dbt_net')
+      .order('date', { ascending: false })
+      .limit(2),
   ])
+
+  const mfRow  = mfRows?.[0] ?? null
+  const mfYest = mfRows?.[1] ?? null
 
   // Skip rows with null fii_net/dii_net (can happen when scraper inserts partial row)
   const fiiDiiRow  = (fiiDiiRows ?? []).find(r => r.fii_net != null && r.dii_net != null) ?? null
@@ -399,6 +406,29 @@ export default async function DashboardPage() {
                   {fiiStreakDir && fiiStreak >= 2 && (
                     <div className={`mt-2 text-[10px] font-semibold px-2 py-1 rounded-lg inline-block ${fiiStreakDir === 'buying' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'}`}>
                       FII {fiiStreakDir} for {fiiStreak} days straight
+                    </div>
+                  )}
+
+                  {/* MF row */}
+                  {mfRow && (
+                    <div className="mt-3 pt-2 border-t border-gray-100">
+                      <div className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 mb-1.5">
+                        MF · SEBI · {new Date(mfRow.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className={`rounded-lg px-2.5 py-1.5 ${(mfRow.eq_net ?? 0) >= 0 ? 'bg-emerald-50 border border-emerald-100' : 'bg-red-50 border border-red-100'}`}>
+                          <div className="text-[9px] text-gray-400 mb-0.5">Equity</div>
+                          <div className={`text-xs font-bold font-mono ${(mfRow.eq_net ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                            {(mfRow.eq_net ?? 0) >= 0 ? '▲' : '▼'} {fmtCr(Math.abs(mfRow.eq_net ?? 0))}
+                          </div>
+                        </div>
+                        <div className={`rounded-lg px-2.5 py-1.5 ${(mfRow.dbt_net ?? 0) >= 0 ? 'bg-emerald-50 border border-emerald-100' : 'bg-red-50 border border-red-100'}`}>
+                          <div className="text-[9px] text-gray-400 mb-0.5">Debt</div>
+                          <div className={`text-xs font-bold font-mono ${(mfRow.dbt_net ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                            {(mfRow.dbt_net ?? 0) >= 0 ? '▲' : '▼'} {fmtCr(Math.abs(mfRow.dbt_net ?? 0))}
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
