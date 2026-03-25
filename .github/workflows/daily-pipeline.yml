@@ -37,6 +37,8 @@ jobs:
           TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
           DASHBOARD_URL=${{ secrets.DASHBOARD_URL }}
           ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
+          SCREENER_EMAIL=${{ secrets.SCREENER_EMAIL }}
+          SCREENER_PASSWORD=${{ secrets.SCREENER_PASSWORD }}
           EOF
 
       - name: Fetch fresh Kite token from Supabase
@@ -57,6 +59,10 @@ jobs:
 
       - name: Run engine (scores + prices)
         run: node engine.js
+        working-directory: agents
+
+      - name: Refresh FII data (Screener final + NSE)
+        run: node fiiAgent.js
         working-directory: agents
 
       - name: Run news agent

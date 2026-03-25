@@ -1,5 +1,7 @@
 // fiiAgent.js — FII cumulative flow + sector (Screener) + FII/DII daily (NSE)
-// Run daily after 6 PM IST when NSE data is available
+// Runs twice:
+//   1. ~7 PM IST via Task Scheduler — provisional NSE data + same-day Screener snapshot
+//   2. Via daily-pipeline.yml (morning engine run) — Screener final data overwrites provisional
 require('dotenv').config({ path: '../.env.local' });
 const { createClient } = require('@supabase/supabase-js');
 
@@ -126,7 +128,6 @@ async function fetchFIIDIIDaily(nseCookies) {
   const dii = data.find(d => d.category === 'DII');
   if (!fii || !dii) throw new Error('NSE: missing FII or DII entry');
 
-  // NSE date format: "23-Mar-2026"
   const parseDate = (s) => {
     const [d, m, y] = s.split('-');
     const months = { Jan:'01',Feb:'02',Mar:'03',Apr:'04',May:'05',Jun:'06',Jul:'07',Aug:'08',Sep:'09',Oct:'10',Nov:'11',Dec:'12' };
@@ -167,28 +168,7 @@ async function main() {
 
   console.log('Fetching NSE FII/DII daily...');
   const nseSession = await getNSESession();
-  const dailyRow = await fetchFIIDIIDaily(nseSession);
-
-  // Extend fii_flow with today's NSE data (cumulative = last known + today's fii_net)
-  if (dailyRow) {
-    const { data: latest } = await supabase
-      .from('fii_flow')
-      .select('date, cumulative_net')
-      .order('date', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (latest && dailyRow.date > latest.date) {
-      const newCumulative = parseFloat((latest.cumulative_net + dailyRow.fii_net).toFixed(2));
-      const { error } = await supabase
-        .from('fii_flow')
-        .upsert({ date: dailyRow.date, cumulative_net: newCumulative }, { onConflict: 'date' });
-      if (error) console.warn('  ⚠ fii_flow extend:', error.message);
-      else console.log(`  ✓ fii_flow extended: ${dailyRow.date} cumulative = ${newCumulative}`);
-    } else {
-      console.log(`  · fii_flow already up to date (${latest?.date})`);
-    }
-  }
+  await fetchFIIDIIDaily(nseSession);
 
   console.log('\n✅ fiiAgent complete.');
 }
