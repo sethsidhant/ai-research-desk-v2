@@ -5,7 +5,7 @@
 require("dotenv").config({ path: "../.env.local" });
 const Anthropic    = require("@anthropic-ai/sdk");
 const { execSync } = require("child_process");
-const { getTechnicals, getReturns, NIFTY50_TOKEN, NIFTY500_TOKEN } = require("./technicalService");
+const { getTechnicals, getReturns, NIFTY50_TOKEN, NIFTY500_TOKEN, setKiteToken } = require("./technicalService");
 const { upsertStock, upsertDailyScore, insertHistory } = require("./pgHelper");
 const { createClient } = require("@supabase/supabase-js");
 
@@ -63,6 +63,10 @@ async function getKiteOHLC(token) {
 
 async function main() {
   console.log(`[runOneStock] Processing ${ticker}...`);
+
+  // Load fresh Kite token from Supabase (Railway env var may be stale)
+  const { data: tokenRow } = await supabase.from('app_settings').select('value').eq('key', 'kite_access_token').single();
+  if (tokenRow?.value) setKiteToken(tokenRow.value);
 
   // Fetch stock record
   const { data: stocks } = await supabase.from("stocks").select("*").eq("ticker", ticker).limit(1);
