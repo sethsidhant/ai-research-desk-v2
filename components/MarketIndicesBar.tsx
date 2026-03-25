@@ -212,9 +212,9 @@ function SectorChip({ idx, flash }: { idx: IndexQuote; flash: 'up' | 'down' | nu
   const up      = idx.change >= 0
   const bgFlash = flash === 'up' ? 'bg-emerald-50 border-emerald-200' : flash === 'down' ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'
   return (
-    <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs transition-colors duration-300 ${bgFlash}`}>
-      <span className="font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{idx.name}</span>
-      <span className={`font-mono font-bold ${up ? 'text-emerald-600' : 'text-red-500'}`}>
+    <div className={`flex flex-col px-3 py-2 rounded-xl border transition-colors duration-300 min-w-[80px] ${bgFlash}`}>
+      <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">{idx.name}</span>
+      <span className={`text-sm font-mono font-bold mt-0.5 ${up ? 'text-emerald-600' : 'text-red-500'}`}>
         {up ? '▲' : '▼'}{Math.abs(idx.changePct).toFixed(2)}%
       </span>
     </div>
@@ -298,7 +298,7 @@ export default function MarketIndicesBar() {
     <>
       <div className="space-y-2">
         {/* Row 1 — broad market */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-0.5">
+        <div className="flex items-start gap-2 overflow-x-auto pb-0.5">
           {gift.map(idx => (
             <div key={idx.name} className="flex flex-col px-3 py-2 rounded-xl border border-indigo-200 bg-indigo-50 min-w-[110px]">
               <span className="text-[10px] font-semibold text-indigo-400 uppercase tracking-wider mb-0.5 whitespace-nowrap">GIFT NIFTY</span>

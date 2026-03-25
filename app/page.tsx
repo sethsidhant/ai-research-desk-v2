@@ -161,8 +161,8 @@ export default async function DashboardPage() {
     .filter(s => s.flow !== 0)
     .sort((a, b) => b.flow - a.flow)
 
-  const top3 = validSectors.slice(0, 3)
-  const bot3 = validSectors.slice(-3).reverse()
+  const top3 = validSectors.slice(0, 4)
+  const bot3 = validSectors.slice(-4).reverse()
   const sectorBuyCount  = validSectors.filter(s => s.flow > 0).length
   const sectorSellCount = validSectors.filter(s => s.flow < 0).length
 
@@ -414,28 +414,28 @@ export default async function DashboardPage() {
                       <span className="text-red-500 font-semibold">{sectorSellCount}</span> selling
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                     {/* Buying column */}
-                    <div className="space-y-1.5">
+                    <div className="space-y-2">
                       {top3.map(s => (
-                        <div key={s.name} className="flex items-center justify-between gap-2">
+                        <div key={s.name} className="flex items-center justify-between gap-2 bg-emerald-50 rounded-lg px-2.5 py-1.5">
                           <div className="flex items-center gap-1.5 min-w-0">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-                            <span className="text-[11px] text-gray-700 truncate">{SHORT_SECTOR[s.name] ?? s.name}</span>
+                            <span className="text-xs text-gray-700 truncate font-medium">{SHORT_SECTOR[s.name] ?? s.name}</span>
                           </div>
-                          <span className="text-[11px] font-mono font-semibold text-emerald-600 shrink-0">{fmtCr(s.flow)}</span>
+                          <span className="text-xs font-mono font-bold text-emerald-600 shrink-0">{fmtCr(s.flow)}</span>
                         </div>
                       ))}
                     </div>
                     {/* Selling column */}
-                    <div className="space-y-1.5">
+                    <div className="space-y-2">
                       {bot3.map(s => (
-                        <div key={s.name} className="flex items-center justify-between gap-2">
+                        <div key={s.name} className="flex items-center justify-between gap-2 bg-red-50 rounded-lg px-2.5 py-1.5">
                           <div className="flex items-center gap-1.5 min-w-0">
                             <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
-                            <span className="text-[11px] text-gray-700 truncate">{SHORT_SECTOR[s.name] ?? s.name}</span>
+                            <span className="text-xs text-gray-700 truncate font-medium">{SHORT_SECTOR[s.name] ?? s.name}</span>
                           </div>
-                          <span className="text-[11px] font-mono font-semibold text-red-500 shrink-0">{fmtCr(s.flow)}</span>
+                          <span className="text-xs font-mono font-bold text-red-500 shrink-0">{fmtCr(s.flow)}</span>
                         </div>
                       ))}
                     </div>
