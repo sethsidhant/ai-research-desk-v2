@@ -88,11 +88,12 @@ function computeBreadthAndTiles(symbols: string[], kiteMap: Record<string, any>)
 }
 
 let cache: {
-  data:            IndexQuote[]
-  breadth:         Breadth | null
-  tiles:           StockTile[]
-  bankBreadth:     Breadth | null
-  ts:              number
+  data:        IndexQuote[]
+  breadth:     Breadth | null
+  tiles:       StockTile[]
+  bankBreadth: Breadth | null
+  bankTiles:   StockTile[]
+  ts:          number
 } | null = null
 
 const CACHE_TTL_MS       = 15000
@@ -104,13 +105,13 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   if (cache && Date.now() - cache.ts < CACHE_TTL_MS) {
-    return NextResponse.json({ indices: cache.data, breadth: cache.breadth, tiles: cache.tiles, bankBreadth: cache.bankBreadth, cached: true })
+    return NextResponse.json({ indices: cache.data, breadth: cache.breadth, tiles: cache.tiles, bankBreadth: cache.bankBreadth, bankTiles: cache.bankTiles, cached: true })
   }
 
   const kite = await getKiteToken()
   if (!kite) {
     if (cache && Date.now() - cache.ts < CACHE_STALE_TTL_MS) {
-      return NextResponse.json({ indices: cache.data, breadth: cache.breadth, tiles: cache.tiles, bankBreadth: cache.bankBreadth, stale: true })
+      return NextResponse.json({ indices: cache.data, breadth: cache.breadth, tiles: cache.tiles, bankBreadth: cache.bankBreadth, bankTiles: cache.bankTiles, stale: true })
     }
     return NextResponse.json({ error: 'Kite credentials not configured' }, { status: 500 })
   }
@@ -129,7 +130,7 @@ export async function GET() {
 
     if (!res.ok) {
       if (cache && Date.now() - cache.ts < CACHE_STALE_TTL_MS) {
-        return NextResponse.json({ indices: cache.data, breadth: cache.breadth, tiles: cache.tiles, bankBreadth: cache.bankBreadth, stale: true })
+        return NextResponse.json({ indices: cache.data, breadth: cache.breadth, tiles: cache.tiles, bankBreadth: cache.bankBreadth, bankTiles: cache.bankTiles, stale: true })
       }
       return NextResponse.json({ error: `Kite error: ${res.status}` }, { status: 502 })
     }
@@ -146,15 +147,15 @@ export async function GET() {
       return { name: idx.label, last, prevClose, change, changePct, group: idx.group }
     })
 
-    const { breadth, tiles }     = computeBreadthAndTiles(NIFTY50_SYMBOLS, kiteMap)
-    const { breadth: bankBreadth } = computeBreadthAndTiles(BANKNIFTY_SYMBOLS, kiteMap)
+    const { breadth, tiles }                   = computeBreadthAndTiles(NIFTY50_SYMBOLS, kiteMap)
+    const { breadth: bankBreadth, tiles: bankTiles } = computeBreadthAndTiles(BANKNIFTY_SYMBOLS, kiteMap)
 
-    cache = { data: indices, breadth, tiles, bankBreadth, ts: Date.now() }
-    return NextResponse.json({ indices, breadth, tiles, bankBreadth })
+    cache = { data: indices, breadth, tiles, bankBreadth, bankTiles, ts: Date.now() }
+    return NextResponse.json({ indices, breadth, tiles, bankBreadth, bankTiles })
 
   } catch (err: any) {
     if (cache && Date.now() - cache.ts < CACHE_STALE_TTL_MS) {
-      return NextResponse.json({ indices: cache.data, breadth: cache.breadth, tiles: cache.tiles, bankBreadth: cache.bankBreadth, stale: true })
+      return NextResponse.json({ indices: cache.data, breadth: cache.breadth, tiles: cache.tiles, bankBreadth: cache.bankBreadth, bankTiles: cache.bankTiles, stale: true })
     }
     return NextResponse.json({ error: err.message }, { status: 502 })
   }
