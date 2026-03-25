@@ -83,7 +83,10 @@ async function poll() {
       const headline = f.HEADLINE ?? 'New Filing';
       const category = f.SUBCATNAME || f.CATEGORYNAME || 'Filing';
       const dt       = f.DT_TM ? f.DT_TM.replace('T', ' ').substring(0, 16) : new Date().toISOString().replace('T', ' ').substring(0, 16);
-      const link     = f.NEWSID
+      // Prefer direct PDF attachment link (always works without BSE session); fall back to announcement page
+      const link     = f.ATTACHMENTNAME
+        ? `https://www.bseindia.com/xml-data/corpfiling/AttachLive/${f.ATTACHMENTNAME}`
+        : f.NEWSID
         ? `https://www.bseindia.com/markets/MarketInfo/DispNewSearchAnnouncement.aspx?newsid=${f.NEWSID}`
         : `https://www.bseindia.com/corporates/ann.html?scrip=${scrip}&dur=TD&type=C`;
 
@@ -93,17 +96,22 @@ async function poll() {
       }
 
       // Write filing to DB so dashboard reflects it immediately (no wait until morning engine)
-      try {
-        const detectedAt  = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' });
-        const newBlock    = `━━ LIVE FILING (detected ${detectedAt} IST) ━━\n\n[1] ${category}\n📅 ${dt}\n📌 ${headline}\n🔗 ${link}\n\n`;
-        const { data: row } = await supabase.from('stocks').select('latest_headlines').eq('id', entry.stockId).single();
-        const existing    = row?.latest_headlines ?? '';
-        const updated     = newBlock + existing;
-        const today       = new Date().toISOString().slice(0, 10);
-        await supabase.from('stocks').update({ latest_headlines: updated, last_news_update: today }).eq('id', entry.stockId);
-        console.log(`[filingWatcher] DB updated: ${entry.ticker} — ${headline}`);
-      } catch (dbErr) {
-        console.error(`[filingWatcher] DB write failed for ${entry.ticker}:`, dbErr.message);
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          const detectedAt  = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' });
+          const newBlock    = `━━ LIVE FILING (detected ${detectedAt} IST) ━━\n\n[1] ${category}\n📅 ${dt}\n📌 ${headline}\n🔗 ${link}\n\n`;
+          const { data: row } = await supabase.from('stocks').select('latest_headlines').eq('id', entry.stockId).single();
+          const existing    = row?.latest_headlines ?? '';
+          const updated     = newBlock + existing;
+          const today       = new Date().toISOString().slice(0, 10);
+          const { error: dbErr } = await supabase.from('stocks').update({ latest_headlines: updated, last_news_update: today }).eq('id', entry.stockId);
+          if (dbErr) throw new Error(dbErr.message);
+          console.log(`[filingWatcher] DB updated: ${entry.ticker} — ${headline}`);
+          break;
+        } catch (dbErr) {
+          console.error(`[filingWatcher] DB write failed for ${entry.ticker} (attempt ${attempt}):`, dbErr.message);
+          if (attempt < 2) await new Promise(r => setTimeout(r, 5000));
+        }
       }
     }
 
