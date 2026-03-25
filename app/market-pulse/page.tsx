@@ -4,6 +4,7 @@ import Link from 'next/link'
 import SignOutButton from '@/components/SignOutButton'
 import FiiFlowChart from './FiiFlowChart'
 import DailyFlowChart from './DailyFlowChart'
+import MFFlowChart from './MFFlowChart'
 import SectorGrid from './SectorGrid'
 
 export default async function MarketPulsePage() {
@@ -22,7 +23,7 @@ export default async function MarketPulsePage() {
     return { ticker: s?.ticker ?? '', stock_name: s?.stock_name ?? '', industry: s?.industry ?? null }
   }).filter(s => s.ticker)
 
-  const [fiiFlowRes, fiiDiiRes, sectorsRes] = await Promise.all([
+  const [fiiFlowRes, fiiDiiRes, sectorsRes, mfRes] = await Promise.all([
     supabase
       .from('fii_flow')
       .select('date, cumulative_net')
@@ -35,11 +36,16 @@ export default async function MarketPulsePage() {
       .from('fii_sector')
       .select('sector, aum, aum_pct, fortnight_flow, oneyear_flow, sparkline_values, sparkline_labels')
       .order('fortnight_flow', { ascending: true }),
+    supabase
+      .from('mf_sebi_daily')
+      .select('date, eq_net, dbt_net')
+      .order('date', { ascending: true }),
   ])
 
   const fiiFlow   = fiiFlowRes.data  ?? []
   const fiiDii    = fiiDiiRes.data   ?? []
   const sectors   = sectorsRes.data  ?? []
+  const mfData    = mfRes.data       ?? []
 
   const lastUpdated = fiiDii[fiiDii.length - 1]?.date ?? null
 
@@ -72,6 +78,8 @@ export default async function MarketPulsePage() {
         )}
 
         {fiiDii.length > 0 && <DailyFlowChart data={fiiDii} />}
+
+        {mfData.length > 0 && <MFFlowChart data={mfData} />}
 
         {sectors.length > 0 ? (
           <SectorGrid sectors={sectors} userStocks={userStocks} />
