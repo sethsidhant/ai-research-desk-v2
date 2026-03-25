@@ -162,7 +162,6 @@ Return ONLY valid JSON: {"composite_score":<1-10>,"classification":"<Undervalued
     suggested_action: result.suggested_action,
     stock_6m: stockReturns.r6m, stock_1y: stockReturns.r1y,
     nifty50_6m: niftyReturns.r6m, nifty50_1y: niftyReturns.r1y,
-    nifty500_6m: nifty500Returns.r6m, nifty500_1y: nifty500Returns.r1y,
   });
 
   console.log(`[runOneStock] ✓ ${ticker} — ${result.classification} | ${result.suggested_action} | Score: ${result.composite_score}`);
