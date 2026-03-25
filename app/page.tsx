@@ -408,7 +408,7 @@ export default async function DashboardPage() {
               {validSectors.length > 0 && (
                 <div className="border-t border-gray-100 pt-3">
                   <div className="flex items-center justify-between mb-2">
-                    <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Sector Flow · Fortnight</div>
+                    <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">FII Sectoral Flow · Fortnight</div>
                     <div className="text-[10px] text-gray-400">
                       <span className="text-emerald-600 font-semibold">{sectorBuyCount}</span> buying ·{' '}
                       <span className="text-red-500 font-semibold">{sectorSellCount}</span> selling
