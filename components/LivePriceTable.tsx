@@ -1,11 +1,13 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { type WatchlistRow } from './WatchlistTable'
 import WatchlistTable from './WatchlistTable'
 import PortfolioChart, { type ChartPoint } from './PortfolioChart'
 
 const POLL_INTERVAL = 15000
+const ONBOARD_POLL_INTERVAL = 8000
 
 type PriceFlash    = 'up' | 'down' | null
 type PriceChange   = { change: number; changePct: number }
@@ -26,6 +28,7 @@ function applyFilter(rows: WatchlistRow[], filter: FilterKey): WatchlistRow[] {
 }
 
 export default function LivePriceTable({ initialRows, chartData, fiiSectors = [] }: { initialRows: WatchlistRow[]; chartData: ChartPoint[]; fiiSectors?: { sector: string; fortnight_flow: number | null }[] }) {
+  const router                      = useRouter()
   const [rows, setRows]             = useState<WatchlistRow[]>(initialRows)
   const [marketOpen, setMarketOpen] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
@@ -102,6 +105,20 @@ export default function LivePriceTable({ initialRows, chartData, fiiSectors = []
     const id = setInterval(fetchPrices, POLL_INTERVAL)
     return () => clearInterval(id)
   }, [])
+
+  // Auto-refresh when a newly added stock finishes onboarding (composite_score was null)
+  useEffect(() => {
+    const pending = initialRows.filter(r => r.composite_score == null).map(r => r.ticker)
+    if (!pending.length) return
+    const id = setInterval(async () => {
+      try {
+        const res  = await fetch('/api/onboard-status?tickers=' + pending.join(','))
+        const json = await res.json()
+        if (json.ready) { clearInterval(id); router.refresh() }
+      } catch { /* silent */ }
+    }, ONBOARD_POLL_INTERVAL)
+    return () => clearInterval(id)
+  }, [initialRows])
 
   return (
     <div>
