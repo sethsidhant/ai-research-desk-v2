@@ -13,6 +13,8 @@ const INDUSTRY_TO_FII_SECTOR: Record<string, string> = {
   'Financial Institution':                  'Financial Services',
   'Investment Company':                     'Financial Services',
   'Computers - Software & Consulting':      'Information Technology',
+  'IT Enabled Services':                    'Information Technology',
+  'Computer Hardware':                      'Information Technology',
   'Oil Exploration & Production':           'Oil, Gas & Consumable Fuels',
   'Refineries & Marketing':                 'Oil, Gas & Consumable Fuels',
   'Power Generation':                       'Power',
