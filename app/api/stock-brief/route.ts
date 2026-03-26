@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 import { INDUSTRY_TO_FII_SECTOR } from '@/lib/fiiSectorMap'
 
@@ -10,14 +11,31 @@ export async function POST(request: Request) {
   const { ticker } = await request.json().catch(() => ({}))
   if (!ticker) return NextResponse.json({ error: 'ticker required' }, { status: 400 })
 
-  // Fetch stock data
+  // Fetch stock data (includes brief cache fields)
   const { data: stock } = await supabase
     .from('stocks')
-    .select('id, stock_name, ticker, industry, current_price, stock_pe, industry_pe, roe, roce, debt_to_equity, promoter_holding, latest_headlines')
+    .select('id, stock_name, ticker, industry, current_price, stock_pe, industry_pe, roe, roce, debt_to_equity, promoter_holding, latest_headlines, ai_brief, ai_brief_date')
     .eq('ticker', ticker)
     .single()
 
   if (!stock) return NextResponse.json({ error: 'Stock not found' }, { status: 404 })
+
+  // ── Cache check: if brief was generated today (IST), return it ──────────
+  const todayIST = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }))
+    .toISOString().slice(0, 10)
+
+  if (stock.ai_brief && stock.ai_brief_date === todayIST) {
+    return NextResponse.json({ brief: stock.ai_brief, cached: true })
+  }
+
+  // ── Get user's BYOK key (falls back to app key) ──────────────────────────
+  const { data: userSettings } = await supabase
+    .from('user_settings')
+    .select('anthropic_api_key')
+    .eq('user_id', user.id)
+    .single()
+
+  const apiKey = userSettings?.anthropic_api_key || process.env.ANTHROPIC_API_KEY!
 
   // Latest scores
   const { data: scoreRows } = await supabase
@@ -47,17 +65,17 @@ export async function POST(request: Request) {
   ctx.push(`Stock: ${stock.stock_name} (${stock.ticker}) | Industry: ${stock.industry ?? 'N/A'} | Price: ₹${stock.current_price ?? 'N/A'}`)
 
   if (score) {
-    const dmaStatus = score.above_200_dma ? 'above 200DMA' : 'below 200DMA'
-    const dmaStatus50 = score.above_50_dma ? 'above 50DMA' : 'below 50DMA'
+    const dmaStatus   = score.above_200_dma ? 'above 200DMA' : 'below 200DMA'
+    const dmaStatus50 = score.above_50_dma  ? 'above 50DMA'  : 'below 50DMA'
     ctx.push(`Technicals: RSI ${score.rsi?.toFixed(0) ?? '—'} (${score.rsi_signal ?? 'Neutral'}), PE deviation ${score.pe_deviation != null ? (score.pe_deviation > 0 ? '+' : '') + score.pe_deviation.toFixed(0) + '%' : '—'} vs industry, ${dmaStatus}, ${dmaStatus50}, Score: ${score.composite_score?.toFixed(0) ?? '—'}/100 (${score.classification ?? '—'})`)
   }
 
   const fundParts: string[] = []
-  if (stock.stock_pe)       fundParts.push(`PE: ${stock.stock_pe.toFixed(1)}x`)
-  if (stock.industry_pe)    fundParts.push(`Industry PE: ${stock.industry_pe.toFixed(1)}x`)
-  if (stock.roe)            fundParts.push(`ROE: ${stock.roe.toFixed(1)}%`)
-  if (stock.roce)           fundParts.push(`ROCE: ${stock.roce.toFixed(1)}%`)
-  if (stock.debt_to_equity) fundParts.push(`D/E: ${stock.debt_to_equity.toFixed(2)}x`)
+  if (stock.stock_pe)         fundParts.push(`PE: ${stock.stock_pe.toFixed(1)}x`)
+  if (stock.industry_pe)      fundParts.push(`Industry PE: ${stock.industry_pe.toFixed(1)}x`)
+  if (stock.roe)              fundParts.push(`ROE: ${stock.roe.toFixed(1)}%`)
+  if (stock.roce)             fundParts.push(`ROCE: ${stock.roce.toFixed(1)}%`)
+  if (stock.debt_to_equity)   fundParts.push(`D/E: ${stock.debt_to_equity.toFixed(2)}x`)
   if (stock.promoter_holding) fundParts.push(`Promoter: ${stock.promoter_holding.toFixed(1)}%`)
   if (fundParts.length) ctx.push(`Fundamentals: ${fundParts.join(' | ')}`)
 
@@ -78,7 +96,7 @@ ${ctx.join('\n')}`
   const apiRes = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
-      'x-api-key':         process.env.ANTHROPIC_API_KEY!,
+      'x-api-key':         apiKey,
       'anthropic-version': '2023-06-01',
       'content-type':      'application/json',
     },
@@ -97,6 +115,15 @@ ${ctx.join('\n')}`
 
   const aiJson = await apiRes.json()
   const brief  = aiJson.content?.[0]?.text?.trim() ?? ''
+
+  // ── Write brief back to stocks table (cache for rest of today) ───────────
+  if (brief) {
+    const admin = createAdminClient()
+    await admin
+      .from('stocks')
+      .update({ ai_brief: brief, ai_brief_date: todayIST })
+      .eq('id', stock.id)
+  }
 
   return NextResponse.json({ brief })
 }

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { saveAlertPreferences } from './actions'
+import { saveAlertPreferences, saveApiKey } from './actions'
 import { createClient } from '@/lib/supabase/client'
 
 type Prefs = {
@@ -97,7 +97,7 @@ function TelegramConnect({ linked }: { linked: boolean }) {
   )
 }
 
-export default function SettingsForm({ prefs }: { prefs: Prefs }) {
+export default function SettingsForm({ prefs, apiKeySet }: { prefs: Prefs; apiKeySet: boolean }) {
   const [status, setStatus]   = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
 
@@ -116,6 +116,11 @@ export default function SettingsForm({ prefs }: { prefs: Prefs }) {
   }
 
   return (
+    <div className="space-y-10">
+
+      {/* AI Key */}
+      <BYOKSection apiKeySet={apiKeySet} />
+
     <form onSubmit={handleSubmit} className="space-y-8">
 
       {/* Notifications */}
@@ -266,6 +271,87 @@ export default function SettingsForm({ prefs }: { prefs: Prefs }) {
         )}
       </div>
     </form>
+    </div>
+  )
+}
+
+function BYOKSection({ apiKeySet }: { apiKeySet: boolean }) {
+  const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [errorMsg, setErrorMsg] = useState('')
+  const [showInput, setShowInput] = useState(false)
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    setStatus('saving')
+    const result = await saveApiKey(new FormData(e.currentTarget))
+    if (result.error) {
+      setErrorMsg(result.error)
+      setStatus('error')
+    } else {
+      setStatus('saved')
+      setShowInput(false)
+      setTimeout(() => setStatus('idle'), 3000)
+    }
+  }
+
+  return (
+    <section>
+      <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">AI Assistant</h2>
+      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm space-y-3">
+        <div>
+          <div className="text-sm font-medium text-gray-700 mb-0.5">Anthropic API Key (BYOK)</div>
+          <div className="text-xs text-gray-400 leading-relaxed">
+            Bring your own key — AI briefs will use your key instead of the app&apos;s. Your key is stored encrypted and never exposed to the browser.
+          </div>
+        </div>
+
+        {!showInput ? (
+          <div className="flex items-center gap-3">
+            {apiKeySet ? (
+              <span className="text-xs text-emerald-600 font-medium">✓ API key saved — your briefs use your key</span>
+            ) : (
+              <span className="text-xs text-gray-400">Not set — using app&apos;s shared key</span>
+            )}
+            <button
+              type="button"
+              onClick={() => setShowInput(true)}
+              className="text-xs text-blue-600 hover:text-blue-500 font-medium"
+            >
+              {apiKeySet ? 'Update key' : 'Add key'}
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <input
+              type="password"
+              name="anthropic_api_key"
+              placeholder="sk-ant-api03-..."
+              autoComplete="off"
+              className="w-full px-4 py-2.5 rounded-lg bg-white text-gray-900 border border-gray-300 focus:outline-none focus:border-blue-500 text-sm font-mono"
+            />
+            <div className="text-xs text-gray-400">Leave blank to remove your key and revert to the app&apos;s default.</div>
+            {status === 'error' && <p className="text-xs text-red-500">{errorMsg}</p>}
+            <div className="flex gap-3">
+              <button
+                type="submit"
+                disabled={status === 'saving'}
+                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium disabled:opacity-50 transition-colors"
+              >
+                {status === 'saving' ? 'Saving...' : 'Save key'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowInput(false); setStatus('idle') }}
+                className="px-4 py-2 rounded-lg border border-gray-300 text-gray-600 text-sm hover:border-gray-400 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        )}
+        {status === 'saved' && <span className="text-xs text-emerald-600">✓ Key saved</span>}
+      </div>
+    </section>
   )
 }
 

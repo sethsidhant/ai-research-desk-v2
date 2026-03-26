@@ -30,3 +30,22 @@ export async function saveAlertPreferences(formData: FormData) {
   revalidatePath('/settings')
   return { success: true }
 }
+
+export async function saveApiKey(formData: FormData) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated' }
+
+  const key = (formData.get('anthropic_api_key') as string ?? '').trim()
+
+  const { error } = await supabase
+    .from('user_settings')
+    .upsert(
+      { user_id: user.id, anthropic_api_key: key || null, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id' }
+    )
+
+  if (error) return { error: error.message }
+  revalidatePath('/settings')
+  return { success: true }
+}

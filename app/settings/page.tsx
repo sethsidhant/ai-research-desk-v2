@@ -24,11 +24,10 @@ export default async function SettingsPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data } = await supabase
-    .from('user_alert_preferences')
-    .select('*')
-    .eq('user_id', user.id)
-    .single()
+  const [{ data }, { data: userSettings }] = await Promise.all([
+    supabase.from('user_alert_preferences').select('*').eq('user_id', user.id).single(),
+    supabase.from('user_settings').select('anthropic_api_key').eq('user_id', user.id).single(),
+  ])
 
   const prefs = data ?? DEFAULT_PREFS
 
@@ -37,6 +36,8 @@ export default async function SettingsPage() {
     prefs.digest_time = prefs.digest_time.slice(0, 5)
   }
 
+  const apiKeySet = !!(userSettings?.anthropic_api_key)
+
   return (
     <div className="min-h-screen bg-white">
       <header className="border-b border-gray-200 px-6 py-4 flex items-center justify-between bg-white">
@@ -44,7 +45,7 @@ export default async function SettingsPage() {
           <Link href="/" className="text-gray-500 hover:text-gray-900 text-sm transition-colors">
             ← Dashboard
           </Link>
-          <h1 className="text-xl font-bold text-gray-900">Alert Preferences</h1>
+          <h1 className="text-xl font-bold text-gray-900">Settings</h1>
         </div>
         <div className="flex items-center gap-4">
           <span className="text-sm text-gray-500">{user.email}</span>
@@ -53,7 +54,7 @@ export default async function SettingsPage() {
       </header>
 
       <main className="px-6 py-8 max-w-xl mx-auto">
-        <SettingsForm prefs={prefs} />
+        <SettingsForm prefs={prefs} apiKeySet={apiKeySet} />
       </main>
     </div>
   )
