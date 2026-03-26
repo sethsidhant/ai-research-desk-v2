@@ -227,8 +227,19 @@ export default async function DashboardPage() {
     volumeBreakouts.sort((a, b) => b.ratio - a.ratio)
   }
 
-  // Volume shockers for activity board (only >=3x extreme spikes)
-  const volumeShockers = volumeBreakouts.filter(v => v.ratio >= 3)
+  // Volume alerts for activity board (>=2x avg — dedicated section now)
+  const volumeAlerts = volumeBreakouts.filter(v => v.ratio >= 2)
+
+  // Watchlist movers (virtual P&L, by entry price)
+  const watchlistMovers = allRows
+    .filter((w: any) => w.entry_price && w.stock?.current_price)
+    .map((w: any) => ({
+      ticker:    w.stock.ticker as string,
+      returnPct: ((w.stock.current_price - w.entry_price) / w.entry_price) * 100,
+    }))
+    .sort((a: any, b: any) => b.returnPct - a.returnPct)
+  const watchGainers = watchlistMovers.slice(0, 2)
+  const watchLosers  = [...watchlistMovers].reverse().slice(0, 2).filter((h: any) => h.returnPct < 0)
 
   // Activity board — news items (last 2 days, watchlist + portfolio, deduplicated)
   const yesterday_date = new Date(Date.now() - 86400000).toISOString().slice(0, 10)
@@ -724,11 +735,14 @@ export default async function DashboardPage() {
           {/* ── Activity Board — full width row ───────────────────────── */}
           <div className="sm:col-span-3">
             <div className="bg-white border border-gray-200 rounded-xl px-5 py-4 shadow-sm">
-              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-4">
-                Activity · Watchlist &amp; Portfolio
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">
+                  Activity · Watchlist &amp; Portfolio
+                </div>
+                <div className="text-[10px] text-gray-300">Last 24 hours</div>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-[2fr_1.5fr_1fr] gap-6 divide-y lg:divide-y-0 lg:divide-x divide-gray-100">
+              <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr_1fr_1fr] gap-6 divide-y lg:divide-y-0 lg:divide-x divide-gray-100">
 
                 {/* ── News ─────────────────────────────────── */}
                 <div className="pb-4 lg:pb-0 lg:pr-6">
@@ -752,40 +766,62 @@ export default async function DashboardPage() {
                   )}
                 </div>
 
-                {/* ── Technical Alerts ─────────────────────── */}
+                {/* ── Volume Alerts ────────────────────────── */}
                 <div className="pt-4 lg:pt-0 lg:px-6">
-                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">⚡ Technical Alerts</div>
-                  {actOversold.length === 0 && actOverbought.length === 0 && actBelow200.length === 0 && volumeShockers.length === 0 ? (
-                    <p className="text-xs text-gray-300">No alerts.</p>
+                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">🔊 Volume Alerts</div>
+                  {volumeAlerts.length === 0 ? (
+                    <p className="text-xs text-gray-300">No unusual volume yesterday.</p>
                   ) : (
-                    <div className="space-y-2.5">
-                      {actBelow200.length > 0 && (
-                        <AlertChipRow
-                          badge={`${actBelow200.length} below 200 DMA`}
-                          badgeColor="bg-red-50 text-red-600 border border-red-100"
-                          tickers={actBelow200}
-                        />
+                    <div className="space-y-2">
+                      {volumeAlerts.slice(0, 6).map(v => {
+                        const color = v.ratio >= 3 ? 'text-red-500' : v.ratio >= 2 ? 'text-orange-500' : 'text-amber-500'
+                        return (
+                          <div key={v.ticker} className="flex items-center justify-between gap-2">
+                            <span className={`text-[11px] font-mono font-bold ${v.isPortfolio ? 'text-blue-500' : 'text-gray-600'}`}>
+                              {v.ticker}
+                            </span>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className="text-[10px] font-mono text-gray-400">
+                                {v.vol >= 1000000 ? `${(v.vol / 1000000).toFixed(1)}M` : `${(v.vol / 1000).toFixed(0)}K`}
+                              </span>
+                              <span className={`text-[11px] font-mono font-bold ${color}`}>{v.ratio.toFixed(1)}×</span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                      <p className="text-[9px] text-gray-300 pt-0.5">vs 20-day avg · yesterday EOD</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* ── Watchlist Movers ─────────────────────── */}
+                <div className="pt-4 lg:pt-0 lg:px-6">
+                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">📋 Watchlist</div>
+                  {watchlistMovers.length === 0 ? (
+                    <p className="text-xs text-gray-300">Set entry prices to see movers.</p>
+                  ) : (
+                    <div>
+                      {watchGainers.length > 0 && (
+                        <>
+                          <div className="text-[10px] text-gray-400 mb-1.5">Top gainers</div>
+                          {watchGainers.map((h: any) => (
+                            <div key={h.ticker} className="flex items-center justify-between py-1">
+                              <span className="text-xs font-semibold text-gray-800">{h.ticker}</span>
+                              <span className="text-xs font-mono font-bold text-emerald-600">+{h.returnPct.toFixed(1)}%</span>
+                            </div>
+                          ))}
+                        </>
                       )}
-                      {actOversold.length > 0 && (
-                        <AlertChipRow
-                          badge={`${actOversold.length} oversold`}
-                          badgeColor="bg-blue-50 text-blue-600 border border-blue-100"
-                          tickers={actOversold}
-                        />
-                      )}
-                      {actOverbought.length > 0 && (
-                        <AlertChipRow
-                          badge={`${actOverbought.length} overbought`}
-                          badgeColor="bg-orange-50 text-orange-600 border border-orange-100"
-                          tickers={actOverbought}
-                        />
-                      )}
-                      {volumeShockers.length > 0 && (
-                        <AlertChipRow
-                          badge={`${volumeShockers.length} vol spike 3×+`}
-                          badgeColor="bg-amber-50 text-amber-600 border border-amber-100"
-                          tickers={volumeShockers.map(v => v.ticker)}
-                        />
+                      {watchLosers.length > 0 && (
+                        <>
+                          <div className="text-[10px] text-gray-400 mt-3 mb-1.5 pt-2 border-t border-gray-100">Laggards</div>
+                          {watchLosers.map((h: any) => (
+                            <div key={h.ticker} className="flex items-center justify-between py-1">
+                              <span className="text-xs font-semibold text-gray-800">{h.ticker}</span>
+                              <span className="text-xs font-mono font-bold text-red-500">{h.returnPct.toFixed(1)}%</span>
+                            </div>
+                          ))}
+                        </>
                       )}
                     </div>
                   )}
@@ -793,7 +829,7 @@ export default async function DashboardPage() {
 
                 {/* ── Portfolio Movers ─────────────────────── */}
                 <div className="pt-4 lg:pt-0 lg:pl-6">
-                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">📊 Portfolio Movers</div>
+                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">💼 Portfolio</div>
                   {portMovers.length === 0 ? (
                     <p className="text-xs text-gray-300">No holdings with live prices.</p>
                   ) : (
@@ -804,7 +840,7 @@ export default async function DashboardPage() {
                           {portGainers.map((h: any) => (
                             <div key={h.ticker} className="flex items-center justify-between py-1">
                               <span className="text-xs font-semibold text-gray-800">{h.ticker}</span>
-                              <div className="flex items-center gap-3">
+                              <div className="flex items-center gap-2 shrink-0">
                                 <span className="text-[10px] font-mono text-gray-400">{h.alloc.toFixed(1)}%</span>
                                 <span className="text-xs font-mono font-bold text-emerald-600">+{h.returnPct.toFixed(1)}%</span>
                               </div>
@@ -818,7 +854,7 @@ export default async function DashboardPage() {
                           {portLosers.map((h: any) => (
                             <div key={h.ticker} className="flex items-center justify-between py-1">
                               <span className="text-xs font-semibold text-gray-800">{h.ticker}</span>
-                              <div className="flex items-center gap-3">
+                              <div className="flex items-center gap-2 shrink-0">
                                 <span className="text-[10px] font-mono text-gray-400">{h.alloc.toFixed(1)}%</span>
                                 <span className="text-xs font-mono font-bold text-red-500">{h.returnPct.toFixed(1)}%</span>
                               </div>
