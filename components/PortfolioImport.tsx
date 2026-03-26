@@ -82,10 +82,11 @@ export default function PortfolioImport() {
   // ── Manual add ────────────────────────────────────────────────────────────
   const search                        = useStockSearch()
   const [selected, setSelected]       = useState<SearchResult | null>(null)
-  const [qty, setQty]                 = useState('')
-  const [avgPrice, setAvgPrice]       = useState('')
-  const [broker, setBroker]           = useState('')
-  const [adding, setAdding]           = useState(false)
+  const [qty, setQty]                         = useState('')
+  const [avgPrice, setAvgPrice]               = useState('')
+  const [broker, setBroker]                   = useState('')
+  const [investmentDate, setInvestmentDate]   = useState('')
+  const [adding, setAdding]                   = useState(false)
   const [addResult, setAddResult]     = useState<string | null>(null)
   const [addError, setAddError]       = useState<string | null>(null)
   const [showManual, setShowManual]   = useState(false)
@@ -107,12 +108,12 @@ export default function PortfolioImport() {
       const res  = await fetch('/api/portfolio/holdings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ stock_id: selected.id, quantity: q, avg_price: p, broker: broker || 'Manual' }),
+        body: JSON.stringify({ stock_id: selected.id, quantity: q, avg_price: p, broker: broker || 'Manual', investment_date: investmentDate || null }),
       })
       const json = await res.json()
       if (!res.ok) { setAddError(json.error ?? 'Add failed'); return }
       setAddResult(`Added ${q} shares of ${selected.ticker}`)
-      setSelected(null); search.setQuery(''); setQty(''); setAvgPrice(''); setBroker('')
+      setSelected(null); search.setQuery(''); setQty(''); setAvgPrice(''); setBroker(''); setInvestmentDate('')
       router.refresh()
     } catch (e: any) {
       setAddError(e.message)
@@ -237,6 +238,16 @@ export default function PortfolioImport() {
                 type="text"
                 value={broker} onChange={e => setBroker(e.target.value)}
                 placeholder="e.g. HDFC Securities"
+                className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-300"
+              />
+            </div>
+
+            {/* Investment Date */}
+            <div>
+              <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1 block">Investment Date <span className="text-gray-300">(optional)</span></label>
+              <input
+                type="date"
+                value={investmentDate} onChange={e => setInvestmentDate(e.target.value)}
                 className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-300"
               />
             </div>

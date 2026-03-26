@@ -13,7 +13,7 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null)
   if (!body) return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
 
-  const { stock_id, quantity, avg_price, broker } = body
+  const { stock_id, quantity, avg_price, broker, investment_date } = body
   if (!stock_id || !quantity || !avg_price) {
     return NextResponse.json({ error: 'stock_id, quantity and avg_price are required' }, { status: 400 })
   }
@@ -24,13 +24,14 @@ export async function POST(request: Request) {
   const { error } = await admin
     .from('portfolio_holdings')
     .upsert({
-      user_id:       user.id,
+      user_id:         user.id,
       stock_id,
       quantity,
       avg_price,
-      broker:        broker ?? 'Manual',
-      import_source: 'manual',
-      updated_at:    new Date().toISOString(),
+      broker:          broker ?? 'Manual',
+      import_source:   'manual',
+      updated_at:      new Date().toISOString(),
+      ...(investment_date ? { investment_date } : {}),
     }, { onConflict: 'user_id,stock_id' })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

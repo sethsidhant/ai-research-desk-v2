@@ -35,6 +35,7 @@ export default async function PortfolioPage() {
       broker,
       import_source,
       added_at,
+      investment_date,
       stocks (
         ticker,
         stock_name,
@@ -119,6 +120,7 @@ export default async function PortfolioPage() {
     avg_price:        h.avg_price,
     quantity:         h.quantity,
     broker:           h.broker ?? null,
+    investment_date:  h.investment_date ?? null,
     pe_deviation:     latestScore[h.stock_id]?.pe_deviation   ?? null,
     rsi:              latestScore[h.stock_id]?.rsi             ?? null,
     rsi_signal:       latestScore[h.stock_id]?.rsi_signal      ?? null,

@@ -8,22 +8,23 @@ import FundamentalsDrawer from './FundamentalsDrawer'
 import StockChartPanel from './StockChartPanel'
 
 export type HoldingRow = {
-  stock_id:        string
-  ticker:          string
-  stock_name:      string
-  industry:        string | null
-  current_price:   number | null
-  avg_price:       number
-  quantity:        number
-  broker:          string | null
+  stock_id:         string
+  ticker:           string
+  stock_name:       string
+  industry:         string | null
+  current_price:    number | null
+  avg_price:        number
+  quantity:         number
+  broker:           string | null
+  investment_date:  string | null
   // analysis
-  pe_deviation:    number | null
-  rsi:             number | null
-  rsi_signal:      string | null
-  composite_score: number | null
-  classification:  string | null
-  suggested_action:string | null
-  above_200_dma:   boolean | null
+  pe_deviation:     number | null
+  rsi:              number | null
+  rsi_signal:       string | null
+  composite_score:  number | null
+  classification:   string | null
+  suggested_action: string | null
+  above_200_dma:    boolean | null
 }
 
 type SortKey = 'allocation' | 'returnPct' | 'pnl' | 'ticker'
@@ -39,6 +40,19 @@ function fmtCurrency(n: number) {
   if (abs >= 100000)   return `₹${(n / 100000).toFixed(2)}L`
   if (abs >= 1000)     return `₹${(n / 1000).toFixed(1)}k`
   return `₹${fmt(n)}`
+}
+
+function TaxBadge({ date }: { date: string | null }) {
+  if (!date) return null
+  const days = Math.floor((Date.now() - new Date(date).getTime()) / 86400000)
+  if (days < 0) return null
+  const ltcg = days >= 365
+  return (
+    <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${ltcg ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}
+      title={`${days}d held · ${ltcg ? 'LTCG' : 'STCG'}`}>
+      {ltcg ? 'LTCG' : 'STCG'} {days >= 365 ? `${Math.floor(days/365)}y` : `${days}d`}
+    </span>
+  )
 }
 
 function ScoreBadge({ score, cls }: { score: number | null; cls: string | null }) {
@@ -98,7 +112,7 @@ export default function HoldingsTable({
 
   // Edit state
   const [editingId, setEditingId]           = useState<string | null>(null)
-  const [editForm, setEditForm]             = useState<{ quantity: string; avg_price: string; broker: string } | null>(null)
+  const [editForm, setEditForm]             = useState<{ quantity: string; avg_price: string; broker: string; investment_date: string } | null>(null)
   const [saving, setSaving]                 = useState(false)
 
   // Panel state
@@ -199,7 +213,12 @@ export default function HoldingsTable({
 
   function startEdit(row: typeof computedRows[0]) {
     setEditingId(row.stock_id)
-    setEditForm({ quantity: String(row.quantity), avg_price: String(row.avg_price), broker: row.broker ?? '' })
+    setEditForm({
+      quantity:        String(row.quantity),
+      avg_price:       String(row.avg_price),
+      broker:          row.broker ?? '',
+      investment_date: row.investment_date ?? '',
+    })
   }
 
   async function saveEdit(stockId: string) {
@@ -211,7 +230,13 @@ export default function HoldingsTable({
     await fetch('/api/portfolio/holdings', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ stock_id: stockId, quantity: qty, avg_price: price, broker: editForm.broker || 'Manual' }),
+      body:    JSON.stringify({
+        stock_id:        stockId,
+        quantity:        qty,
+        avg_price:       price,
+        broker:          editForm.broker || 'Manual',
+        investment_date: editForm.investment_date || null,
+      }),
     })
     setSaving(false)
     setEditingId(null)
@@ -308,7 +333,10 @@ export default function HoldingsTable({
                   <tr key={row.stock_id} className={`${rowBg} hover:bg-gray-50 transition-colors duration-300`}>
                     {/* Stock */}
                     <td className="px-4 py-3">
-                      <div className="font-semibold text-gray-900 text-sm">{row.ticker}</div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-semibold text-gray-900 text-sm">{row.ticker}</span>
+                        <TaxBadge date={row.investment_date} />
+                      </div>
                       <div className="text-[10px] text-gray-400 truncate max-w-[160px]">{row.stock_name}</div>
                       {row.broker && (
                         <div className="text-[9px] text-gray-300 mt-0.5">{row.broker}</div>
@@ -433,6 +461,15 @@ export default function HoldingsTable({
                               value={editForm.broker}
                               onChange={e => setEditForm(f => f ? { ...f, broker: e.target.value } : f)}
                               className="w-28 text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:border-blue-400"
+                            />
+                          </div>
+                          <div>
+                            <div className="text-[10px] text-gray-400 mb-0.5">Investment Date <span className="text-gray-300">(optional)</span></div>
+                            <input
+                              type="date"
+                              value={editForm.investment_date}
+                              onChange={e => setEditForm(f => f ? { ...f, investment_date: e.target.value } : f)}
+                              className="w-36 text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:border-blue-400"
                             />
                           </div>
                         </div>
