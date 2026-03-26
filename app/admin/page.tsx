@@ -162,42 +162,6 @@ export default async function AdminPage() {
     if (!latestReports[row.agent_name]) latestReports[row.agent_name] = row
   }
 
-  // ── 8. Railway listener heartbeat ─────────────────────────────────────────
-  const { data: heartbeatRow } = await adminSupabase
-    .from('app_settings').select('value').eq('key', 'railway_heartbeat').single()
-  const heartbeatAt  = heartbeatRow?.value ? new Date(heartbeatRow.value) : null
-  const heartbeatAge = heartbeatAt ? Math.floor((Date.now() - heartbeatAt.getTime()) / 1000) : null
-  const listenerUp   = heartbeatAge != null && heartbeatAge < 120
-
-  // ── 8. Cron job heartbeats ─────────────────────────────────────────────────
-  const cronKeys = ['cron_pipeline_last_run', 'cron_digest_last_run', 'cron_fundamentals_last_run', 'cron_token_last_run']
-  const { data: cronRows } = await adminSupabase
-    .from('app_settings').select('key, value').in('key', cronKeys)
-  const cronMap: Record<string, string | null> = {}
-  for (const row of cronRows ?? []) cronMap[row.key] = row.value
-
-  function cronAge(key: string) {
-    const v = cronMap[key]
-    if (!v) return null
-    return Math.floor((Date.now() - new Date(v).getTime()) / 1000)
-  }
-  function cronLabel(secs: number | null) {
-    if (secs == null) return 'Never run'
-    if (secs < 3600) return `${Math.floor(secs / 60)}m ago`
-    if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`
-    return `${Math.floor(secs / 86400)}d ago`
-  }
-
-  const cronJobs = [
-    { label: 'Daily Pipeline',        key: 'cron_pipeline_last_run',     staleAfterH: 26 },
-    { label: 'Daily Digest',          key: 'cron_digest_last_run',       staleAfterH: 26 },
-    { label: 'Fundamentals Refresh',  key: 'cron_fundamentals_last_run', staleAfterH: 48 },
-    { label: 'Token Refresh',         key: 'cron_token_last_run',        staleAfterH: 26 },
-  ].map(j => {
-    const age = cronAge(j.key)
-    const ok  = age != null && age < j.staleAfterH * 3600
-    return { ...j, age, ok }
-  })
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -224,42 +188,6 @@ export default async function AdminPage() {
           </div>
         </section>
 
-        {/* ── Railway Listener ──────────────────────────────────── */}
-        <section>
-          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Railway Listener</h2>
-          <div className="bg-white border border-gray-200 rounded-xl px-5 py-4 shadow-sm flex items-center gap-4">
-            <span className={`w-3 h-3 rounded-full flex-shrink-0 ${listenerUp ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
-            <div>
-              <div className={`text-sm font-semibold ${listenerUp ? 'text-emerald-700' : 'text-red-600'}`}>
-                {listenerUp ? 'Online' : 'Offline / No heartbeat'}
-              </div>
-              <div className="text-xs text-gray-400 mt-0.5">
-                {heartbeatAge != null
-                  ? `Last heartbeat ${heartbeatAge < 60 ? `${heartbeatAge}s ago` : `${Math.floor(heartbeatAge / 60)}m ago`} · onboarding · index · stock · filing watchers`
-                  : 'No heartbeat received yet'}
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* ── Cron Jobs ─────────────────────────────────────────── */}
-        <section>
-          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">GitHub Actions — Cron Jobs</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {cronJobs.map(j => (
-              <div key={j.key} className="bg-white border border-gray-200 rounded-xl px-5 py-4 shadow-sm flex items-start gap-3">
-                <span className={`mt-1 w-2.5 h-2.5 rounded-full flex-shrink-0 ${j.ok ? 'bg-emerald-500' : j.age == null ? 'bg-gray-300' : 'bg-amber-400'}`} />
-                <div>
-                  <div className="text-sm font-semibold text-gray-900">{j.label}</div>
-                  <div className={`text-xs mt-0.5 ${j.ok ? 'text-emerald-600' : j.age == null ? 'text-gray-400' : 'text-amber-600'}`}>
-                    {cronLabel(j.age)}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
         {/* ── Agent Team ────────────────────────────────────────── */}
         <section>
           <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1">Agent Team</h2>
@@ -280,7 +208,7 @@ export default async function AdminPage() {
                 designation: 'Vital Signs Monitor',
                 schedule: 'Daily · 09:30 PM IST',
                 icon: '💓',
-                description: 'Checks all pipeline heartbeats (token refresh, daily pipeline, digest, fundamentals).',
+                description: 'Checks pipeline cron jobs, Railway listener process, and Supabase DB health. Alerts on any failure.',
               },
               {
                 key: 'onboarding_watchdog',
