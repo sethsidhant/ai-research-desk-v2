@@ -13,6 +13,8 @@ import StockSummaryPanel from './StockSummaryPanel'
 import FundamentalsDrawer from './FundamentalsDrawer'
 import StockChartPanel from './StockChartPanel'
 import StockNotePanel from './StockNotePanel'
+import { useRouter } from 'next/navigation'
+import { removeFromWatchlist } from '@/app/watchlist/actions'
 
 export type WatchlistRow = {
   stock_id: string
@@ -160,12 +162,22 @@ export default function WatchlistTable({
   for (const s of fiiSectors) {
     if (s.sector && s.fortnight_flow != null) fiiFlowMap[s.sector.replace(/&amp;/g, '&')] = s.fortnight_flow
   }
+  const router = useRouter()
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null)
   const [panelMode, setPanelMode] = useState<'summary' | 'filings'>('summary')
   const [fundamentalsRow, setFundamentalsRow] = useState<WatchlistRow | null>(null)
   const [chartRow, setChartRow] = useState<WatchlistRow | null>(null)
   const [noteRow, setNoteRow] = useState<WatchlistRow | null>(null)
   const [expandedEntry, setExpandedEntry] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
+
+  async function handleRemove(stockId: string) {
+    if (!confirm('Remove from watchlist?')) return
+    setDeleting(stockId)
+    await removeFromWatchlist(stockId)
+    setDeleting(null)
+    router.refresh()
+  }
   const [notes, setNotes] = useState<Record<string, string>>(() =>
     Object.fromEntries(rows.filter(r => r.notes).map(r => [r.stock_id, r.notes!]))
   )
@@ -430,6 +442,14 @@ export default function WatchlistTable({
                       className="text-base hover:scale-110 transition-transform leading-none"
                     >
                       📰
+                    </button>
+                    <button
+                      onClick={() => handleRemove(r.stock_id)}
+                      disabled={deleting === r.stock_id}
+                      title="Remove from watchlist"
+                      className="text-[11px] text-gray-300 hover:text-red-400 transition-colors disabled:opacity-50 ml-1"
+                    >
+                      {deleting === r.stock_id ? '…' : '✕'}
                     </button>
                   </div>
                 </td>
