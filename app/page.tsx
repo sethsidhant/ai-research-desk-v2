@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import SignOutButton from '@/components/SignOutButton'
@@ -39,6 +40,7 @@ const SHORT_SECTOR: Record<string, string> = {
 
 export default async function DashboardPage() {
   const supabase = await createClient()
+  const admin    = createAdminClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
@@ -55,13 +57,38 @@ export default async function DashboardPage() {
     return { ...w, stock }
   })
 
-  // ── P&L ──────────────────────────────────────────────────────────────────
+  // ── Watchlist P&L ────────────────────────────────────────────────────────
   const portfolioRows = allRows.filter(w => w.invested_amount && w.entry_price && w.stock?.current_price)
   const totalInvested = portfolioRows.reduce((s: number, w: any) => s + w.invested_amount, 0)
   const totalCurrent  = portfolioRows.reduce((s: number, w: any) =>
     s + (w.stock.current_price / w.entry_price) * w.invested_amount, 0)
   const totalPnl    = totalCurrent - totalInvested
   const totalPnlPct = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0
+
+  // ── Portfolio holdings (real) ─────────────────────────────────────────────
+  const { data: portfolioHoldings } = await admin
+    .from('portfolio_holdings')
+    .select('quantity, avg_price, stocks(ticker, current_price, industry)')
+    .eq('user_id', user.id)
+
+  const portRows = (portfolioHoldings ?? []).map((h: any) => {
+    const stock = Array.isArray(h.stocks) ? h.stocks[0] : h.stocks
+    return { ...h, stock }
+  }).filter((h: any) => h.stock?.current_price)
+
+  const portInvested = portRows.reduce((s: number, h: any) => s + h.quantity * h.avg_price, 0)
+  const portCurrent  = portRows.reduce((s: number, h: any) => s + h.quantity * h.stock.current_price, 0)
+  const portPnl      = portCurrent - portInvested
+  const portPnlPct   = portInvested > 0 ? (portPnl / portInvested) * 100 : 0
+
+  const topHoldings = portRows
+    .map((h: any) => ({
+      ticker: h.stock.ticker,
+      pct: h.avg_price > 0 ? ((h.stock.current_price - h.avg_price) / h.avg_price) * 100 : 0,
+      alloc: portInvested > 0 ? (h.quantity * h.avg_price / portInvested) * 100 : 0,
+    }))
+    .sort((a: any, b: any) => b.alloc - a.alloc)
+    .slice(0, 4)
 
   // ── Signals: latest score per stock ─────────────────────────────────────
   const stockIds = allRows.map((w: any) => w.stock_id).filter(Boolean)
@@ -221,10 +248,10 @@ export default async function DashboardPage() {
       <main className="px-3 sm:px-6 py-5 sm:py-8 max-w-screen-xl mx-auto">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
 
-          {/* ── Watchlist Portfolio card ──────────────────────────────── */}
+          {/* ── Watchlist · Virtual P&L card ──────────────────────────── */}
           <div className="sm:col-span-1">
             <Link href="/watchlist" className="block bg-white border border-gray-200 rounded-xl px-4 py-4 shadow-sm hover:border-gray-300 hover:shadow-md transition-all group h-full">
-              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-3">Watchlist Portfolio</div>
+              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-3">Watchlist · Virtual P&amp;L</div>
 
               {watchlistCount === 0 ? (
                 <div className="text-sm text-gray-400">No stocks yet. Add some to your watchlist →</div>
@@ -356,11 +383,88 @@ export default async function DashboardPage() {
             </Link>
           </div>
 
-          {/* ── FII/DII + Sector flow card ────────────────────────────── */}
-          <div className="sm:col-span-2">
-            <div className="bg-white border border-gray-200 rounded-xl px-4 py-4 shadow-sm">
+          {/* ── Real Portfolio card ───────────────────────────────────── */}
+          <div className="sm:col-span-1">
+            <div className="bg-white border border-gray-200 rounded-xl px-4 py-4 shadow-sm hover:border-gray-300 hover:shadow-md transition-all group h-full">
+              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-3">
+                Real Portfolio{' '}
+                <Link href="/portfolio" className="text-blue-400 hover:text-blue-600 transition-colors">→</Link>
+              </div>
 
-              {/* Row 1 — FII / DII boxes */}
+              {portRows.length === 0 ? (
+                <div className="text-sm text-gray-400">
+                  No holdings yet.{' '}
+                  <Link href="/portfolio" className="text-blue-500 hover:underline">Sync from Zerodha or upload CSV →</Link>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {/* P&L summary */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-gray-500">Invested</span>
+                      <span className="text-sm font-mono font-semibold text-gray-800">
+                        ₹{portInvested.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-gray-500">Current</span>
+                      <span className="text-sm font-mono font-semibold text-gray-800">
+                        ₹{portCurrent.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center pt-1 border-t border-gray-100">
+                      <span className="text-xs text-gray-500">Total Return</span>
+                      <div className="text-right">
+                        <span className={`text-base font-bold font-mono ${portPnl >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                          {portPnl >= 0 ? '+' : ''}{portPnlPct.toFixed(1)}%
+                        </span>
+                        <div className={`text-[11px] font-mono ${portPnl >= 0 ? 'text-emerald-500' : 'text-red-400'}`}>
+                          {portPnl >= 0 ? '+' : ''}₹{Math.abs(portPnl).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Top holdings */}
+                  {topHoldings.length > 0 && (
+                    <div className="pt-2 border-t border-gray-100">
+                      <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">Top Holdings</div>
+                      <div className="space-y-1.5">
+                        {topHoldings.map((h: any) => (
+                          <div key={h.ticker} className="space-y-0.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[11px] font-mono font-semibold text-gray-700">{h.ticker}</span>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className={`text-[11px] font-mono font-bold ${h.pct >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                                  {h.pct >= 0 ? '+' : ''}{h.pct.toFixed(1)}%
+                                </span>
+                                <span className="text-[10px] text-gray-400 font-mono">{h.alloc.toFixed(1)}%</span>
+                              </div>
+                            </div>
+                            <div className="h-0.5 w-full bg-gray-100 rounded-full overflow-hidden">
+                              <div className="h-full bg-blue-400 rounded-full" style={{ width: `${Math.min(h.alloc, 100)}%` }} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="pt-1 text-xs text-gray-400 group-hover:text-gray-600 transition-colors">
+                    <Link href="/portfolio" className="hover:text-gray-800 transition-colors">
+                      {portRows.length} holdings · View portfolio →
+                    </Link>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ── FII/DII + MF card ─────────────────────────────────────── */}
+          <div className="sm:col-span-1">
+            <div className="bg-white border border-gray-200 rounded-xl px-4 py-4 shadow-sm h-full">
+
+              {/* FII / DII boxes */}
               {fiiDiiRow && (
                 <div className="mb-4">
                   <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">
@@ -433,47 +537,49 @@ export default async function DashboardPage() {
                 </div>
               )}
 
-              {/* Row 2 — Sector flow, buying | selling side by side */}
-              {validSectors.length > 0 && (
-                <div className="border-t border-gray-100 pt-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">FII Sectoral Flow · Fortnight</div>
-                    <div className="text-[10px] text-gray-400">
-                      <span className="text-emerald-600 font-semibold">{sectorBuyCount}</span> buying ·{' '}
-                      <span className="text-red-500 font-semibold">{sectorSellCount}</span> selling
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-                    {/* Buying column */}
-                    <div className="space-y-2">
-                      {top3.map(s => (
-                        <div key={s.name} className="flex items-center justify-between gap-2 bg-emerald-50 rounded-lg px-2.5 py-1.5">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-                            <span className="text-xs text-gray-700 truncate font-medium">{SHORT_SECTOR[s.name] ?? s.name}</span>
-                          </div>
-                          <span className="text-xs font-mono font-bold text-emerald-600 shrink-0">{fmtCr(s.flow)}</span>
-                        </div>
-                      ))}
-                    </div>
-                    {/* Selling column */}
-                    <div className="space-y-2">
-                      {bot3.map(s => (
-                        <div key={s.name} className="flex items-center justify-between gap-2 bg-red-50 rounded-lg px-2.5 py-1.5">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
-                            <span className="text-xs text-gray-700 truncate font-medium">{SHORT_SECTOR[s.name] ?? s.name}</span>
-                          </div>
-                          <span className="text-xs font-mono font-bold text-red-500 shrink-0">{fmtCr(s.flow)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
             </div>
           </div>
+
+          {/* ── FII Sector Flow — full width row ──────────────────────── */}
+          {validSectors.length > 0 && (
+            <div className="sm:col-span-3">
+              <div className="bg-white border border-gray-200 rounded-xl px-4 py-4 shadow-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">FII Sectoral Flow · Fortnight</div>
+                  <div className="text-[10px] text-gray-400">
+                    <span className="text-emerald-600 font-semibold">{sectorBuyCount}</span> buying ·{' '}
+                    <span className="text-red-500 font-semibold">{sectorSellCount}</span> selling
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                  {/* Buying column */}
+                  <div className="space-y-2">
+                    {top3.map(s => (
+                      <div key={s.name} className="flex items-center justify-between gap-2 bg-emerald-50 rounded-lg px-2.5 py-1.5">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                          <span className="text-xs text-gray-700 truncate font-medium">{SHORT_SECTOR[s.name] ?? s.name}</span>
+                        </div>
+                        <span className="text-xs font-mono font-bold text-emerald-600 shrink-0">{fmtCr(s.flow)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Selling column */}
+                  <div className="space-y-2">
+                    {bot3.map(s => (
+                      <div key={s.name} className="flex items-center justify-between gap-2 bg-red-50 rounded-lg px-2.5 py-1.5">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
+                          <span className="text-xs text-gray-700 truncate font-medium">{SHORT_SECTOR[s.name] ?? s.name}</span>
+                        </div>
+                        <span className="text-xs font-mono font-bold text-red-500 shrink-0">{fmtCr(s.flow)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
         </div>
       </main>

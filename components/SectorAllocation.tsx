@@ -16,14 +16,20 @@ function fmtCurrency(n: number): string {
   return `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
 }
 
-function CustomTooltip({ active, payload }: any) {
+function CustomTooltip({ active, payload, fiiFlows }: any) {
   if (!active || !payload?.length) return null
   const { name, pct, invested } = payload[0].payload
+  const flow = fiiFlows?.[name]
   return (
     <div className="bg-white border border-gray-200 rounded-lg px-3 py-2 shadow-lg text-xs space-y-1">
       <div className="font-semibold text-gray-700">{name}</div>
       <div className="text-gray-500">{fmtCurrency(invested)}</div>
       <div className="font-bold text-blue-600">{pct.toFixed(1)}%</div>
+      {flow != null && (
+        <div className={`font-semibold ${flow >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+          FII {flow >= 0 ? '▲' : '▼'} ₹{Math.abs(Math.round(flow)).toLocaleString('en-IN')} Cr
+        </div>
+      )}
     </div>
   )
 }
@@ -34,7 +40,13 @@ const BAR_COLORS = [
   '#22c55e', '#14b8a6', '#06b6d4', '#64748b',
 ]
 
-export default function SectorAllocation({ holdings }: { holdings: HoldingForSector[] }) {
+export default function SectorAllocation({
+  holdings,
+  fiiFlows,
+}: {
+  holdings:  HoldingForSector[]
+  fiiFlows?: Record<string, number>
+}) {
   const sectorMap: Record<string, { invested: number }> = {}
   let totalInvested = 0
 
@@ -84,7 +96,7 @@ export default function SectorAllocation({ holdings }: { holdings: HoldingForSec
             axisLine={false}
             width={120}
           />
-          <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f3f4f6' }} />
+          <Tooltip content={<CustomTooltip fiiFlows={fiiFlows} />} cursor={{ fill: '#f3f4f6' }} />
           <Bar dataKey="pct" radius={[0, 4, 4, 0]} barSize={16}>
             {sectors.map((_, idx) => (
               <Cell key={idx} fill={BAR_COLORS[idx % BAR_COLORS.length]} />

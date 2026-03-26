@@ -9,6 +9,7 @@ import HoldingsTable, { type HoldingRow } from '@/components/HoldingsTable'
 import SectorAllocation from '@/components/SectorAllocation'
 import PortfolioImport from '@/components/PortfolioImport'
 import { buildPortfolioChart } from '@/lib/buildPortfolioChart'
+import { type WatchlistRow } from '@/components/WatchlistTable'
 
 function fmtCurrency(n: number) {
   const abs = Math.abs(n)
@@ -40,7 +41,39 @@ export default async function PortfolioPage() {
         industry,
         current_price,
         stock_pe,
-        industry_pe
+        industry_pe,
+        high_52w,
+        low_52w,
+        pct_from_52w_high,
+        roe,
+        roce,
+        eps,
+        pb,
+        dividend_yield,
+        market_cap,
+        debt_to_equity,
+        promoter_holding,
+        current_ratio,
+        total_debt,
+        revenue_growth_1y,
+        revenue_growth_3y,
+        revenue_growth_5y,
+        profit_growth_1y,
+        profit_growth_3y,
+        profit_growth_5y,
+        reserves,
+        borrowings,
+        fii_holding,
+        dii_holding,
+        mc_scid,
+        analyst_rating,
+        analyst_buy_pct,
+        analyst_hold_pct,
+        analyst_sell_pct,
+        analyst_count,
+        target_mean,
+        target_high,
+        target_low
       )
     `)
     .eq('user_id', user.id)
@@ -56,7 +89,7 @@ export default async function PortfolioPage() {
   const { data: scores } = stockIds.length > 0
     ? await supabase
         .from('daily_scores')
-        .select('stock_id, pe_deviation, rsi, rsi_signal, composite_score, classification, suggested_action, above_200_dma, date')
+        .select('stock_id, pe_deviation, rsi, rsi_signal, composite_score, classification, suggested_action, above_200_dma, above_50_dma, date, dma_50, dma_200, stock_6m, stock_1y, nifty50_6m, nifty50_1y, nifty500_6m, nifty500_1y')
         .in('stock_id', stockIds)
         .order('date', { ascending: false })
     : { data: [] }
@@ -64,6 +97,16 @@ export default async function PortfolioPage() {
   const latestScore: Record<string, any> = {}
   for (const s of (scores ?? [])) {
     if (!latestScore[s.stock_id]) latestScore[s.stock_id] = s
+  }
+
+  // FII sector flow data
+  const { data: fiiSectors } = await supabase
+    .from('fii_sector')
+    .select('sector, fortnight_flow')
+
+  const fiiFlowMap: Record<string, number> = {}
+  for (const s of fiiSectors ?? []) {
+    fiiFlowMap[s.sector.replace(/&amp;/g, '&')] = s.fortnight_flow ?? 0
   }
 
   // Build HoldingRow[] for HoldingsTable
@@ -84,6 +127,77 @@ export default async function PortfolioPage() {
     suggested_action: latestScore[h.stock_id]?.suggested_action ?? null,
     above_200_dma:    latestScore[h.stock_id]?.above_200_dma   ?? null,
   }))
+
+  // Build detailMap for analysis panels
+  const detailMap: Record<string, WatchlistRow> = {}
+  for (const h of holdings) {
+    const stock = h.stock
+    const score = latestScore[h.stock_id] ?? null
+    detailMap[h.stock_id] = {
+      stock_id:          h.stock_id,
+      ticker:            stock?.ticker ?? '',
+      stock_name:        stock?.stock_name ?? '',
+      industry:          stock?.industry ?? null,
+      current_price:     stock?.current_price ?? null,
+      high_52w:          stock?.high_52w ?? null,
+      low_52w:           stock?.low_52w ?? null,
+      pct_from_52w_high: stock?.pct_from_52w_high ?? null,
+      stock_pe:          stock?.stock_pe ?? null,
+      industry_pe:       stock?.industry_pe ?? null,
+      pe_deviation:      score?.pe_deviation ?? null,
+      rsi:               score?.rsi ?? null,
+      rsi_signal:        score?.rsi_signal ?? null,
+      dma_50:            score?.dma_50 ?? null,
+      dma_200:           score?.dma_200 ?? null,
+      above_50_dma:      score?.above_50_dma ?? null,
+      above_200_dma:     score?.above_200_dma ?? null,
+      composite_score:   score?.composite_score ?? null,
+      classification:    score?.classification ?? null,
+      suggested_action:  score?.suggested_action ?? null,
+      stock_6m:          score?.stock_6m ?? null,
+      stock_1y:          score?.stock_1y ?? null,
+      nifty50_6m:        score?.nifty50_6m ?? null,
+      nifty50_1y:        score?.nifty50_1y ?? null,
+      nifty500_6m:       score?.nifty500_6m ?? null,
+      nifty500_1y:       score?.nifty500_1y ?? null,
+      score_date:        score?.date ?? null,
+      invested_amount:   null,
+      entry_price:       null,
+      nifty50_entry:     null,
+      nifty500_entry:    null,
+      roe:               stock?.roe ?? null,
+      roce:              stock?.roce ?? null,
+      eps:               stock?.eps ?? null,
+      pb:                stock?.pb ?? null,
+      dividend_yield:    stock?.dividend_yield ?? null,
+      market_cap:        stock?.market_cap ?? null,
+      debt_to_equity:    stock?.debt_to_equity ?? null,
+      promoter_holding:  stock?.promoter_holding ?? null,
+      current_ratio:     stock?.current_ratio ?? null,
+      total_debt:        stock?.total_debt ?? null,
+      revenue_growth_1y: stock?.revenue_growth_1y ?? null,
+      revenue_growth_3y: stock?.revenue_growth_3y ?? null,
+      revenue_growth_5y: stock?.revenue_growth_5y ?? null,
+      profit_growth_1y:  stock?.profit_growth_1y ?? null,
+      profit_growth_3y:  stock?.profit_growth_3y ?? null,
+      profit_growth_5y:  stock?.profit_growth_5y ?? null,
+      reserves:          stock?.reserves ?? null,
+      borrowings:        stock?.borrowings ?? null,
+      fii_holding:       stock?.fii_holding ?? null,
+      dii_holding:       stock?.dii_holding ?? null,
+      notes:             null,
+      mc_scid:           stock?.mc_scid ?? null,
+      analyst_rating:    stock?.analyst_rating ?? null,
+      analyst_buy_pct:   stock?.analyst_buy_pct ?? null,
+      analyst_hold_pct:  stock?.analyst_hold_pct ?? null,
+      analyst_sell_pct:  stock?.analyst_sell_pct ?? null,
+      analyst_count:     stock?.analyst_count ?? null,
+      target_mean:       stock?.target_mean ?? null,
+      target_high:       stock?.target_high ?? null,
+      target_low:        stock?.target_low ?? null,
+      mc_earnings_json:  null,
+    }
+  }
 
   // P&L totals (server-side, from DB current_price; client will update live)
   const totalInvested = rows.reduce((s, r) => s + r.quantity * r.avg_price, 0)
@@ -221,6 +335,7 @@ export default async function PortfolioPage() {
                     quantity:  r.quantity,
                     avg_price: r.avg_price,
                   }))}
+                  fiiFlows={fiiFlowMap}
                 />
               </div>
             )}
@@ -228,7 +343,7 @@ export default async function PortfolioPage() {
         )}
 
         {/* Holdings table */}
-        <HoldingsTable initialRows={rows} totalInvested={totalInvested} />
+        <HoldingsTable initialRows={rows} totalInvested={totalInvested} detailMap={detailMap} />
 
         {/* Empty state */}
         {rows.length === 0 && (

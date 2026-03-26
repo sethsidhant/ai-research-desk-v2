@@ -2,6 +2,10 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { type WatchlistRow } from './WatchlistTable'
+import StockSummaryPanel from './StockSummaryPanel'
+import FundamentalsDrawer from './FundamentalsDrawer'
+import StockChartPanel from './StockChartPanel'
 
 export type HoldingRow = {
   stock_id:        string
@@ -75,10 +79,11 @@ function PEChip({ dev }: { dev: number | null }) {
 }
 
 export default function HoldingsTable({
-  initialRows, totalInvested,
+  initialRows, totalInvested, detailMap,
 }: {
   initialRows:   HoldingRow[]
   totalInvested: number
+  detailMap?:    Record<string, WatchlistRow>
 }) {
   const router                          = useRouter()
   const [rows, setRows]                 = useState<HoldingRow[]>(initialRows)
@@ -90,6 +95,17 @@ export default function HoldingsTable({
   const [sortDir, setSortDir]           = useState<SortDir>('desc')
   const [deleting, setDeleting]         = useState<string | null>(null)
   const prevPrices                      = useRef<Record<string, number>>({})
+
+  // Edit state
+  const [editingId, setEditingId]           = useState<string | null>(null)
+  const [editForm, setEditForm]             = useState<{ quantity: string; avg_price: string; broker: string } | null>(null)
+  const [saving, setSaving]                 = useState(false)
+
+  // Panel state
+  const [selectedTicker, setSelectedTicker] = useState<string | null>(null)
+  const [panelMode, setPanelMode]           = useState<'summary' | 'filings'>('summary')
+  const [fundamentalsRow, setFundamentalsRow] = useState<WatchlistRow | null>(null)
+  const [chartRow, setChartRow]             = useState<WatchlistRow | null>(null)
 
   // Live price polling
   useEffect(() => {
@@ -181,6 +197,28 @@ export default function HoldingsTable({
     }
   })
 
+  function startEdit(row: typeof computedRows[0]) {
+    setEditingId(row.stock_id)
+    setEditForm({ quantity: String(row.quantity), avg_price: String(row.avg_price), broker: row.broker ?? '' })
+  }
+
+  async function saveEdit(stockId: string) {
+    if (!editForm) return
+    const qty   = parseFloat(editForm.quantity)
+    const price = parseFloat(editForm.avg_price)
+    if (isNaN(qty) || qty <= 0 || isNaN(price) || price <= 0) return
+    setSaving(true)
+    await fetch('/api/portfolio/holdings', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ stock_id: stockId, quantity: qty, avg_price: price, broker: editForm.broker || 'Manual' }),
+    })
+    setSaving(false)
+    setEditingId(null)
+    setEditForm(null)
+    router.refresh()
+  }
+
   function SortHeader({ label, field }: { label: string; field: SortKey }) {
     const active = sortKey === field
     return (
@@ -204,6 +242,11 @@ export default function HoldingsTable({
 
   return (
     <div>
+      {/* Analysis panels */}
+      <StockSummaryPanel ticker={selectedTicker} mode={panelMode} onClose={() => setSelectedTicker(null)} />
+      <FundamentalsDrawer row={fundamentalsRow} onClose={() => setFundamentalsRow(null)} />
+      <StockChartPanel ticker={chartRow?.ticker ?? null} stockName={chartRow?.stock_name} onClose={() => setChartRow(null)} />
+
       {/* Status bar */}
       <div className="flex items-center justify-between mb-3">
         <div className="text-xs text-gray-400">{sorted.length} holdings</div>
@@ -261,94 +304,159 @@ export default function HoldingsTable({
               const retColor  = row.returnPct >= 0 ? 'text-emerald-600' : 'text-red-500'
 
               return (
-                <tr key={row.stock_id} className={`${rowBg} hover:bg-gray-50 transition-colors duration-300`}>
-                  {/* Stock */}
-                  <td className="px-4 py-3">
-                    <div className="font-semibold text-gray-900 text-sm">{row.ticker}</div>
-                    <div className="text-[10px] text-gray-400 truncate max-w-[160px]">{row.stock_name}</div>
-                    {row.broker && (
-                      <div className="text-[9px] text-gray-300 mt-0.5">{row.broker}</div>
-                    )}
-                  </td>
+                <>
+                  <tr key={row.stock_id} className={`${rowBg} hover:bg-gray-50 transition-colors duration-300`}>
+                    {/* Stock */}
+                    <td className="px-4 py-3">
+                      <div className="font-semibold text-gray-900 text-sm">{row.ticker}</div>
+                      <div className="text-[10px] text-gray-400 truncate max-w-[160px]">{row.stock_name}</div>
+                      {row.broker && (
+                        <div className="text-[9px] text-gray-300 mt-0.5">{row.broker}</div>
+                      )}
+                    </td>
 
-                  {/* Qty */}
-                  <td className="px-3 py-3 text-right">
-                    <span className="text-xs font-mono text-gray-700">{fmt(row.quantity)}</span>
-                  </td>
+                    {/* Qty */}
+                    <td className="px-3 py-3 text-right">
+                      <span className="text-xs font-mono text-gray-700">{fmt(row.quantity)}</span>
+                    </td>
 
-                  {/* Avg Price */}
-                  <td className="px-3 py-3 text-right">
-                    <span className="text-xs font-mono text-gray-700">{fmt(row.avg_price, 2)}</span>
-                  </td>
+                    {/* Avg Price */}
+                    <td className="px-3 py-3 text-right">
+                      <span className="text-xs font-mono text-gray-700">{fmt(row.avg_price, 2)}</span>
+                    </td>
 
-                  {/* Current Price */}
-                  <td className="px-3 py-3 text-right">
-                    <span className={`text-xs font-mono font-semibold ${row.current_price != null ? 'text-gray-900' : 'text-gray-400'}`}>
-                      {row.current_price != null ? fmt(row.current_price, 2) : '—'}
-                    </span>
-                  </td>
+                    {/* Current Price */}
+                    <td className="px-3 py-3 text-right">
+                      <span className={`text-xs font-mono font-semibold ${row.current_price != null ? 'text-gray-900' : 'text-gray-400'}`}>
+                        {row.current_price != null ? fmt(row.current_price, 2) : '—'}
+                      </span>
+                    </td>
 
-                  {/* Invested */}
-                  <td className="px-3 py-3 text-right">
-                    <span className="text-xs font-mono text-gray-500">{fmtCurrency(row.invested)}</span>
-                  </td>
+                    {/* Invested */}
+                    <td className="px-3 py-3 text-right">
+                      <span className="text-xs font-mono text-gray-500">{fmtCurrency(row.invested)}</span>
+                    </td>
 
-                  {/* Current Value */}
-                  <td className="px-3 py-3 text-right">
-                    <span className="text-xs font-mono font-semibold text-gray-900">{fmtCurrency(row.currentValue)}</span>
-                  </td>
+                    {/* Current Value */}
+                    <td className="px-3 py-3 text-right">
+                      <span className="text-xs font-mono font-semibold text-gray-900">{fmtCurrency(row.currentValue)}</span>
+                    </td>
 
-                  {/* P&L */}
-                  <td className="px-3 py-3 text-right">
-                    <span className={`text-xs font-mono font-bold ${pnlColor}`}>
-                      {row.pnl >= 0 ? '+' : ''}{fmtCurrency(row.pnl)}
-                    </span>
-                  </td>
+                    {/* P&L */}
+                    <td className="px-3 py-3 text-right">
+                      <span className={`text-xs font-mono font-bold ${pnlColor}`}>
+                        {row.pnl >= 0 ? '+' : ''}{fmtCurrency(row.pnl)}
+                      </span>
+                    </td>
 
-                  {/* Return % */}
-                  <td className="px-3 py-3 text-right">
-                    <span className={`text-xs font-mono font-bold ${retColor}`}>
-                      {row.returnPct >= 0 ? '+' : ''}{row.returnPct.toFixed(2)}%
-                    </span>
-                  </td>
+                    {/* Return % */}
+                    <td className="px-3 py-3 text-right">
+                      <span className={`text-xs font-mono font-bold ${retColor}`}>
+                        {row.returnPct >= 0 ? '+' : ''}{row.returnPct.toFixed(2)}%
+                      </span>
+                    </td>
 
-                  {/* Allocation */}
-                  <td className="px-3 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1.5">
-                      <div className="w-12 h-1 bg-gray-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-blue-400 rounded-full" style={{ width: `${Math.min(row.allocation, 100)}%` }} />
+                    {/* Allocation */}
+                    <td className="px-3 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <div className="w-12 h-1 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="h-full bg-blue-400 rounded-full" style={{ width: `${Math.min(row.allocation, 100)}%` }} />
+                        </div>
+                        <span className="text-[10px] font-mono text-gray-500">{row.allocation.toFixed(1)}%</span>
                       </div>
-                      <span className="text-[10px] font-mono text-gray-500">{row.allocation.toFixed(1)}%</span>
-                    </div>
-                  </td>
+                    </td>
 
-                  {/* Score */}
-                  <td className="px-3 py-3 text-center">
-                    <ScoreBadge score={row.composite_score} cls={row.classification} />
-                  </td>
+                    {/* Score */}
+                    <td className="px-3 py-3 text-center">
+                      <ScoreBadge score={row.composite_score} cls={row.classification} />
+                    </td>
 
-                  {/* RSI */}
-                  <td className="px-3 py-3 text-center">
-                    <RSIChip rsi={row.rsi} signal={row.rsi_signal} />
-                  </td>
+                    {/* RSI */}
+                    <td className="px-3 py-3 text-center">
+                      <RSIChip rsi={row.rsi} signal={row.rsi_signal} />
+                    </td>
 
-                  {/* PE Dev */}
-                  <td className="px-3 py-3 text-center">
-                    <PEChip dev={row.pe_deviation} />
-                  </td>
+                    {/* PE Dev */}
+                    <td className="px-3 py-3 text-center">
+                      <PEChip dev={row.pe_deviation} />
+                    </td>
 
-                  {/* Delete */}
-                  <td className="px-3 py-3 text-right">
-                    <button
-                      onClick={() => handleDelete(row.stock_id)}
-                      disabled={deleting === row.stock_id}
-                      className="text-[10px] text-gray-300 hover:text-red-400 transition-colors disabled:opacity-50"
-                      title="Remove holding"
-                    >
-                      {deleting === row.stock_id ? '…' : '✕'}
-                    </button>
-                  </td>
-                </tr>
+                    {/* Actions */}
+                    <td className="px-3 py-3">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button onClick={() => { setSelectedTicker(row.ticker); setPanelMode('summary') }} title="AI Summary" className="text-sm hover:scale-110 transition-transform leading-none">🤖</button>
+                        <button onClick={() => { setSelectedTicker(row.ticker); setPanelMode('filings') }} title="News & filings" className="text-sm hover:scale-110 transition-transform leading-none">📰</button>
+                        {detailMap?.[row.stock_id] && (
+                          <>
+                            <button onClick={() => setFundamentalsRow(detailMap![row.stock_id])} title="Fundamentals" className="text-sm hover:scale-110 transition-transform leading-none">📊</button>
+                            <button onClick={() => setChartRow(detailMap![row.stock_id])} title="Chart" className="text-sm hover:scale-110 transition-transform leading-none">📈</button>
+                          </>
+                        )}
+                        <button onClick={() => startEdit(row)} title="Edit holding" className="text-sm hover:scale-110 transition-transform leading-none">✏️</button>
+                        <button onClick={() => handleDelete(row.stock_id)} disabled={deleting === row.stock_id} title="Remove holding" className="text-[10px] text-gray-300 hover:text-red-400 transition-colors disabled:opacity-50 ml-1">
+                          {deleting === row.stock_id ? '…' : '✕'}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+
+                  {editingId === row.stock_id && editForm && (
+                    <tr className="bg-blue-50 border-b border-blue-100">
+                      <td className="px-4 py-3" colSpan={3}>
+                        <div className="font-semibold text-gray-700 text-sm">{row.ticker}</div>
+                        <div className="text-[10px] text-gray-400">{row.stock_name}</div>
+                      </td>
+                      <td className="px-3 py-3" colSpan={3}>
+                        <div className="flex gap-2 flex-wrap">
+                          <div>
+                            <div className="text-[10px] text-gray-400 mb-0.5">Quantity</div>
+                            <input
+                              type="number" step="0.01" min="0.01"
+                              value={editForm.quantity}
+                              onChange={e => setEditForm(f => f ? { ...f, quantity: e.target.value } : f)}
+                              className="w-24 text-xs font-mono border border-gray-300 rounded px-2 py-1 focus:outline-none focus:border-blue-400"
+                            />
+                          </div>
+                          <div>
+                            <div className="text-[10px] text-gray-400 mb-0.5">Avg Price ₹</div>
+                            <input
+                              type="number" step="0.01" min="0.01"
+                              value={editForm.avg_price}
+                              onChange={e => setEditForm(f => f ? { ...f, avg_price: e.target.value } : f)}
+                              className="w-28 text-xs font-mono border border-gray-300 rounded px-2 py-1 focus:outline-none focus:border-blue-400"
+                            />
+                          </div>
+                          <div>
+                            <div className="text-[10px] text-gray-400 mb-0.5">Broker</div>
+                            <input
+                              type="text"
+                              value={editForm.broker}
+                              onChange={e => setEditForm(f => f ? { ...f, broker: e.target.value } : f)}
+                              className="w-28 text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:border-blue-400"
+                            />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3" colSpan={7}>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => saveEdit(row.stock_id)}
+                            disabled={saving}
+                            className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded-lg font-semibold disabled:opacity-50 transition-colors"
+                          >
+                            {saving ? 'Saving…' : 'Save'}
+                          </button>
+                          <button
+                            onClick={() => { setEditingId(null); setEditForm(null) }}
+                            className="text-xs text-gray-500 hover:text-gray-700 px-3 py-1 rounded-lg border border-gray-200 transition-colors"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </>
               )
             })}
           </tbody>
