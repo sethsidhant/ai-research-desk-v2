@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { INDUSTRY_TO_FII_SECTOR } from '@/lib/fiiSectorMap'
 
@@ -71,10 +72,32 @@ export default function SectorAllocation({
 
   const chartHeight = Math.max(160, sectors.length * 32 + 20)
 
+  return <SectorAllocationInner sectors={sectors} chartHeight={chartHeight} fiiFlows={fiiFlows} />
+}
+
+function SectorAllocationInner({
+  sectors, chartHeight, fiiFlows,
+}: {
+  sectors:     { name: string; invested: number; pct: number }[]
+  chartHeight: number
+  fiiFlows?:   Record<string, number>
+}) {
+  const [open, setOpen] = useState(false)
+
   return (
-    <div className="bg-white border border-gray-200 rounded-xl px-4 py-4 shadow-sm">
-      <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Sector Allocation</div>
-      <ResponsiveContainer width="100%" height={chartHeight}>
+    <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-gray-50 transition-colors"
+      >
+        <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Sector Allocation</span>
+        <span className="text-gray-400 text-xs">{open ? '▲ Hide' : '▾ Show'}</span>
+      </button>
+
+      {open && (
+        <div className="px-4 pb-4 border-t border-gray-100">
+          <div className="pt-3" />
+          <ResponsiveContainer width="100%" height={chartHeight}>
         <BarChart
           data={sectors}
           layout="vertical"
@@ -104,6 +127,8 @@ export default function SectorAllocation({
           </Bar>
         </BarChart>
       </ResponsiveContainer>
+        </div>
+      )}
     </div>
   )
 }

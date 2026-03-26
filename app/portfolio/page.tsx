@@ -121,13 +121,20 @@ export default async function PortfolioPage() {
     quantity:         h.quantity,
     broker:           h.broker ?? null,
     investment_date:  h.investment_date ?? null,
-    pe_deviation:     latestScore[h.stock_id]?.pe_deviation   ?? null,
-    rsi:              latestScore[h.stock_id]?.rsi             ?? null,
-    rsi_signal:       latestScore[h.stock_id]?.rsi_signal      ?? null,
-    composite_score:  latestScore[h.stock_id]?.composite_score ?? null,
-    classification:   latestScore[h.stock_id]?.classification  ?? null,
+    stock_pe:         h.stock?.stock_pe         ?? null,
+    industry_pe:      h.stock?.industry_pe      ?? null,
+    high_52w:         h.stock?.high_52w         ?? null,
+    low_52w:          h.stock?.low_52w          ?? null,
+    pe_deviation:     latestScore[h.stock_id]?.pe_deviation    ?? null,
+    rsi:              latestScore[h.stock_id]?.rsi              ?? null,
+    rsi_signal:       latestScore[h.stock_id]?.rsi_signal       ?? null,
+    composite_score:  latestScore[h.stock_id]?.composite_score  ?? null,
+    classification:   latestScore[h.stock_id]?.classification   ?? null,
     suggested_action: latestScore[h.stock_id]?.suggested_action ?? null,
-    above_200_dma:    latestScore[h.stock_id]?.above_200_dma   ?? null,
+    above_200_dma:    latestScore[h.stock_id]?.above_200_dma    ?? null,
+    above_50_dma:     latestScore[h.stock_id]?.above_50_dma     ?? null,
+    dma_50:           latestScore[h.stock_id]?.dma_50           ?? null,
+    dma_200:          latestScore[h.stock_id]?.dma_200          ?? null,
   }))
 
   // Build detailMap for analysis panels
@@ -345,7 +352,7 @@ export default async function PortfolioPage() {
         )}
 
         {/* Holdings table */}
-        <HoldingsTable initialRows={rows} totalInvested={totalInvested} detailMap={detailMap} />
+        <HoldingsTable initialRows={rows} totalInvested={totalInvested} detailMap={detailMap} fiiFlows={fiiFlowMap} />
 
         {/* Empty state */}
         {rows.length === 0 && (

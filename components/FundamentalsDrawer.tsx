@@ -323,9 +323,15 @@ export default function FundamentalsDrawer({ row, onClose }: { row: WatchlistRow
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3 border-t border-gray-200">
+        <div className="px-5 py-3 border-t border-gray-200 flex items-center gap-4">
           <a href={`https://www.screener.in/company/${row.ticker}/consolidated/`} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:text-blue-500 font-medium">
-            View full report on Screener →
+            Screener →
+          </a>
+          <a href={`https://www.nseindia.com/get-quotes/equity?symbol=${encodeURIComponent(row.ticker)}`} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-500 hover:text-gray-700 font-medium">
+            NSE →
+          </a>
+          <a href={`https://www.bseindia.com/equity_stock_info/${row.ticker}`} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-500 hover:text-gray-700 font-medium">
+            BSE →
           </a>
         </div>
       </div>
