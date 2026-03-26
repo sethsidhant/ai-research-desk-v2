@@ -353,6 +353,7 @@ export default function HoldingsTable({
               <th className="text-right px-3 py-2.5">
                 <SortHeader label="Alloc" field="allocation" />
               </th>
+              <th className="px-3 py-2.5 text-right text-[10px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">Stock PE</th>
               <th className="px-3 py-2.5 text-right text-[10px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">RSI · Signal</th>
               <th className="px-4 py-2.5 text-right" />
             </tr>
@@ -462,6 +463,15 @@ export default function HoldingsTable({
                       </div>
                     </td>
 
+                    {/* Stock PE */}
+                    <td className="px-3 py-3 text-right">
+                      {row.stock_pe != null ? (
+                        <span className="text-xs font-mono text-gray-700">{row.stock_pe.toFixed(1)}x</span>
+                      ) : (
+                        <span className="text-[10px] text-gray-300">—</span>
+                      )}
+                    </td>
+
                     {/* RSI · Signal */}
                     <td className="px-3 py-3 text-right">
                       {row.rsi != null ? (
@@ -509,32 +519,8 @@ export default function HoldingsTable({
                   {/* Expanded details card */}
                   {isExpanded && (
                     <tr className="bg-gray-50/80 border-b border-gray-200">
-                      <td colSpan={10} className="px-4 py-4">
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
-
-                          {/* Signals */}
-                          <div>
-                            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Signals</div>
-                            <div className="space-y-1.5">
-                              <SignalRow label="PE Deviation">
-                                {row.pe_deviation != null ? (
-                                  <span className={`text-xs font-mono font-semibold ${row.pe_deviation <= -10 ? 'text-emerald-600' : row.pe_deviation >= 20 ? 'text-red-500' : 'text-gray-600'}`}>
-                                    {row.pe_deviation >= 0 ? '+' : ''}{row.pe_deviation.toFixed(1)}% {row.pe_deviation <= -10 ? '(cheap)' : row.pe_deviation >= 20 ? '(expensive)' : '(fair)'}
-                                  </span>
-                                ) : <span className="text-gray-300 text-xs">—</span>}
-                              </SignalRow>
-                              <SignalRow label="Score">
-                                {row.composite_score != null ? (
-                                  <span className="text-xs font-mono font-semibold text-gray-700">
-                                    {row.composite_score.toFixed(0)}/100 · {row.classification ?? '—'}
-                                  </span>
-                                ) : <span className="text-gray-300 text-xs">—</span>}
-                              </SignalRow>
-                              <SignalRow label="Action">
-                                <span className="text-xs font-semibold text-gray-700">{row.suggested_action ?? '—'}</span>
-                              </SignalRow>
-                            </div>
-                          </div>
+                      <td colSpan={11} className="px-4 py-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
 
                           {/* Technicals */}
                           <div>
@@ -668,7 +654,7 @@ export default function HoldingsTable({
                         <div className="font-semibold text-gray-700 text-sm">{row.ticker}</div>
                         <div className="text-[10px] text-gray-400">{row.stock_name}</div>
                       </td>
-                      <td className="px-3 py-3" colSpan={5}>
+                      <td className="px-3 py-3" colSpan={6}>
                         <div className="flex gap-3 flex-wrap">
                           <div>
                             <div className="text-[10px] text-gray-400 mb-0.5">Quantity</div>
