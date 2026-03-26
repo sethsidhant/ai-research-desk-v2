@@ -1,8 +1,8 @@
 // runDailyPipeline.js
 // Runs the full daily pipeline in sequence:
-//   1. engine       — score all watchlisted stocks
-//   2. newsAgent    — fetch BSE filings + news
-//   3. summaryAgent — generate AI summaries
+//   1. engine    — score all watchlisted stocks
+//   2. newsAgent — fetch BSE filings + news
+// (summaryAgent removed — AI briefs are now on-demand per user request)
 //
 // Run daily at ~3:05 AM Dublin (8:35 AM IST), after refreshKiteToken.js
 
@@ -74,7 +74,6 @@ async function main() {
   run('backfillHistory.js');  // EOD closes from Kite — must run before engine
   run('engine.js');
   run('newsAgent.js');
-  run('summaryAgent.js');
   run('mfSebiAgent.js');     // MF equity/debt flow from SEBI (3-5 day lag)
 
   console.log(`\n${'═'.repeat(60)}`);

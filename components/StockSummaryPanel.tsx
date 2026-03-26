@@ -2,27 +2,24 @@
 
 import { useEffect, useState } from 'react'
 
-type SummaryData = {
-  stock: {
-    stock_name: string
-    ticker: string
-    industry: string | null
-    current_price: number | null
-    stock_pe: number | null
-    ai_summary: string | null
-    summary_date: string | null
-    latest_headlines: string | null
-  }
-  score: {
-    pe_deviation: number | null
-    rsi: number | null
-    rsi_signal: string | null
-    classification: string | null
-    suggested_action: string | null
-    composite_score: number | null
-    date: string | null
-  } | null
+type StockData = {
+  stock_name:       string
+  ticker:           string
+  industry:         string | null
+  current_price:    number | null
+  stock_pe:         number | null
+  latest_headlines: string | null
 }
+
+type ScoreData = {
+  pe_deviation:     number | null
+  rsi:              number | null
+  rsi_signal:       string | null
+  classification:   string | null
+  suggested_action: string | null
+  composite_score:  number | null
+  date:             string | null
+} | null
 
 export default function StockSummaryPanel({
   ticker,
@@ -30,35 +27,62 @@ export default function StockSummaryPanel({
   onClose,
 }: {
   ticker: string | null
-  mode: 'summary' | 'filings'
+  mode:   'summary' | 'filings'
   onClose: () => void
 }) {
-  const [data, setData]       = useState<SummaryData | null>(null)
+  const [stock, setStock]     = useState<StockData | null>(null)
+  const [score, setScore]     = useState<ScoreData>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState<string | null>(null)
 
+  // AI brief state
+  const [brief, setBrief]           = useState<string | null>(null)
+  const [briefLoading, setBriefLoading] = useState(false)
+  const [briefError, setBriefError] = useState<string | null>(null)
+
+  // Load stock data when ticker changes
   useEffect(() => {
     if (!ticker) return
-    setData(null)
-    setError(null)
+    setStock(null); setScore(null); setBrief(null)
+    setError(null); setBriefError(null)
     setLoading(true)
 
     fetch(`/api/stock-summary/${encodeURIComponent(ticker)}`)
       .then(r => r.json())
       .then(json => {
-        if (json.error) setError(json.error)
-        else setData(json)
+        if (json.error) { setError(json.error); return }
+        setStock(json.stock)
+        setScore(json.score ?? null)
       })
-      .catch(() => setError('Failed to load summary'))
+      .catch(() => setError('Failed to load data'))
       .finally(() => setLoading(false))
   }, [ticker])
 
-  // Close on Escape key
+  // Escape key
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
+
+  async function requestBrief() {
+    if (!ticker) return
+    setBriefLoading(true); setBriefError(null); setBrief(null)
+    try {
+      const res  = await fetch('/api/stock-brief', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticker }),
+      })
+      const json = await res.json()
+      if (json.error) { setBriefError(json.error); return }
+      setBrief(json.brief)
+    } catch {
+      setBriefError('Failed to generate brief')
+    } finally {
+      setBriefLoading(false)
+    }
+  }
 
   const open = ticker !== null
 
@@ -77,29 +101,45 @@ export default function StockSummaryPanel({
         {/* Header */}
         <div className="flex items-start justify-between px-6 py-5 border-b border-gray-200">
           <div>
-            {data ? (
+            {stock ? (
               <>
-                <h2 className="text-base font-bold text-gray-900">{data.stock.stock_name}</h2>
+                <h2 className="text-base font-bold text-gray-900">{stock.stock_name}</h2>
                 <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-xs font-mono text-gray-500">{data.stock.ticker}</span>
-                  {data.stock.industry && (
-                    <span className="text-xs text-gray-400">· {data.stock.industry}</span>
-                  )}
+                  <a
+                    href={`https://www.screener.in/company/${stock.ticker}/consolidated/`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="text-xs font-mono text-blue-600 hover:underline"
+                  >
+                    {stock.ticker}
+                  </a>
+                  {stock.industry && <span className="text-xs text-gray-400">· {stock.industry}</span>}
                 </div>
               </>
             ) : (
               <h2 className="text-base font-bold text-gray-900">{ticker}</h2>
             )}
           </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded"
-            aria-label="Close"
-          >
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1 rounded" aria-label="Close">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-gray-200">
+          {(['summary', 'filings'] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => {
+                // re-open with same ticker but different mode via parent is complex;
+                // just use local activeTab state
+              }}
+              className={`flex-1 py-2.5 text-xs font-semibold uppercase tracking-wide transition-colors ${mode === tab ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400'}`}
+            >
+              {tab === 'summary' ? 'AI Brief' : 'News & Filings'}
+            </button>
+          ))}
         </div>
 
         {/* Body */}
@@ -107,49 +147,75 @@ export default function StockSummaryPanel({
           {loading && (
             <div className="flex items-center gap-2 text-sm text-gray-400">
               <span className="w-4 h-4 border-2 border-gray-200 border-t-blue-500 rounded-full animate-spin" />
-              Loading summary...
+              Loading…
             </div>
           )}
 
-          {error && (
-            <div className="text-sm text-red-500">{error}</div>
-          )}
+          {error && <div className="text-sm text-red-500">{error}</div>}
 
-          {data && !loading && (
+          {!loading && stock && (
             <div className="space-y-5">
-              {/* Quick stats — always shown */}
-              <div className="grid grid-cols-3 gap-3">
-                <Stat label="Price" value={data.stock.current_price != null ? `₹${data.stock.current_price.toLocaleString('en-IN')}` : '—'} />
-                <Stat label="Stock PE" value={data.stock.stock_pe != null ? `${data.stock.stock_pe.toFixed(1)}x` : '—'} />
-                <Stat label="RSI" value={data.score?.rsi != null ? data.score.rsi.toFixed(0) : '—'} />
-                <Stat label="PE Dev%" value={data.score?.pe_deviation != null ? `${data.score.pe_deviation > 0 ? '+' : ''}${data.score.pe_deviation.toFixed(1)}%` : '—'} />
-                <Stat label="Signal" value={data.score?.rsi_signal ?? '—'} />
-                <Stat label="Score" value={data.score?.composite_score != null ? data.score.composite_score.toFixed(1) : '—'} />
+              {/* Quick stats */}
+              <div className="grid grid-cols-3 gap-2">
+                <Stat label="Price"    value={stock.current_price != null ? `₹${stock.current_price.toLocaleString('en-IN')}` : '—'} />
+                <Stat label="Stock PE" value={stock.stock_pe != null ? `${stock.stock_pe.toFixed(1)}x` : '—'} />
+                <Stat label="RSI"      value={score?.rsi != null ? score.rsi.toFixed(0) : '—'} />
+                <Stat label="PE Dev"   value={score?.pe_deviation != null ? `${score.pe_deviation > 0 ? '+' : ''}${score.pe_deviation.toFixed(1)}%` : '—'} />
+                <Stat label="Signal"   value={score?.rsi_signal ?? '—'} />
+                <Stat label="Score"    value={score?.composite_score != null ? `${score.composite_score.toFixed(0)}/100` : '—'} />
               </div>
+
+              {/* Summary mode → on-demand AI brief */}
+              {mode === 'summary' && (
+                <div>
+                  {!brief && !briefLoading && (
+                    <div className="bg-gray-50 rounded-xl px-4 py-6 flex flex-col items-center gap-3 text-center">
+                      <p className="text-sm text-gray-500 leading-relaxed">
+                        Get a concise 4-line brief covering valuation, momentum, FII sector flow, and a verdict — generated on demand.
+                      </p>
+                      <button
+                        onClick={requestBrief}
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded-lg transition-colors"
+                      >
+                        ✦ Get AI Brief
+                      </button>
+                    </div>
+                  )}
+
+                  {briefLoading && (
+                    <div className="bg-gray-50 rounded-xl px-4 py-6 flex items-center justify-center gap-2 text-sm text-gray-400">
+                      <span className="w-4 h-4 border-2 border-gray-200 border-t-blue-500 rounded-full animate-spin" />
+                      Generating brief…
+                    </div>
+                  )}
+
+                  {briefError && (
+                    <div className="text-sm text-red-500 mt-2">{briefError}</div>
+                  )}
+
+                  {brief && (
+                    <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">AI Brief · {stock.ticker}</div>
+                        <button
+                          onClick={() => setBrief(null)}
+                          className="text-[10px] text-blue-300 hover:text-blue-500"
+                        >
+                          Refresh ↺
+                        </button>
+                      </div>
+                      <p className="text-sm text-gray-700 leading-relaxed">{brief}</p>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Filings mode */}
               {mode === 'filings' && (
-                data.stock.latest_headlines
-                  ? <FilingsSection text={data.stock.latest_headlines} />
+                stock.latest_headlines
+                  ? <FilingsSection text={stock.latest_headlines} />
                   : <div className="text-sm text-gray-400 bg-gray-50 rounded-lg px-4 py-6 text-center">
-                      No filings yet. Run <code className="font-mono text-xs bg-gray-100 px-1 rounded">agents/newsAgent.js</code> to fetch them.
-                    </div>
-              )}
-
-              {/* Summary mode */}
-              {mode === 'summary' && (
-                data.stock.ai_summary
-                  ? <div>
-                      <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
-                        AI Research Note
-                        {data.stock.summary_date && (
-                          <span className="ml-2 font-normal normal-case text-gray-300">· {data.stock.summary_date}</span>
-                        )}
-                      </div>
-                      <SummaryText text={data.stock.ai_summary} />
-                    </div>
-                  : <div className="text-sm text-gray-400 bg-gray-50 rounded-lg px-4 py-6 text-center">
-                      No AI summary yet. Run <code className="font-mono text-xs bg-gray-100 px-1 rounded">agents/summaryAgent.js</code> to generate one.
+                      No filings yet — newsAgent runs each morning.
                     </div>
               )}
             </div>
@@ -170,20 +236,15 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 function FilingsSection({ text }: { text: string }) {
-  // Split into BSE and ET sections
   const sections = text.split(/(?=━━)/).filter(s => s.trim())
-
   return (
     <div>
-      <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
-        Recent Filings & News
-      </div>
+      <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Recent Filings & News</div>
       <div className="space-y-4">
         {sections.map((section, si) => {
-          const lines = section.split('\n').map(l => l.trim()).filter(Boolean)
+          const lines  = section.split('\n').map(l => l.trim()).filter(Boolean)
           const header = lines[0]?.replace(/━━/g, '').trim()
           const items: { meta: string; subject: string; link: string }[] = []
-
           let current: Partial<{ meta: string; subject: string; link: string }> = {}
           for (const line of lines.slice(1)) {
             if (/^\[\d+\]/.test(line)) {
@@ -198,7 +259,6 @@ function FilingsSection({ text }: { text: string }) {
             }
           }
           if (current.subject) items.push(current as any)
-
           return (
             <div key={si}>
               <div className="text-xs font-medium text-gray-500 mb-2">{header}</div>
@@ -207,12 +267,7 @@ function FilingsSection({ text }: { text: string }) {
                   <div key={ii} className="bg-gray-50 rounded-lg px-3 py-2.5 text-xs">
                     <div className="text-gray-400 mb-0.5">{item.meta}</div>
                     {item.link ? (
-                      <a
-                        href={item.link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-gray-800 hover:text-blue-600 hover:underline leading-snug"
-                      >
+                      <a href={item.link} target="_blank" rel="noopener noreferrer" className="text-gray-800 hover:text-blue-600 hover:underline leading-snug">
                         {item.subject}
                       </a>
                     ) : (
@@ -225,27 +280,6 @@ function FilingsSection({ text }: { text: string }) {
           )
         })}
       </div>
-    </div>
-  )
-}
-
-function SummaryText({ text }: { text: string }) {
-  // Split into lines, render section headers in bold
-  const lines = text.split('\n')
-  const SECTION_EMOJIS = ['📊', '🏭', '📉', '📰', '✅']
-
-  return (
-    <div className="text-sm text-gray-700 space-y-1 leading-relaxed">
-      {lines.map((line, i) => {
-        const isHeader = SECTION_EMOJIS.some(e => line.startsWith(e))
-        if (isHeader) {
-          return (
-            <p key={i} className="font-semibold text-gray-900 mt-4 first:mt-0">{line}</p>
-          )
-        }
-        if (line.trim() === '') return <div key={i} className="h-1" />
-        return <p key={i}>{line}</p>
-      })}
     </div>
   )
 }
