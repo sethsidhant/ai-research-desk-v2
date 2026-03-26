@@ -290,10 +290,9 @@ export default async function WatchlistPage() {
             <Link href="/" className="text-xs sm:text-sm text-gray-500 hover:text-gray-900 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-gray-100">
               Overview
             </Link>
-            <span className="text-xs sm:text-sm text-gray-300 px-2 sm:px-3 py-1.5 rounded-lg cursor-not-allowed hidden sm:inline-flex items-center gap-1.5">
+            <Link href="/portfolio" className="text-xs sm:text-sm text-gray-500 hover:text-gray-900 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-gray-100">
               Portfolio
-              <span className="text-[9px] bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded-full font-semibold">Soon</span>
-            </span>
+            </Link>
             <Link href="/settings" className="text-xs sm:text-sm text-gray-500 hover:text-gray-900 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-gray-100">
               Settings
             </Link>

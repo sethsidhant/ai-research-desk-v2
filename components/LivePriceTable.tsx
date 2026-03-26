@@ -293,8 +293,13 @@ export default function LivePriceTable({
       )}
 
       {totalInvested > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-          <PLCard label="Invested"     value={`₹${totalInvested.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Virtual P&L Simulation</span>
+            <span className="text-[9px] bg-amber-50 text-amber-600 border border-amber-200 px-1.5 py-0.5 rounded-full font-semibold">Based on interested entry price</span>
+          </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <PLCard label="Interested Entry"     value={`₹${totalInvested.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
           <PLCard label="Current Value" value={`₹${totalCurrent.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
           <PLCard
             label="Total P&L"
@@ -306,6 +311,7 @@ export default function LivePriceTable({
             value={`${totalPnlPct >= 0 ? '+' : ''}${totalPnlPct.toFixed(1)}%`}
             highlight={totalPnlPct >= 0 ? 'green' : 'red'}
           />
+        </div>
         </div>
       )}
 
