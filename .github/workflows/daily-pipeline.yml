@@ -4,7 +4,64 @@ on:
   workflow_dispatch:            # triggered via cron-job.org or manually from GitHub UI
 
 jobs:
+  # ── NSE holiday guard ────────────────────────────────────────────────────
+  check-holiday:
+    runs-on: ubuntu-latest
+    outputs:
+      is_holiday: ${{ steps.check.outputs.is_holiday }}
+    steps:
+      - id: check
+        name: Check NSE holiday
+        run: |
+          DATE=$(TZ='Asia/Kolkata' date +%Y-%m-%d)
+          echo "Today (IST): $DATE"
+
+          # NSE equity market holidays — update each January
+          # Source: nseindia.com/global/content/market_timings_holidays
+          NSE_HOLIDAYS="
+            2025-01-26
+            2025-02-26
+            2025-03-14
+            2025-04-14
+            2025-04-18
+            2025-05-01
+            2025-08-15
+            2025-08-27
+            2025-10-02
+            2025-10-20
+            2025-10-21
+            2025-11-05
+            2025-12-25
+            2026-01-15
+            2026-01-26
+            2026-03-03
+            2026-03-26
+            2026-03-31
+            2026-04-03
+            2026-04-14
+            2026-05-01
+            2026-05-28
+            2026-06-26
+            2026-09-14
+            2026-10-02
+            2026-10-20
+            2026-11-10
+            2026-11-24
+            2026-12-25
+          "
+
+          if echo "$NSE_HOLIDAYS" | grep -qw "$DATE"; then
+            echo "🏖 NSE Holiday ($DATE) — pipeline skipped"
+            echo "is_holiday=true" >> $GITHUB_OUTPUT
+          else
+            echo "✓ Market day ($DATE) — proceeding"
+            echo "is_holiday=false" >> $GITHUB_OUTPUT
+          fi
+
+  # ── Main pipeline (skipped on holidays) ─────────────────────────────────
   pipeline:
+    needs: check-holiday
+    if: needs.check-holiday.outputs.is_holiday != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -69,8 +126,8 @@ jobs:
         run: node newsAgent.js
         working-directory: agents
 
-      - name: Run summary agent
-        run: node summaryAgent.js
+      - name: Run MF SEBI agent
+        run: node mfSebiAgent.js
         working-directory: agents
 
       - name: Write heartbeat
