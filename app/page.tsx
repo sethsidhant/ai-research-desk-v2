@@ -227,6 +227,9 @@ export default async function DashboardPage() {
     volumeBreakouts.sort((a, b) => b.ratio - a.ratio)
   }
 
+  // Volume shockers for activity board (only >=3x extreme spikes)
+  const volumeShockers = volumeBreakouts.filter(v => v.ratio >= 3)
+
   // Activity board — news items (last 2 days, watchlist + portfolio, deduplicated)
   const yesterday_date = new Date(Date.now() - 86400000).toISOString().slice(0, 10)
   type NewsItem = { ticker: string; source: string; headline: string; isPortfolio: boolean }
@@ -720,27 +723,28 @@ export default async function DashboardPage() {
 
           {/* ── Activity Board — full width row ───────────────────────── */}
           <div className="sm:col-span-3">
-            <div className="bg-white border border-gray-200 rounded-xl px-4 py-4 shadow-sm">
-              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-3">
+            <div className="bg-white border border-gray-200 rounded-xl px-5 py-4 shadow-sm">
+              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-4">
                 Activity · Watchlist &amp; Portfolio
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 
-                {/* News (last 24h) */}
-                <div>
-                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">📋 Recent News</div>
+              <div className="grid grid-cols-1 lg:grid-cols-[2fr_1.5fr_1fr] gap-6 divide-y lg:divide-y-0 lg:divide-x divide-gray-100">
+
+                {/* ── News ─────────────────────────────────── */}
+                <div className="pb-4 lg:pb-0 lg:pr-6">
+                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">📋 Recent News</div>
                   {newsItems.length === 0 ? (
-                    <p className="text-[11px] text-gray-300">No news in the last 24h.</p>
+                    <p className="text-xs text-gray-300">No news in the last 24h.</p>
                   ) : (
-                    <div className="space-y-2">
-                      {newsItems.slice(0, 5).map((item, i) => (
-                        <div key={i} className="flex gap-2">
-                          <span className={`text-[10px] font-mono font-bold shrink-0 mt-0.5 ${item.isPortfolio ? 'text-blue-500' : 'text-gray-500'}`}>
+                    <div className="space-y-3.5">
+                      {newsItems.slice(0, 6).map((item, i) => (
+                        <div key={i} className="flex gap-3">
+                          <span className={`text-[11px] font-mono font-bold shrink-0 w-[62px] pt-[1px] leading-none ${item.isPortfolio ? 'text-blue-500' : 'text-gray-500'}`}>
                             {item.ticker}
                           </span>
                           <div className="min-w-0">
-                            <div className="text-[10px] text-gray-300">{item.source}</div>
-                            <div className="text-[11px] text-gray-700 leading-snug line-clamp-2">{item.headline}</div>
+                            <div className="text-[9px] font-semibold text-gray-300 uppercase tracking-widest mb-0.5">{item.source}</div>
+                            <div className="text-xs text-blue-600 leading-snug line-clamp-2 hover:underline cursor-default">{item.headline}</div>
                           </div>
                         </div>
                       ))}
@@ -748,91 +752,80 @@ export default async function DashboardPage() {
                   )}
                 </div>
 
-                {/* Technical alerts */}
-                <div>
-                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">⚡ Technical Alerts</div>
-                  {actOversold.length === 0 && actOverbought.length === 0 && actBelow200.length === 0 ? (
-                    <p className="text-[11px] text-gray-300">No alerts across tracked stocks.</p>
+                {/* ── Technical Alerts ─────────────────────── */}
+                <div className="pt-4 lg:pt-0 lg:px-6">
+                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">⚡ Technical Alerts</div>
+                  {actOversold.length === 0 && actOverbought.length === 0 && actBelow200.length === 0 && volumeShockers.length === 0 ? (
+                    <p className="text-xs text-gray-300">No alerts.</p>
                   ) : (
-                    <div className="space-y-2">
+                    <div className="space-y-2.5">
+                      {actBelow200.length > 0 && (
+                        <AlertChipRow
+                          badge={`${actBelow200.length} below 200 DMA`}
+                          badgeColor="bg-red-50 text-red-600 border border-red-100"
+                          tickers={actBelow200}
+                        />
+                      )}
                       {actOversold.length > 0 && (
-                        <SignalRow label={`📉 ${actOversold.length} oversold (RSI<30)`} tickers={actOversold} color="blue" />
+                        <AlertChipRow
+                          badge={`${actOversold.length} oversold`}
+                          badgeColor="bg-blue-50 text-blue-600 border border-blue-100"
+                          tickers={actOversold}
+                        />
                       )}
                       {actOverbought.length > 0 && (
-                        <SignalRow label={`📈 ${actOverbought.length} overbought (RSI>70)`} tickers={actOverbought} color="orange" />
+                        <AlertChipRow
+                          badge={`${actOverbought.length} overbought`}
+                          badgeColor="bg-orange-50 text-orange-600 border border-orange-100"
+                          tickers={actOverbought}
+                        />
                       )}
-                      {actBelow200.length > 0 && (
-                        <SignalRow label={`📊 ${actBelow200.length} below 200 DMA`} tickers={actBelow200} color="red" />
+                      {volumeShockers.length > 0 && (
+                        <AlertChipRow
+                          badge={`${volumeShockers.length} vol spike 3×+`}
+                          badgeColor="bg-amber-50 text-amber-600 border border-amber-100"
+                          tickers={volumeShockers.map(v => v.ticker)}
+                        />
                       )}
                     </div>
                   )}
                 </div>
 
-                {/* Portfolio movers */}
-                <div>
-                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">📊 Portfolio Movers</div>
+                {/* ── Portfolio Movers ─────────────────────── */}
+                <div className="pt-4 lg:pt-0 lg:pl-6">
+                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">📊 Portfolio Movers</div>
                   {portMovers.length === 0 ? (
-                    <p className="text-[11px] text-gray-300">No holdings with live prices.</p>
+                    <p className="text-xs text-gray-300">No holdings with live prices.</p>
                   ) : (
-                    <div className="space-y-2">
+                    <div>
                       {portGainers.length > 0 && (
-                        <div>
-                          <div className="text-[10px] text-gray-400 mb-1">Top gainers</div>
+                        <>
+                          <div className="text-[10px] text-gray-400 mb-1.5">Top gainers</div>
                           {portGainers.map((h: any) => (
-                            <div key={h.ticker} className="flex items-center justify-between py-0.5">
-                              <span className="text-[11px] font-mono font-semibold text-gray-700">{h.ticker}</span>
-                              <div className="flex items-center gap-2">
-                                <span className="text-[10px] text-gray-400 font-mono">{h.alloc.toFixed(1)}%</span>
-                                <span className="text-[11px] font-mono font-bold text-emerald-600">+{h.returnPct.toFixed(1)}%</span>
+                            <div key={h.ticker} className="flex items-center justify-between py-1">
+                              <span className="text-xs font-semibold text-gray-800">{h.ticker}</span>
+                              <div className="flex items-center gap-3">
+                                <span className="text-[10px] font-mono text-gray-400">{h.alloc.toFixed(1)}%</span>
+                                <span className="text-xs font-mono font-bold text-emerald-600">+{h.returnPct.toFixed(1)}%</span>
                               </div>
                             </div>
                           ))}
-                        </div>
+                        </>
                       )}
                       {portLosers.length > 0 && (
-                        <div className="pt-1 border-t border-gray-100">
-                          <div className="text-[10px] text-gray-400 mb-1">Laggards</div>
+                        <>
+                          <div className="text-[10px] text-gray-400 mt-3 mb-1.5 pt-2 border-t border-gray-100">Laggards</div>
                           {portLosers.map((h: any) => (
-                            <div key={h.ticker} className="flex items-center justify-between py-0.5">
-                              <span className="text-[11px] font-mono font-semibold text-gray-700">{h.ticker}</span>
-                              <div className="flex items-center gap-2">
-                                <span className="text-[10px] text-gray-400 font-mono">{h.alloc.toFixed(1)}%</span>
-                                <span className="text-[11px] font-mono font-bold text-red-500">{h.returnPct.toFixed(1)}%</span>
+                            <div key={h.ticker} className="flex items-center justify-between py-1">
+                              <span className="text-xs font-semibold text-gray-800">{h.ticker}</span>
+                              <div className="flex items-center gap-3">
+                                <span className="text-[10px] font-mono text-gray-400">{h.alloc.toFixed(1)}%</span>
+                                <span className="text-xs font-mono font-bold text-red-500">{h.returnPct.toFixed(1)}%</span>
                               </div>
                             </div>
                           ))}
-                        </div>
+                        </>
                       )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Volume breakouts */}
-                <div>
-                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">🔊 Volume Breakouts</div>
-                  {volumeBreakouts.length === 0 ? (
-                    <p className="text-[11px] text-gray-300">No unusual volume yesterday.</p>
-                  ) : (
-                    <div className="space-y-1.5">
-                      {volumeBreakouts.slice(0, 5).map(v => {
-                        const intensity = v.ratio >= 3 ? 'text-red-500' : v.ratio >= 2 ? 'text-orange-500' : 'text-amber-500'
-                        return (
-                          <div key={v.ticker} className="flex items-center justify-between gap-2">
-                            <span className={`text-[10px] font-mono font-bold shrink-0 ${v.isPortfolio ? 'text-blue-500' : 'text-gray-600'}`}>
-                              {v.ticker}
-                            </span>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <span className="text-[10px] text-gray-400 font-mono">
-                                {v.vol >= 1000000 ? `${(v.vol / 1000000).toFixed(1)}M` : `${(v.vol / 1000).toFixed(0)}K`}
-                              </span>
-                              <span className={`text-[11px] font-mono font-bold ${intensity}`}>
-                                {v.ratio.toFixed(1)}× avg
-                              </span>
-                            </div>
-                          </div>
-                        )
-                      })}
-                      <p className="text-[9px] text-gray-300 pt-0.5">vs 20-day avg · yesterday EOD</p>
                     </div>
                   )}
                 </div>
@@ -847,7 +840,29 @@ export default async function DashboardPage() {
   )
 }
 
-// ─── small helper component ──────────────────────────────────────────────────
+// ─── helper components ───────────────────────────────────────────────────────
+
+function AlertChipRow({ badge, badgeColor, tickers }: {
+  badge:      string
+  badgeColor: string
+  tickers:    string[]
+}) {
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className={`text-[10px] font-semibold px-2 py-1 rounded-lg shrink-0 whitespace-nowrap ${badgeColor}`}>
+        {badge}
+      </span>
+      {tickers.slice(0, 5).map(t => (
+        <span key={t} className="text-[10px] font-mono font-bold text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded">
+          {t}
+        </span>
+      ))}
+      {tickers.length > 5 && (
+        <span className="text-[10px] text-gray-400">+{tickers.length - 5}</span>
+      )}
+    </div>
+  )
+}
 
 function SignalRow({ label, tickers, color }: {
   label:   string

@@ -121,6 +121,9 @@ export default async function PortfolioPage() {
     quantity:         h.quantity,
     broker:           h.broker ?? null,
     investment_date:  h.investment_date ?? null,
+    vol_yesterday:    volMap[h.stock_id]?.yesterday ?? null,
+    vol_avg_20d:      volMap[h.stock_id]?.avg       ?? null,
+    vol_ratio:        volMap[h.stock_id]?.ratio      ?? null,
     stock_pe:         h.stock?.stock_pe         ?? null,
     industry_pe:      h.stock?.industry_pe      ?? null,
     high_52w:         h.stock?.high_52w         ?? null,
@@ -206,6 +209,35 @@ export default async function PortfolioPage() {
       target_low:        stock?.target_low ?? null,
       mc_earnings_json:  null,
     }
+  }
+
+  // Volume data (last 22 days) for all portfolio stocks
+  const volCutoff = new Date(Date.now() - 22 * 86400000).toISOString().slice(0, 10)
+  const { data: volRows } = stockIds.length > 0
+    ? await supabase
+        .from('daily_history')
+        .select('stock_id, date, volume')
+        .in('stock_id', stockIds)
+        .not('volume', 'is', null)
+        .gt('volume', 0)
+        .gte('date', volCutoff)
+        .order('date', { ascending: false })
+    : { data: [] }
+
+  const volByStock: Record<string, number[]> = {}
+  for (const r of (volRows ?? [])) {
+    if (!volByStock[r.stock_id]) volByStock[r.stock_id] = []
+    volByStock[r.stock_id].push(r.volume)
+  }
+
+  const volMap: Record<string, { yesterday: number; avg: number; ratio: number }> = {}
+  for (const [sid, vols] of Object.entries(volByStock)) {
+    if (vols.length < 2) continue
+    const [latest, ...rest] = vols
+    const window  = rest.slice(0, 20)
+    const avg     = window.reduce((s, v) => s + v, 0) / window.length
+    if (!avg) continue
+    volMap[sid] = { yesterday: latest, avg: Math.round(avg), ratio: latest / avg }
   }
 
   // P&L totals (server-side, from DB current_price; client will update live)

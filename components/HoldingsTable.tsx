@@ -23,6 +23,10 @@ export type HoldingRow = {
   industry_pe:      number | null
   high_52w:         number | null
   low_52w:          number | null
+  // volume (vs 20-day avg)
+  vol_yesterday:    number | null
+  vol_avg_20d:      number | null
+  vol_ratio:        number | null
   // from daily_scores
   pe_deviation:     number | null
   rsi:              number | null
@@ -547,6 +551,20 @@ export default function HoldingsTable({
                               </SignalRow>
                               <SignalRow label="52W Low">
                                 {row.low_52w != null ? <span className="text-xs font-mono text-gray-600">₹{fmt(row.low_52w, 0)}</span> : <span className="text-gray-300 text-xs">—</span>}
+                              </SignalRow>
+                              <SignalRow label="Volume (yest)">
+                                {row.vol_yesterday != null ? (
+                                  <div className="text-right">
+                                    <span className="text-xs font-mono text-gray-600">
+                                      {row.vol_yesterday >= 1000000 ? `${(row.vol_yesterday / 1000000).toFixed(1)}M` : `${(row.vol_yesterday / 1000).toFixed(0)}K`}
+                                    </span>
+                                    {row.vol_ratio != null && (
+                                      <div className={`text-[9px] font-mono font-semibold ${row.vol_ratio >= 3 ? 'text-red-500' : row.vol_ratio >= 2 ? 'text-orange-500' : row.vol_ratio >= 1.5 ? 'text-amber-500' : 'text-gray-400'}`}>
+                                        {row.vol_ratio.toFixed(1)}× 20d avg
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : <span className="text-gray-300 text-xs">—</span>}
                               </SignalRow>
                             </div>
                           </div>
