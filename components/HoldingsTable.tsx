@@ -344,21 +344,21 @@ export default function HoldingsTable({
               <th className="text-left px-4 py-2.5 min-w-[180px]">
                 <SortHeader label="Stock" field="ticker" />
               </th>
-              <th className="text-right px-3 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">Qty · Avg ₹</th>
+              <th className="hidden sm:table-cell text-right px-3 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">Qty · Avg ₹</th>
               <th className="text-right px-3 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Now ₹</th>
-              <th className="text-right px-3 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Invested</th>
-              <th className="text-right px-3 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Value</th>
-              <th className="text-right px-3 py-2.5">
+              <th className="hidden sm:table-cell text-right px-3 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Invested</th>
+              <th className="hidden sm:table-cell text-right px-3 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Value</th>
+              <th className="hidden sm:table-cell text-right px-3 py-2.5">
                 <SortHeader label="P&L" field="pnl" />
               </th>
               <th className="text-right px-3 py-2.5">
                 <SortHeader label="Return" field="returnPct" />
               </th>
-              <th className="text-right px-3 py-2.5">
+              <th className="hidden sm:table-cell text-right px-3 py-2.5">
                 <SortHeader label="Alloc" field="allocation" />
               </th>
-              <th className="px-3 py-2.5 text-right text-[10px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">Stock PE</th>
-              <th className="px-3 py-2.5 text-right text-[10px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">RSI · Signal</th>
+              <th className="hidden sm:table-cell px-3 py-2.5 text-right text-[10px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">Stock PE</th>
+              <th className="hidden sm:table-cell px-3 py-2.5 text-right text-[10px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">RSI · Signal</th>
               <th className="px-4 py-2.5 text-right" />
             </tr>
           </thead>
@@ -421,7 +421,7 @@ export default function HoldingsTable({
                     </td>
 
                     {/* Qty · Avg */}
-                    <td className="px-3 py-3 text-right">
+                    <td className="hidden sm:table-cell px-3 py-3 text-right">
                       <div className="text-xs font-mono text-gray-700">{fmt(row.quantity)}</div>
                       <div className="text-[10px] font-mono text-gray-400 mt-0.5">@{fmt(row.avg_price, 2)}</div>
                     </td>
@@ -434,17 +434,17 @@ export default function HoldingsTable({
                     </td>
 
                     {/* Invested */}
-                    <td className="px-3 py-3 text-right">
+                    <td className="hidden sm:table-cell px-3 py-3 text-right">
                       <span className="text-xs font-mono text-gray-500">{fmtCurrency(row.invested)}</span>
                     </td>
 
                     {/* Value */}
-                    <td className="px-3 py-3 text-right">
+                    <td className="hidden sm:table-cell px-3 py-3 text-right">
                       <span className="text-xs font-mono font-semibold text-gray-900">{fmtCurrency(row.currentValue)}</span>
                     </td>
 
                     {/* P&L */}
-                    <td className="px-3 py-3 text-right">
+                    <td className="hidden sm:table-cell px-3 py-3 text-right">
                       <span className={`text-xs font-mono font-bold ${pnlColor}`}>
                         {row.pnl >= 0 ? '+' : ''}{fmtCurrency(row.pnl)}
                       </span>
@@ -458,7 +458,7 @@ export default function HoldingsTable({
                     </td>
 
                     {/* Allocation */}
-                    <td className="px-3 py-3 text-right">
+                    <td className="hidden sm:table-cell px-3 py-3 text-right">
                       <div className="flex items-center justify-end gap-1.5">
                         <div className="w-10 h-1 bg-gray-100 rounded-full overflow-hidden">
                           <div className="h-full bg-blue-400 rounded-full" style={{ width: `${Math.min(row.allocation, 100)}%` }} />
@@ -468,7 +468,7 @@ export default function HoldingsTable({
                     </td>
 
                     {/* Stock PE */}
-                    <td className="px-3 py-3 text-right">
+                    <td className="hidden sm:table-cell px-3 py-3 text-right">
                       {row.stock_pe != null ? (
                         <span className="text-xs font-mono text-gray-700">{row.stock_pe.toFixed(1)}x</span>
                       ) : (
@@ -477,7 +477,7 @@ export default function HoldingsTable({
                     </td>
 
                     {/* RSI · Signal */}
-                    <td className="px-3 py-3 text-right">
+                    <td className="hidden sm:table-cell px-3 py-3 text-right">
                       {row.rsi != null ? (
                         <div>
                           <span className={`text-xs font-mono font-semibold ${row.rsi_signal === 'Oversold' ? 'text-blue-600' : row.rsi_signal === 'Overbought' ? 'text-orange-500' : 'text-gray-600'}`}>
