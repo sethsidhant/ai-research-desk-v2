@@ -182,6 +182,51 @@ export default async function DashboardPage() {
       pct: portTotalInvested > 0 ? Math.round((invested / portTotalInvested) * 100) : 0,
     }))
 
+  // ── Volume breakouts (DB-based, yesterday EOD vs 20-day avg) ────────────
+  type VolumeBreakout = { ticker: string; ratio: number; vol: number; avgVol: number; isPortfolio: boolean }
+  let volumeBreakouts: VolumeBreakout[] = []
+
+  if (allStockIds.length > 0) {
+    const cutoff = new Date(Date.now() - 22 * 86400000).toISOString().slice(0, 10)
+    const { data: volRows } = await supabase
+      .from('daily_history')
+      .select('stock_id, date, volume')
+      .in('stock_id', allStockIds)
+      .not('volume', 'is', null)
+      .gt('volume', 0)
+      .gte('date', cutoff)
+      .order('date', { ascending: false })
+
+    // Group by stock_id
+    const volByStock: Record<string, { date: string; volume: number }[]> = {}
+    for (const r of (volRows ?? [])) {
+      if (!volByStock[r.stock_id]) volByStock[r.stock_id] = []
+      volByStock[r.stock_id].push({ date: r.date, volume: r.volume })
+    }
+
+    const portStockIdSet = new Set(portStockIds)
+    for (const [stockId, rows] of Object.entries(volByStock)) {
+      if (rows.length < 6) continue           // need at least 6 days of data
+      const [latest, ...rest] = rows           // latest = most recent trading day
+      const window = rest.slice(0, 20)         // up to 20 prior days for avg
+      if (!window.length) continue
+      const avgVol = window.reduce((s, r) => s + r.volume, 0) / window.length
+      if (!avgVol) continue
+      const ratio  = latest.volume / avgVol
+      if (ratio < 1.5) continue               // threshold: 1.5x avg
+      const ticker = stockTickerMap[stockId]
+      if (!ticker) continue
+      volumeBreakouts.push({
+        ticker,
+        ratio,
+        vol:    latest.volume,
+        avgVol: Math.round(avgVol),
+        isPortfolio: portStockIdSet.has(stockId),
+      })
+    }
+    volumeBreakouts.sort((a, b) => b.ratio - a.ratio)
+  }
+
   // Activity board — news items (last 2 days, watchlist + portfolio, deduplicated)
   const yesterday_date = new Date(Date.now() - 86400000).toISOString().slice(0, 10)
   type NewsItem = { ticker: string; source: string; headline: string; isPortfolio: boolean }
@@ -679,7 +724,7 @@ export default async function DashboardPage() {
               <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-3">
                 Activity · Watchlist &amp; Portfolio
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 
                 {/* News (last 24h) */}
                 <div>
@@ -758,6 +803,36 @@ export default async function DashboardPage() {
                           ))}
                         </div>
                       )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Volume breakouts */}
+                <div>
+                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">🔊 Volume Breakouts</div>
+                  {volumeBreakouts.length === 0 ? (
+                    <p className="text-[11px] text-gray-300">No unusual volume yesterday.</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {volumeBreakouts.slice(0, 5).map(v => {
+                        const intensity = v.ratio >= 3 ? 'text-red-500' : v.ratio >= 2 ? 'text-orange-500' : 'text-amber-500'
+                        return (
+                          <div key={v.ticker} className="flex items-center justify-between gap-2">
+                            <span className={`text-[10px] font-mono font-bold shrink-0 ${v.isPortfolio ? 'text-blue-500' : 'text-gray-600'}`}>
+                              {v.ticker}
+                            </span>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className="text-[10px] text-gray-400 font-mono">
+                                {v.vol >= 1000000 ? `${(v.vol / 1000000).toFixed(1)}M` : `${(v.vol / 1000).toFixed(0)}K`}
+                              </span>
+                              <span className={`text-[11px] font-mono font-bold ${intensity}`}>
+                                {v.ratio.toFixed(1)}× avg
+                              </span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                      <p className="text-[9px] text-gray-300 pt-0.5">vs 20-day avg · yesterday EOD</p>
                     </div>
                   )}
                 </div>
