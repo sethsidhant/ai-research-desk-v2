@@ -52,9 +52,15 @@ export async function POST() {
     return NextResponse.json({ synced: 0, onboarding: [], message: 'No holdings in Kite account' })
   }
 
-  // Only NSE holdings with positive quantity
-  const nseHoldings = kiteHoldings.filter((h: any) => h.exchange === 'NSE' && h.quantity > 0)
-  const tickers     = nseHoldings.map((h: any) => h.tradingsymbol as string)
+  // Deduplicate by tradingsymbol — prefer NSE if both exchanges present, sum quantities
+  const holdingMap: Record<string, any> = {}
+  for (const h of kiteHoldings) {
+    if (h.quantity <= 0) continue
+    const sym = h.tradingsymbol as string
+    if (!holdingMap[sym] || h.exchange === 'NSE') holdingMap[sym] = h
+  }
+  const allHoldings = Object.values(holdingMap)
+  const tickers     = allHoldings.map((h: any) => h.tradingsymbol as string)
 
   // Look up existing stocks
   const { data: existing } = await admin
@@ -69,7 +75,7 @@ export async function POST() {
   const unknown = tickers.filter(t => !tickerToId[t])
   if (unknown.length > 0) {
     const stubs = unknown.map(ticker => {
-      const h = nseHoldings.find((h: any) => h.tradingsymbol === ticker)
+      const h = allHoldings.find((h: any) => h.tradingsymbol === ticker)
       return { ticker, stock_name: h?.tradingsymbol ?? ticker, instrument_token: h?.instrument_token ?? null }
     })
     const { data: inserted } = await admin
@@ -80,8 +86,8 @@ export async function POST() {
     // listener.js picks up fundamentals_updated_at=null every 30s and onboards automatically
   }
 
-  // Upsert portfolio_holdings — one row per stock, aggregate if needed
-  const upsertRows = nseHoldings
+  // Upsert portfolio_holdings — one row per stock
+  const upsertRows = allHoldings
     .filter((h: any) => tickerToId[h.tradingsymbol])
     .map((h: any) => ({
       user_id:       user.id,
