@@ -41,14 +41,28 @@ function onboard(ticker) {
 
 async function poll() {
   try {
-    // Query stocks directly — covers both user_stocks (watchlist) and
-    // portfolio_holdings without needing two separate join queries.
-    // Any stock inserted via Zerodha sync, CSV import, or manual add
-    // with fundamentals_updated_at = null gets picked up here.
+    // Only onboard stocks that someone actually tracks (watchlist or portfolio).
+    // Avoids mass-onboarding orphaned rows in the stocks table.
+    const [{ data: wsIds }, { data: phIds }] = await Promise.all([
+      supabase.from('user_stocks').select('stock_id'),
+      supabase.from('portfolio_holdings').select('stock_id'),
+    ]);
+
+    const trackedIds = [...new Set([
+      ...(wsIds ?? []).map(r => r.stock_id),
+      ...(phIds ?? []).map(r => r.stock_id),
+    ])];
+
+    if (!trackedIds.length) {
+      console.log('[listener] Poll: no tracked stocks');
+      return;
+    }
+
     const { data } = await supabase
       .from('stocks')
       .select('ticker')
-      .is('fundamentals_updated_at', null);
+      .is('fundamentals_updated_at', null)
+      .in('id', trackedIds);
 
     const pending = (data ?? []).map(s => s.ticker).filter(Boolean);
 
