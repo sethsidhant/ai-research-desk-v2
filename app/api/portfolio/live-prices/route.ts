@@ -47,7 +47,9 @@ export async function GET() {
   const kite = await getKiteToken()
   if (!kite) return NextResponse.json({ error: 'Kite credentials not configured' }, { status: 500 })
 
-  const { data: holdings } = await supabase
+  const admin = createAdminClient()
+
+  const { data: holdings } = await admin
     .from('portfolio_holdings')
     .select('stock_id')
     .eq('user_id', user.id)
@@ -55,7 +57,7 @@ export async function GET() {
   const stockIds = (holdings ?? []).map(h => h.stock_id)
   if (!stockIds.length) return NextResponse.json({ marketOpen, prices: {} })
 
-  const { data: stocks } = await supabase
+  const { data: stocks } = await admin
     .from('stocks')
     .select('ticker, instrument_token')
     .in('id', stockIds)

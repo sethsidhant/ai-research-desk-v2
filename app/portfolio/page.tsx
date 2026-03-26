@@ -25,7 +25,7 @@ export default async function PortfolioPage() {
   if (!user) redirect('/login')
 
   // Fetch all holdings with stock details
-  const { data: holdingsRaw } = await supabase
+  const { data: holdingsRaw } = await admin
     .from('portfolio_holdings')
     .select(`
       stock_id,
