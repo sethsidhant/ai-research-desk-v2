@@ -143,7 +143,7 @@ export default function AdminActions() {
             value={ticker}
             onChange={e => { setTicker(e.target.value.toUpperCase()); setRescoreStatus('idle'); setRescoreMsg(null) }}
             placeholder="e.g. NMDC"
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono w-36 focus:outline-none focus:ring-2 focus:ring-gray-300"
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono text-gray-900 w-36 focus:outline-none focus:ring-2 focus:ring-gray-300"
             onKeyDown={e => e.key === 'Enter' && handleRescore()}
           />
           <button

@@ -196,7 +196,7 @@ export default function PortfolioImport({ defaultOpen = false }: { defaultOpen?:
                 value={search.query}
                 onChange={e => { search.onQueryChange(e.target.value); setSelected(null) }}
                 placeholder="Search ticker or name…"
-                className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-300"
+                className="w-full text-xs text-gray-900 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-300"
               />
               {search.results.length > 0 && (
                 <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
@@ -225,7 +225,7 @@ export default function PortfolioImport({ defaultOpen = false }: { defaultOpen?:
                 type="number" min="0.01" step="any"
                 value={qty} onChange={e => setQty(e.target.value)}
                 placeholder="e.g. 100"
-                className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-300"
+                className="w-full text-xs text-gray-900 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-300"
               />
             </div>
 
@@ -236,7 +236,7 @@ export default function PortfolioImport({ defaultOpen = false }: { defaultOpen?:
                 type="number" min="0.01" step="any"
                 value={avgPrice} onChange={e => setAvgPrice(e.target.value)}
                 placeholder="e.g. 1650"
-                className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-300"
+                className="w-full text-xs text-gray-900 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-300"
               />
             </div>
 
@@ -247,7 +247,7 @@ export default function PortfolioImport({ defaultOpen = false }: { defaultOpen?:
                 type="text"
                 value={broker} onChange={e => setBroker(e.target.value)}
                 placeholder="e.g. HDFC Securities"
-                className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-300"
+                className="w-full text-xs text-gray-900 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-300"
               />
             </div>
 
@@ -257,7 +257,7 @@ export default function PortfolioImport({ defaultOpen = false }: { defaultOpen?:
               <input
                 type="date"
                 value={investmentDate} onChange={e => setInvestmentDate(e.target.value)}
-                className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-300"
+                className="w-full text-xs text-gray-900 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-300"
               />
             </div>
           </div>
