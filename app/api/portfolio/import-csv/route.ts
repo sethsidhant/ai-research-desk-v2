@@ -89,7 +89,7 @@ export async function POST(request: Request) {
     updated_at:    new Date().toISOString(),
   }))
 
-  const { error } = await supabase
+  const { error } = await admin
     .from('portfolio_holdings')
     .upsert(upsertRows, { onConflict: 'user_id,stock_id' })
 

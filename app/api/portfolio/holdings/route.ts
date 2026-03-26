@@ -1,9 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 
 // POST — manually add or update a single holding
 export async function POST(request: Request) {
   const supabase = await createClient()
+  const admin    = createAdminClient()
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -19,7 +21,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'quantity and avg_price must be positive' }, { status: 400 })
   }
 
-  const { error } = await supabase
+  const { error } = await admin
     .from('portfolio_holdings')
     .upsert({
       user_id:       user.id,
@@ -38,13 +40,15 @@ export async function POST(request: Request) {
 // DELETE — remove a single holding
 export async function DELETE(request: Request) {
   const supabase = await createClient()
+  const admin    = createAdminClient()
+
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { stock_id } = await request.json().catch(() => ({}))
   if (!stock_id) return NextResponse.json({ error: 'stock_id required' }, { status: 400 })
 
-  const { error } = await supabase
+  const { error } = await admin
     .from('portfolio_holdings')
     .delete()
     .eq('user_id', user.id)
