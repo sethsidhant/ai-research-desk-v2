@@ -73,8 +73,9 @@ async function runFundamentals(stock) {
 
   const f = getScreenerFundamentals(ticker);
   if (!f) {
-    // No Screener data — skip fundamentals but don't mark as ETF
+    // No Screener data (ETF or unlisted) — stamp fundamentals_updated_at so listener doesn't loop
     console.log("  No Screener data — skipping fundamentals, continuing to technicals");
+    await upsertStock(ticker, { fundamentals_updated_at: new Date().toISOString() });
     return true;
   }
 
