@@ -158,6 +158,22 @@ export default async function WatchlistPage() {
     return a.stock_name.localeCompare(b.stock_name)
   })
 
+  // FII sector + daily data for FIIOverviewCard
+  const [{ data: fiiSectorsRaw }, { data: fiiDiiRaw }] = await Promise.all([
+    adminSupabase
+      .from('fii_sector')
+      .select('sector, fortnight_flow')
+      .order('fortnight_flow', { ascending: false }),
+    adminSupabase
+      .from('fii_dii_daily')
+      .select('date, fii_net, dii_net')
+      .order('date', { ascending: false })
+      .limit(10),
+  ])
+
+  const fiiSectors = fiiSectorsRaw ?? []
+  const fiiDiiRow  = (fiiDiiRaw ?? []).find((r: any) => r.fii_net != null && r.dii_net != null) ?? null
+
   // Portfolio chart
   let chartData: ChartPoint[] = []
   const portfolioRowsWithHistory = rows.filter(r => r.invested_amount && r.entry_price)
@@ -309,7 +325,7 @@ export default async function WatchlistPage() {
           </div>
         </div>
 
-        <LivePriceTable initialRows={rows} chartData={chartData} />
+        <LivePriceTable initialRows={rows} chartData={chartData} fiiSectors={fiiSectors} fiiDii={fiiDiiRow} />
       </main>
     </div>
   )
