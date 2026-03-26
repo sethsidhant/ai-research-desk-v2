@@ -32,4 +32,5 @@ export const INDUSTRY_TO_FII_SECTOR: Record<string, string> = {
   'Mining & Mineral products':              'Metals & Mining',
   'Non Ferrous Metals':                     'Metals & Mining',
   'Trading - Minerals':                     'Metals & Mining',
+  'Commodity Trading and Distribution':     'Metals & Mining',
 }
