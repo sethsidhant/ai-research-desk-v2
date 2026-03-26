@@ -8,6 +8,17 @@ import { INDUSTRY_TO_FII_SECTOR } from '@/lib/fiiSectorMap'
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
+function parseFirstHeadline(text: string | null): { source: string; headline: string } | null {
+  if (!text) return null
+  const sourceMatch   = text.match(/━━\s*(.+?)\s*━━/)
+  const headlineMatch = text.match(/📌\s*(.+)/)
+  if (!headlineMatch) return null
+  return {
+    source:   sourceMatch?.[1]?.trim() ?? 'News',
+    headline: headlineMatch[1].trim(),
+  }
+}
+
 function fmtCr(n: number) {
   const abs = Math.abs(n)
   if (abs >= 100000) return `₹${(n / 100000).toFixed(1)}L Cr`
@@ -47,7 +58,7 @@ export default async function DashboardPage() {
   // Full watchlist with industry + price data
   const { data: watchlist } = await supabase
     .from('user_stocks')
-    .select('stock_id, invested_amount, entry_price, stocks(ticker, industry, current_price, last_news_update)')
+    .select('stock_id, invested_amount, entry_price, stocks(ticker, industry, current_price, last_news_update, latest_headlines)')
     .eq('user_id', user.id)
 
   const today_date = new Date().toISOString().slice(0, 10)
@@ -68,13 +79,15 @@ export default async function DashboardPage() {
   // ── Portfolio holdings (real) ─────────────────────────────────────────────
   const { data: portfolioHoldings } = await admin
     .from('portfolio_holdings')
-    .select('quantity, avg_price, stocks(ticker, current_price, industry)')
+    .select('stock_id, quantity, avg_price, stocks(ticker, current_price, industry, last_news_update, latest_headlines)')
     .eq('user_id', user.id)
 
-  const portRows = (portfolioHoldings ?? []).map((h: any) => {
+  const portRowsAll = (portfolioHoldings ?? []).map((h: any) => {
     const stock = Array.isArray(h.stocks) ? h.stocks[0] : h.stocks
     return { ...h, stock }
-  }).filter((h: any) => h.stock?.current_price)
+  }).filter((h: any) => h.stock)
+
+  const portRows = portRowsAll.filter((h: any) => h.stock?.current_price)
 
   const portInvested = portRows.reduce((s: number, h: any) => s + h.quantity * h.avg_price, 0)
   const portCurrent  = portRows.reduce((s: number, h: any) => s + h.quantity * h.stock.current_price, 0)
@@ -90,13 +103,24 @@ export default async function DashboardPage() {
     .sort((a: any, b: any) => b.alloc - a.alloc)
     .slice(0, 4)
 
-  // ── Signals: latest score per stock ─────────────────────────────────────
-  const stockIds = allRows.map((w: any) => w.stock_id).filter(Boolean)
-  const { data: scores } = stockIds.length > 0
+  // ── Signals: latest score per stock (watchlist + portfolio combined) ────
+  const watchStockIds = allRows.map((w: any) => w.stock_id).filter(Boolean)
+  const portStockIds  = portRowsAll.map((h: any) => h.stock_id).filter(Boolean)
+  const allStockIds   = [...new Set([...watchStockIds, ...portStockIds])]
+
+  // stock_id → ticker map across both sources
+  const stockTickerMap: Record<string, string> = {}
+  for (const w of allRows)     stockTickerMap[w.stock_id]  = w.stock?.ticker ?? ''
+  for (const h of portRowsAll) stockTickerMap[h.stock_id]  = h.stock?.ticker ?? ''
+
+  // Legacy alias so existing code below doesn't break
+  const stockIds = watchStockIds
+
+  const { data: scores } = allStockIds.length > 0
     ? await supabase
         .from('daily_scores')
         .select('stock_id, rsi, above_200_dma')
-        .in('stock_id', stockIds)
+        .in('stock_id', allStockIds)
         .order('date', { ascending: false })
     : { data: [] }
 
@@ -105,6 +129,7 @@ export default async function DashboardPage() {
     if (!latestScore[s.stock_id]) latestScore[s.stock_id] = s
   }
 
+  // Watchlist signals
   const filingTickers: string[] = allRows
     .filter((w: any) => w.stock?.last_news_update === today_date)
     .map((w: any) => w.stock.ticker)
@@ -120,6 +145,82 @@ export default async function DashboardPage() {
   const below200Tickers: string[] = allRows
     .filter((w: any) => latestScore[w.stock_id]?.above_200_dma === false)
     .map((w: any) => w.stock?.ticker).filter(Boolean)
+
+  // Portfolio signals
+  const portOversold: string[] = portRowsAll
+    .filter((h: any) => (latestScore[h.stock_id]?.rsi ?? 999) < 30)
+    .map((h: any) => h.stock?.ticker).filter(Boolean)
+
+  const portOverbought: string[] = portRowsAll
+    .filter((h: any) => (latestScore[h.stock_id]?.rsi ?? 0) > 70)
+    .map((h: any) => h.stock?.ticker).filter(Boolean)
+
+  const portBelow200: string[] = portRowsAll
+    .filter((h: any) => latestScore[h.stock_id]?.above_200_dma === false)
+    .map((h: any) => h.stock?.ticker).filter(Boolean)
+
+  const portHasSignals = portOversold.length > 0 || portOverbought.length > 0 || portBelow200.length > 0
+
+  // Portfolio sector exposure vs FII
+  const portSectorMap: Record<string, { count: number; invested: number }> = {}
+  for (const h of portRowsAll) {
+    const ind = h.stock?.industry
+    const fiiSectorName = ind ? (INDUSTRY_TO_FII_SECTOR[ind] ?? ind) : null
+    if (!fiiSectorName) continue
+    if (!portSectorMap[fiiSectorName]) portSectorMap[fiiSectorName] = { count: 0, invested: 0 }
+    portSectorMap[fiiSectorName].count++
+    portSectorMap[fiiSectorName].invested += h.quantity * h.avg_price
+  }
+  const portTotalInvested = portRows.reduce((s: number, h: any) => s + h.quantity * h.avg_price, 0)
+  const portSectorExposure = Object.entries(portSectorMap)
+    .sort(([, a], [, b]) => b.invested - a.invested)
+    .slice(0, 5)
+    .map(([industry, { count, invested }]) => ({
+      industry,
+      count,
+      invested,
+      pct: portTotalInvested > 0 ? Math.round((invested / portTotalInvested) * 100) : 0,
+    }))
+
+  // Activity board — news items (last 2 days, watchlist + portfolio, deduplicated)
+  const yesterday_date = new Date(Date.now() - 86400000).toISOString().slice(0, 10)
+  type NewsItem = { ticker: string; source: string; headline: string; isPortfolio: boolean }
+  const newsItems: NewsItem[] = []
+  const newsTickerSet = new Set<string>()
+
+  for (const w of allRows) {
+    const t = w.stock?.ticker
+    if (!t || newsTickerSet.has(t)) continue
+    if ((w.stock?.last_news_update ?? '') >= yesterday_date) {
+      const parsed = parseFirstHeadline(w.stock?.latest_headlines)
+      if (parsed) { newsItems.push({ ticker: t, ...parsed, isPortfolio: false }); newsTickerSet.add(t) }
+    }
+  }
+  for (const h of portRowsAll) {
+    const t = h.stock?.ticker
+    if (!t || newsTickerSet.has(t)) continue
+    if ((h.stock?.last_news_update ?? '') >= yesterday_date) {
+      const parsed = parseFirstHeadline(h.stock?.latest_headlines)
+      if (parsed) { newsItems.push({ ticker: t, ...parsed, isPortfolio: true }); newsTickerSet.add(t) }
+    }
+  }
+
+  // Activity board — combined technical alerts
+  const actOversold  = [...new Set([...oversoldTickers,  ...portOversold])]
+  const actOverbought= [...new Set([...overboughtTickers, ...portOverbought])]
+  const actBelow200  = [...new Set([...below200Tickers,   ...portBelow200])]
+
+  // Activity board — portfolio movers
+  const portMovers = portRows
+    .map((h: any) => ({
+      ticker:    h.stock.ticker,
+      returnPct: h.avg_price > 0 ? ((h.stock.current_price - h.avg_price) / h.avg_price) * 100 : 0,
+      alloc:     portTotalInvested > 0 ? (h.quantity * h.avg_price / portTotalInvested) * 100 : 0,
+    }))
+    .sort((a: any, b: any) => b.returnPct - a.returnPct)
+
+  const portGainers = portMovers.slice(0, 2)
+  const portLosers  = [...portMovers].reverse().slice(0, 2).filter((h: any) => h.returnPct < 0)
 
   // ── Sector exposure ──────────────────────────────────────────────────────
   // Group by FII sector name (via shared map), not raw BSE sub-industry
@@ -425,28 +526,60 @@ export default async function DashboardPage() {
                     </div>
                   </div>
 
-                  {/* Top holdings */}
-                  {topHoldings.length > 0 && (
+                  {/* Sector exposure vs FII */}
+                  {portSectorExposure.length > 0 && (
                     <div className="pt-2 border-t border-gray-100">
-                      <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">Top Holdings</div>
+                      <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">
+                        Sector Exposure vs FII
+                      </div>
                       <div className="space-y-1.5">
-                        {topHoldings.map((h: any) => (
-                          <div key={h.ticker} className="space-y-0.5">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-[11px] font-mono font-semibold text-gray-700">{h.ticker}</span>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <span className={`text-[11px] font-mono font-bold ${h.pct >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                                  {h.pct >= 0 ? '+' : ''}{h.pct.toFixed(1)}%
-                                </span>
-                                <span className="text-[10px] text-gray-400 font-mono">{h.alloc.toFixed(1)}%</span>
+                        {portSectorExposure.map(({ industry, count, pct }) => {
+                          const fiiFlow  = fiiFlowMap[industry] ?? null
+                          const short    = SHORT_SECTOR[industry] ?? industry
+                          const buying   = fiiFlow != null && fiiFlow > 1000
+                          const selling  = fiiFlow != null && fiiFlow < -1000
+                          const mismatch = selling && pct >= 20
+                          const barColor = buying ? 'bg-emerald-400' : selling ? 'bg-red-400' : 'bg-gray-300'
+                          return (
+                            <div key={industry} className="space-y-0.5">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${barColor}`} />
+                                  <span className="text-[11px] text-gray-700 truncate">{short}</span>
+                                  <span className="text-[10px] text-gray-400">{count}×</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <span className={`text-[11px] font-bold font-mono ${pct >= 40 ? 'text-orange-500' : 'text-gray-600'}`}>{pct}%</span>
+                                  {fiiFlow != null ? (
+                                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${buying ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : selling ? 'bg-red-50 text-red-500 border border-red-100' : 'bg-gray-50 text-gray-400 border border-gray-100'}`}>
+                                      {buying ? '▲ FII in' : selling ? '▼ FII out' : '— neutral'}
+                                    </span>
+                                  ) : <span className="text-[10px] text-gray-300">—</span>}
+                                  {mismatch && <span title="Heavy exposure + FII selling">⚠️</span>}
+                                </div>
+                              </div>
+                              <div className="h-0.5 w-full bg-gray-100 rounded-full overflow-hidden">
+                                <div className={`h-full rounded-full ${barColor} opacity-60`} style={{ width: `${pct}%` }} />
                               </div>
                             </div>
-                            <div className="h-0.5 w-full bg-gray-100 rounded-full overflow-hidden">
-                              <div className="h-full bg-blue-400 rounded-full" style={{ width: `${Math.min(h.alloc, 100)}%` }} />
-                            </div>
-                          </div>
-                        ))}
+                          )
+                        })}
                       </div>
+                    </div>
+                  )}
+
+                  {/* Portfolio signals */}
+                  {portHasSignals && (
+                    <div className="pt-2 border-t border-gray-100 space-y-1.5">
+                      {portOversold.length > 0 && (
+                        <SignalRow label={`📉 ${portOversold.length} oversold`} tickers={portOversold} color="blue" />
+                      )}
+                      {portOverbought.length > 0 && (
+                        <SignalRow label={`📈 ${portOverbought.length} overbought`} tickers={portOverbought} color="orange" />
+                      )}
+                      {portBelow200.length > 0 && (
+                        <SignalRow label={`📊 ${portBelow200.length} below 200 DMA`} tickers={portBelow200} color="red" />
+                      )}
                     </div>
                   )}
 
@@ -540,46 +673,98 @@ export default async function DashboardPage() {
             </div>
           </div>
 
-          {/* ── FII Sector Flow — full width row ──────────────────────── */}
-          {validSectors.length > 0 && (
-            <div className="sm:col-span-3">
-              <div className="bg-white border border-gray-200 rounded-xl px-4 py-4 shadow-sm">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">FII Sectoral Flow · Fortnight</div>
-                  <div className="text-[10px] text-gray-400">
-                    <span className="text-emerald-600 font-semibold">{sectorBuyCount}</span> buying ·{' '}
-                    <span className="text-red-500 font-semibold">{sectorSellCount}</span> selling
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-                  {/* Buying column */}
-                  <div className="space-y-2">
-                    {top3.map(s => (
-                      <div key={s.name} className="flex items-center justify-between gap-2 bg-emerald-50 rounded-lg px-2.5 py-1.5">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-                          <span className="text-xs text-gray-700 truncate font-medium">{SHORT_SECTOR[s.name] ?? s.name}</span>
+          {/* ── Activity Board — full width row ───────────────────────── */}
+          <div className="sm:col-span-3">
+            <div className="bg-white border border-gray-200 rounded-xl px-4 py-4 shadow-sm">
+              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-3">
+                Activity · Watchlist &amp; Portfolio
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+
+                {/* News (last 24h) */}
+                <div>
+                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">📋 Recent News</div>
+                  {newsItems.length === 0 ? (
+                    <p className="text-[11px] text-gray-300">No news in the last 24h.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {newsItems.slice(0, 5).map((item, i) => (
+                        <div key={i} className="flex gap-2">
+                          <span className={`text-[10px] font-mono font-bold shrink-0 mt-0.5 ${item.isPortfolio ? 'text-blue-500' : 'text-gray-500'}`}>
+                            {item.ticker}
+                          </span>
+                          <div className="min-w-0">
+                            <div className="text-[10px] text-gray-300">{item.source}</div>
+                            <div className="text-[11px] text-gray-700 leading-snug line-clamp-2">{item.headline}</div>
+                          </div>
                         </div>
-                        <span className="text-xs font-mono font-bold text-emerald-600 shrink-0">{fmtCr(s.flow)}</span>
-                      </div>
-                    ))}
-                  </div>
-                  {/* Selling column */}
-                  <div className="space-y-2">
-                    {bot3.map(s => (
-                      <div key={s.name} className="flex items-center justify-between gap-2 bg-red-50 rounded-lg px-2.5 py-1.5">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
-                          <span className="text-xs text-gray-700 truncate font-medium">{SHORT_SECTOR[s.name] ?? s.name}</span>
-                        </div>
-                        <span className="text-xs font-mono font-bold text-red-500 shrink-0">{fmtCr(s.flow)}</span>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
+
+                {/* Technical alerts */}
+                <div>
+                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">⚡ Technical Alerts</div>
+                  {actOversold.length === 0 && actOverbought.length === 0 && actBelow200.length === 0 ? (
+                    <p className="text-[11px] text-gray-300">No alerts across tracked stocks.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {actOversold.length > 0 && (
+                        <SignalRow label={`📉 ${actOversold.length} oversold (RSI<30)`} tickers={actOversold} color="blue" />
+                      )}
+                      {actOverbought.length > 0 && (
+                        <SignalRow label={`📈 ${actOverbought.length} overbought (RSI>70)`} tickers={actOverbought} color="orange" />
+                      )}
+                      {actBelow200.length > 0 && (
+                        <SignalRow label={`📊 ${actBelow200.length} below 200 DMA`} tickers={actBelow200} color="red" />
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Portfolio movers */}
+                <div>
+                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">📊 Portfolio Movers</div>
+                  {portMovers.length === 0 ? (
+                    <p className="text-[11px] text-gray-300">No holdings with live prices.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {portGainers.length > 0 && (
+                        <div>
+                          <div className="text-[10px] text-gray-400 mb-1">Top gainers</div>
+                          {portGainers.map((h: any) => (
+                            <div key={h.ticker} className="flex items-center justify-between py-0.5">
+                              <span className="text-[11px] font-mono font-semibold text-gray-700">{h.ticker}</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] text-gray-400 font-mono">{h.alloc.toFixed(1)}%</span>
+                                <span className="text-[11px] font-mono font-bold text-emerald-600">+{h.returnPct.toFixed(1)}%</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {portLosers.length > 0 && (
+                        <div className="pt-1 border-t border-gray-100">
+                          <div className="text-[10px] text-gray-400 mb-1">Laggards</div>
+                          {portLosers.map((h: any) => (
+                            <div key={h.ticker} className="flex items-center justify-between py-0.5">
+                              <span className="text-[11px] font-mono font-semibold text-gray-700">{h.ticker}</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] text-gray-400 font-mono">{h.alloc.toFixed(1)}%</span>
+                                <span className="text-[11px] font-mono font-bold text-red-500">{h.returnPct.toFixed(1)}%</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
               </div>
             </div>
-          )}
+          </div>
 
         </div>
       </main>
