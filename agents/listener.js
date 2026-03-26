@@ -41,18 +41,18 @@ function onboard(ticker) {
 
 async function poll() {
   try {
+    // Query stocks directly — covers both user_stocks (watchlist) and
+    // portfolio_holdings without needing two separate join queries.
+    // Any stock inserted via Zerodha sync, CSV import, or manual add
+    // with fundamentals_updated_at = null gets picked up here.
     const { data } = await supabase
-      .from('user_stocks')
-      .select('stocks(ticker, fundamentals_updated_at)');
+      .from('stocks')
+      .select('ticker')
+      .is('fundamentals_updated_at', null);
 
-    const pending = [...new Set(
-      (data ?? [])
-        .map(r => r.stocks)
-        .filter(s => s && !s.fundamentals_updated_at)
-        .map(s => s.ticker)
-    )];
+    const pending = (data ?? []).map(s => s.ticker).filter(Boolean);
 
-    console.log(`[listener] Poll: ${(data ?? []).length} watchlist entries, ${pending.length} need onboarding${pending.length ? ': ' + pending.join(', ') : ''}`)
+    console.log(`[listener] Poll: ${pending.length} stocks need onboarding${pending.length ? ': ' + pending.join(', ') : ''}`)
     for (const ticker of pending) onboard(ticker);
   } catch (err) {
     console.error(`[listener] Poll error:`, err.message);

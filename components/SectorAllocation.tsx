@@ -1,3 +1,6 @@
+'use client'
+
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { INDUSTRY_TO_FII_SECTOR } from '@/lib/fiiSectorMap'
 
 type HoldingForSector = {
@@ -6,15 +9,32 @@ type HoldingForSector = {
   avg_price: number
 }
 
-function fmt(n: number) {
+function fmtCurrency(n: number): string {
   if (n >= 10000000) return `₹${(n / 10000000).toFixed(1)}Cr`
   if (n >= 100000)   return `₹${(n / 100000).toFixed(1)}L`
   if (n >= 1000)     return `₹${(n / 1000).toFixed(1)}k`
   return `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
 }
 
+function CustomTooltip({ active, payload }: any) {
+  if (!active || !payload?.length) return null
+  const { name, pct, invested } = payload[0].payload
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg px-3 py-2 shadow-lg text-xs space-y-1">
+      <div className="font-semibold text-gray-700">{name}</div>
+      <div className="text-gray-500">{fmtCurrency(invested)}</div>
+      <div className="font-bold text-blue-600">{pct.toFixed(1)}%</div>
+    </div>
+  )
+}
+
+const BAR_COLORS = [
+  '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7',
+  '#ec4899', '#f43f5e', '#f97316', '#eab308',
+  '#22c55e', '#14b8a6', '#06b6d4', '#64748b',
+]
+
 export default function SectorAllocation({ holdings }: { holdings: HoldingForSector[] }) {
-  // Group by FII sector name
   const sectorMap: Record<string, { invested: number }> = {}
   let totalInvested = 0
 
@@ -37,28 +57,41 @@ export default function SectorAllocation({ holdings }: { holdings: HoldingForSec
 
   if (!sectors.length) return null
 
+  const chartHeight = Math.max(160, sectors.length * 32 + 20)
+
   return (
     <div className="bg-white border border-gray-200 rounded-xl px-4 py-4 shadow-sm">
       <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Sector Allocation</div>
-      <div className="space-y-2.5">
-        {sectors.map(s => (
-          <div key={s.name}>
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs font-medium text-gray-700 truncate max-w-[140px]">{s.name}</span>
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="text-xs text-gray-400">{fmt(s.invested)}</span>
-                <span className="text-xs font-semibold text-gray-700 w-10 text-right">{s.pct.toFixed(1)}%</span>
-              </div>
-            </div>
-            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-blue-500 rounded-full transition-all duration-500"
-                style={{ width: `${Math.min(s.pct, 100)}%` }}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
+      <ResponsiveContainer width="100%" height={chartHeight}>
+        <BarChart
+          data={sectors}
+          layout="vertical"
+          margin={{ top: 0, right: 40, bottom: 0, left: 0 }}
+        >
+          <XAxis
+            type="number"
+            domain={[0, 'auto']}
+            tick={{ fontSize: 10, fill: '#9ca3af' }}
+            tickLine={false}
+            axisLine={false}
+            tickFormatter={(v: number) => `${v.toFixed(0)}%`}
+          />
+          <YAxis
+            type="category"
+            dataKey="name"
+            tick={{ fontSize: 10, fill: '#6b7280' }}
+            tickLine={false}
+            axisLine={false}
+            width={120}
+          />
+          <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f3f4f6' }} />
+          <Bar dataKey="pct" radius={[0, 4, 4, 0]} barSize={16}>
+            {sectors.map((_, idx) => (
+              <Cell key={idx} fill={BAR_COLORS[idx % BAR_COLORS.length]} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
     </div>
   )
 }

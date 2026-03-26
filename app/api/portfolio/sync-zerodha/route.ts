@@ -1,7 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
-import { execFile } from 'child_process'
 import path from 'path'
 import fs from 'fs'
 
@@ -21,14 +20,6 @@ async function getKiteToken(): Promise<{ apiKey: string; accessToken: string } |
   return t ? { apiKey, accessToken: t } : null
 }
 
-function triggerOnboarding(ticker: string) {
-  const safeTicker = ticker.replace(/[^A-Z0-9&\-\.]/gi, '')
-  const agentsDir  = path.join(process.cwd(), 'agents')
-  execFile('node', ['onboardStock.js', safeTicker], { cwd: agentsDir, timeout: 180000 }, (err) => {
-    if (err) console.error(`[portfolio-onboard] ${safeTicker} failed:`, err.message)
-    else     console.log(`[portfolio-onboard] ${safeTicker} done`)
-  })
-}
 
 export async function POST() {
   const supabase = await createClient()
@@ -86,7 +77,7 @@ export async function POST() {
       .upsert(stubs, { onConflict: 'ticker', ignoreDuplicates: false })
       .select('id, ticker')
     for (const s of inserted ?? []) tickerToId[s.ticker] = s.id
-    for (const t of unknown) triggerOnboarding(t)
+    // listener.js picks up fundamentals_updated_at=null every 30s and onboards automatically
   }
 
   // Upsert portfolio_holdings — one row per stock, aggregate if needed

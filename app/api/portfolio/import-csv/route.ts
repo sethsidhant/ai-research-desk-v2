@@ -1,18 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
-import { execFile } from 'child_process'
-import path from 'path'
-
-function triggerOnboarding(ticker: string) {
-  const safeTicker = ticker.replace(/[^A-Z0-9&\-\.]/gi, '')
-  execFile('node', ['onboardStock.js', safeTicker], {
-    cwd: path.join(process.cwd(), 'agents'), timeout: 180000,
-  }, (err) => {
-    if (err) console.error(`[portfolio-onboard] ${safeTicker} failed:`, err.message)
-    else     console.log(`[portfolio-onboard] ${safeTicker} done`)
-  })
-}
 
 // Parse simple CSV: Ticker,Quantity,AvgPrice,Broker
 // First row may be a header row (if it starts with non-numeric Ticker column)
@@ -25,7 +13,8 @@ function parseCSV(text: string): { ticker: string; quantity: number; avgPrice: n
     if (cols.length < 3) continue
     const [col0, col1, col2, col3] = cols
     // Skip header row
-    if (isNaN(Number(col1)) && col1.toLowerCase() === 'quantity') continue
+    const col1Lower = col1.toLowerCase()
+    if (col1Lower === 'quantity' || col1Lower === 'qty' || col1Lower === 'shares') continue
     const ticker   = col0.toUpperCase()
     const quantity = parseFloat(col1)
     const avgPrice = parseFloat(col2)
@@ -78,7 +67,7 @@ export async function POST(request: Request) {
       .upsert(stubs, { onConflict: 'ticker', ignoreDuplicates: false })
       .select('id, ticker')
     for (const s of inserted ?? []) tickerToId[s.ticker] = s.id
-    for (const t of unknown) triggerOnboarding(t)
+    // listener.js picks up fundamentals_updated_at=null every 30s and onboards automatically
   }
 
   // Aggregate duplicate tickers (weighted avg price)
@@ -106,12 +95,9 @@ export async function POST(request: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const notFound = tickers.filter(t => !tickerToId[t])
-
   return NextResponse.json({
     synced:     upsertRows.length,
     onboarding: unknown,
-    notFound,
     message:    `Imported ${upsertRows.length} holdings${unknown.length ? `, onboarding ${unknown.length} new stocks` : ''}`,
   })
 }

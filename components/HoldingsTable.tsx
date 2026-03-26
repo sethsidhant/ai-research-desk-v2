@@ -181,11 +181,11 @@ export default function HoldingsTable({
     }
   })
 
-  function SortHeader({ label, key }: { label: string; key: SortKey }) {
-    const active = sortKey === key
+  function SortHeader({ label, field }: { label: string; field: SortKey }) {
+    const active = sortKey === field
     return (
       <button
-        onClick={() => toggleSort(key)}
+        onClick={() => toggleSort(field)}
         className={`flex items-center gap-0.5 text-[10px] font-bold uppercase tracking-wider transition-colors ${active ? 'text-gray-700' : 'text-gray-400 hover:text-gray-600'}`}
       >
         {label}
@@ -231,7 +231,7 @@ export default function HoldingsTable({
           <thead>
             <tr className="bg-gray-50 border-b border-gray-200">
               <th className="text-left px-4 py-2.5">
-                <SortHeader label="Stock" key="ticker" />
+                <SortHeader label="Stock" field="ticker" />
               </th>
               <th className="text-right px-3 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Qty</th>
               <th className="text-right px-3 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Avg ₹</th>
@@ -239,13 +239,13 @@ export default function HoldingsTable({
               <th className="text-right px-3 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Invested</th>
               <th className="text-right px-3 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Value</th>
               <th className="text-right px-3 py-2.5">
-                <SortHeader label="P&L" key="pnl" />
+                <SortHeader label="P&L" field="pnl" />
               </th>
               <th className="text-right px-3 py-2.5">
-                <SortHeader label="Return" key="returnPct" />
+                <SortHeader label="Return" field="returnPct" />
               </th>
               <th className="text-right px-3 py-2.5">
-                <SortHeader label="Alloc" key="allocation" />
+                <SortHeader label="Alloc" field="allocation" />
               </th>
               <th className="text-center px-3 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Score</th>
               <th className="text-center px-3 py-2.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider">RSI</th>
