@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { type WatchlistRow } from './WatchlistTable'
 import WatchlistTable from './WatchlistTable'
 import PortfolioChart, { type ChartPoint } from './PortfolioChart'
@@ -178,14 +178,18 @@ export default function LivePriceTable({
   fiiSectors?: { sector: string; fortnight_flow: number | null }[]
   fiiDii?:     FiiDiiRow | null
 }) {
-  const router                        = useRouter()
-  const [rows, setRows]               = useState<WatchlistRow[]>(initialRows)
-  const [marketOpen, setMarketOpen]   = useState(false)
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
-  const [flashes, setFlashes]         = useState<Record<string, PriceFlash>>({})
-  const [changes, setChanges]         = useState<Record<string, PriceChange>>({})
-  const [activeFilter, setActiveFilter] = useState<FilterKey>('all')
-  const prevPrices                    = useRef<Record<string, number>>({})
+  const router                          = useRouter()
+  const searchParams                    = useSearchParams()
+  const [rows, setRows]                 = useState<WatchlistRow[]>(initialRows)
+  const [marketOpen, setMarketOpen]     = useState(false)
+  const [lastUpdated, setLastUpdated]   = useState<Date | null>(null)
+  const [secondsSince, setSecondsSince] = useState(0)
+  const [flashes, setFlashes]           = useState<Record<string, PriceFlash>>({})
+  const [changes, setChanges]           = useState<Record<string, PriceChange>>({})
+  const [activeFilter, setActiveFilter] = useState<FilterKey>(
+    (searchParams.get('filter') as FilterKey) ?? 'all'
+  )
+  const prevPrices                      = useRef<Record<string, number>>({})
 
   const portfolioRows = rows.filter(r => r.invested_amount && r.entry_price && r.current_price)
   const totalInvested = portfolioRows.reduce((s, r) => s + r.invested_amount!, 0)
@@ -260,6 +264,23 @@ export default function LivePriceTable({
     return () => clearInterval(id)
   }, [initialRows])
 
+  useEffect(() => {
+    if (!lastUpdated) return
+    setSecondsSince(0)
+    const id = setInterval(() => {
+      setSecondsSince(Math.floor((Date.now() - lastUpdated.getTime()) / 1000))
+    }, 1000)
+    return () => clearInterval(id)
+  }, [lastUpdated])
+
+  function handleFilterChange(key: FilterKey) {
+    setActiveFilter(key)
+    const params = new URLSearchParams(searchParams.toString())
+    if (key === 'all') params.delete('filter')
+    else params.set('filter', key)
+    router.replace(`/watchlist?${params.toString()}`, { scroll: false })
+  }
+
   const showMovers = marketOpen && Object.keys(changes).length > 0
 
   return (
@@ -310,7 +331,7 @@ export default function LivePriceTable({
         )}
         {lastUpdated && (
           <span className="text-xs text-gray-400">
-            {lastUpdated.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            {secondsSince < 5 ? 'Updated just now' : `Updated ${secondsSince}s ago`}
           </span>
         )}
       </div>
@@ -338,7 +359,7 @@ export default function LivePriceTable({
             orange: active ? 'bg-orange-500 text-white border-orange-500'   : 'bg-orange-50 text-orange-600 border-orange-200 hover:border-orange-400',
           }
           return (
-            <button key={key} onClick={() => setActiveFilter(key)} className={`${base} ${styles[color]}`}>
+            <button key={key} onClick={() => handleFilterChange(key)} className={`${base} ${styles[color]}`}>
               {label} <span className="opacity-70 ml-0.5">{count}</span>
             </button>
           )
