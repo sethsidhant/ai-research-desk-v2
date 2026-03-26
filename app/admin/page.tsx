@@ -148,7 +148,21 @@ export default async function AdminPage() {
   // ── 6. User join trend (last 30 days) ────────────────────────────────────
   const recentUsers = allUsers.filter(u => u.created_at && new Date(u.created_at) > new Date(thirtyDaysAgoISO)).length
 
-  // ── 7. Railway listener heartbeat ─────────────────────────────────────────
+  // ── 7. Agent reports ──────────────────────────────────────────────────────
+  const AGENT_NAMES = ['token_health_check', 'heartbeat_monitor', 'onboarding_watchdog', 'data_quality_agent']
+  const { data: agentReportRows } = await adminSupabase
+    .from('agent_reports')
+    .select('agent_name, status, summary, report, ran_at')
+    .in('agent_name', AGENT_NAMES)
+    .order('ran_at', { ascending: false })
+
+  // Latest report per agent
+  const latestReports: Record<string, { status: string; summary: string; ran_at: string; report: any }> = {}
+  for (const row of agentReportRows ?? []) {
+    if (!latestReports[row.agent_name]) latestReports[row.agent_name] = row
+  }
+
+  // ── 8. Railway listener heartbeat ─────────────────────────────────────────
   const { data: heartbeatRow } = await adminSupabase
     .from('app_settings').select('value').eq('key', 'railway_heartbeat').single()
   const heartbeatAt  = heartbeatRow?.value ? new Date(heartbeatRow.value) : null
@@ -243,6 +257,107 @@ export default async function AdminPage() {
                 </div>
               </div>
             ))}
+          </div>
+        </section>
+
+        {/* ── Agent Team ────────────────────────────────────────── */}
+        <section>
+          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1">Agent Team</h2>
+          <p className="text-xs text-gray-400 mb-4">Automated admin agents running on GitHub Actions · Results written to <code className="bg-gray-100 px-1 rounded">agent_reports</code></p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+            {[
+              {
+                key: 'token_health_check',
+                title: 'Token Health Check',
+                designation: 'Security Guard',
+                schedule: 'Daily · 07:00 AM IST',
+                icon: '🔐',
+                description: 'Validates the Kite access token against the broker API before market open.',
+              },
+              {
+                key: 'heartbeat_monitor',
+                title: 'Heartbeat Monitor',
+                designation: 'Vital Signs Monitor',
+                schedule: 'Daily · 09:30 PM IST',
+                icon: '💓',
+                description: 'Checks all pipeline heartbeats (token refresh, daily pipeline, digest, fundamentals).',
+              },
+              {
+                key: 'onboarding_watchdog',
+                title: 'Onboarding Watchdog',
+                designation: 'Onboarding Manager',
+                schedule: 'Daily · 08:20 AM IST',
+                icon: '🐶',
+                description: 'Finds watchlist/portfolio stocks with missing fundamentals and triggers onboarding.',
+              },
+              {
+                key: 'data_quality_agent',
+                title: 'Data Quality Agent',
+                designation: 'Quality Inspector',
+                schedule: 'Every 2 days · 08:00 PM IST',
+                icon: '🔍',
+                description: 'Runs 7 data quality checks on prices, fundamentals, scores, FII/MF data, and screener cross-validation.',
+              },
+            ].map(agent => {
+              const r = latestReports[agent.key]
+              const status = r?.status ?? null
+              const dotColor =
+                status === 'ok'      ? 'bg-emerald-500' :
+                status === 'warning' ? 'bg-amber-400' :
+                status === 'error'   ? 'bg-red-500' :
+                'bg-gray-300'
+              const statusLabel =
+                status === 'ok'      ? 'OK' :
+                status === 'warning' ? 'Warning' :
+                status === 'error'   ? 'Error' :
+                'Never run'
+              const statusColor =
+                status === 'ok'      ? 'text-emerald-600' :
+                status === 'warning' ? 'text-amber-600' :
+                status === 'error'   ? 'text-red-600' :
+                'text-gray-400'
+              const lastRun = r?.ran_at
+                ? (() => {
+                    const secs = Math.floor((Date.now() - new Date(r.ran_at).getTime()) / 1000)
+                    if (secs < 3600) return `${Math.floor(secs / 60)}m ago`
+                    if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`
+                    return `${Math.floor(secs / 86400)}d ago`
+                  })()
+                : null
+
+              return (
+                <div key={agent.key} className="bg-white border border-gray-200 rounded-xl shadow-sm flex flex-col overflow-hidden">
+                  {/* Header strip */}
+                  <div className="px-5 pt-5 pb-3 border-b border-gray-50">
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <span className="text-2xl leading-none">{agent.icon}</span>
+                      <span className={`flex items-center gap-1.5 text-xs font-semibold ${statusColor}`}>
+                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
+                        {statusLabel}
+                      </span>
+                    </div>
+                    <div className="text-sm font-bold text-gray-900 leading-tight">{agent.title}</div>
+                    <div className="text-[11px] text-indigo-500 font-semibold mt-0.5 uppercase tracking-wide">{agent.designation}</div>
+                  </div>
+                  {/* Body */}
+                  <div className="px-5 py-3 flex-1 space-y-2">
+                    <p className="text-xs text-gray-500 leading-relaxed">{agent.description}</p>
+                    {r?.summary && (
+                      <p className="text-xs text-gray-700 bg-gray-50 rounded-lg px-3 py-2 border border-gray-100 leading-relaxed">
+                        {r.summary}
+                      </p>
+                    )}
+                  </div>
+                  {/* Footer */}
+                  <div className="px-5 py-3 border-t border-gray-50 flex items-center justify-between">
+                    <span className="text-[10px] text-gray-400 font-mono">{agent.schedule}</span>
+                    <span className="text-[10px] text-gray-400">
+                      {lastRun ? `Last run ${lastRun}` : 'Not yet run'}
+                    </span>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </section>
 

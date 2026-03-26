@@ -1,0 +1,35 @@
+name: Data Quality Agent
+
+on:
+  workflow_dispatch:   # triggered via cron-job.org every 2 days at 08:00 PM IST (2:30 PM UTC)
+
+jobs:
+  quality-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: agents/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: agents
+
+      - name: Create .env.local
+        run: |
+          cat > .env.local << 'EOF'
+          NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY=${{ secrets.SUPABASE_SERVICE_KEY }}
+          TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ADMIN_CHAT_ID=${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+          EOF
+
+      - name: Run data quality agent
+        run: node dataQualityAgent.js
+        working-directory: agents

@@ -30,7 +30,8 @@ function useStockSearch() {
   return { query, setQuery, results, setResults, searching, onQueryChange }
 }
 
-export default function PortfolioImport() {
+export default function PortfolioImport({ defaultOpen = false }: { defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen)
   const router = useRouter()
 
   // ── Zerodha sync ──────────────────────────────────────────────────────────
@@ -123,8 +124,16 @@ export default function PortfolioImport() {
   }
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl px-4 py-4 shadow-sm">
-      <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Import Holdings</div>
+    <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-4 py-3 text-left"
+      >
+        <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Import / Add Holdings</span>
+        <span className="text-xs text-gray-400">{open ? '▲ Hide' : '▾ Show'}</span>
+      </button>
+
+      {open && <div className="px-4 pb-4">
 
       <div className="flex flex-wrap items-start gap-3">
 
@@ -266,6 +275,7 @@ export default function PortfolioImport() {
           </div>
         </form>
       )}
+      </div>}
     </div>
   )
 }

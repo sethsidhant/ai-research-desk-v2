@@ -1,0 +1,63 @@
+name: Token Health Check
+
+on:
+  workflow_dispatch:   # triggered via cron-job.org at 07:00 AM IST (1:30 AM UTC)
+
+jobs:
+  check-holiday:
+    runs-on: ubuntu-latest
+    outputs:
+      is_holiday: ${{ steps.check.outputs.is_holiday }}
+    steps:
+      - id: check
+        run: |
+          DATE=$(TZ='Asia/Kolkata' date +%Y-%m-%d)
+          NSE_HOLIDAYS="2025-01-26 2025-02-26 2025-03-14 2025-04-14 2025-04-18 2025-05-01 2025-08-15 2025-08-27 2025-10-02 2025-10-20 2025-10-21 2025-11-05 2025-12-25 2026-01-15 2026-01-26 2026-03-03 2026-03-26 2026-03-31 2026-04-03 2026-04-14 2026-05-01 2026-05-28 2026-06-26 2026-09-14 2026-10-02 2026-10-20 2026-11-10 2026-11-24 2026-12-25"
+          if echo "$NSE_HOLIDAYS" | grep -qw "$DATE"; then
+            echo "is_holiday=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_holiday=false" >> $GITHUB_OUTPUT
+          fi
+
+  check:
+    needs: check-holiday
+    if: needs.check-holiday.outputs.is_holiday != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: agents/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: agents
+
+      - name: Create .env.local
+        run: |
+          cat > .env.local << 'EOF'
+          NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY=${{ secrets.SUPABASE_SERVICE_KEY }}
+          KITE_API_KEY=${{ secrets.KITE_API_KEY }}
+          KITE_ACCESS_TOKEN=${{ secrets.KITE_ACCESS_TOKEN }}
+          TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ADMIN_CHAT_ID=${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+          EOF
+
+      - name: Fetch token from Supabase
+        run: |
+          TOKEN=$(curl -s "${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}/rest/v1/app_settings?key=eq.kite_access_token&select=value" \
+            -H "apikey: ${{ secrets.SUPABASE_SERVICE_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}" | jq -r '.[0].value')
+          if [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ]; then
+            echo "$TOKEN" > .kite_token
+          fi
+
+      - name: Run token health check
+        run: node tokenHealthCheck.js
+        working-directory: agents

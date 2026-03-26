@@ -252,9 +252,12 @@ export default async function PortfolioPage() {
   // Portfolio chart
   let chartData: ChartPoint[] = []
   if (holdings.length > 0) {
+    // Use investment_date (actual purchase date) if set, else fall back to 1 year ago
+    const oneYearAgo = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10)
     const earliestDate = (holdingsRaw ?? [])
-      .map((h: any) => h.added_at?.slice(0, 10) ?? '2000-01-01')
-      .sort()[0] ?? '2000-01-01'
+      .map((h: any) => h.investment_date?.slice(0, 10) ?? h.added_at?.slice(0, 10) ?? oneYearAgo)
+      .concat([oneYearAgo])   // floor — never go further than 1yr by default
+      .sort()[0] ?? oneYearAgo
 
     const [{ data: history }, { data: indexHistory }] = await Promise.all([
       supabase
@@ -276,7 +279,7 @@ export default async function PortfolioPage() {
         stock_id:  h.stock_id,
         avg_price: h.avg_price,
         quantity:  h.quantity,
-        added_at:  h.added_at ?? '2000-01-01',
+        added_at:  h.investment_date?.slice(0, 10) ?? h.added_at?.slice(0, 10) ?? oneYearAgo,
       })),
       history ?? [],
       indexHistory ?? [],
