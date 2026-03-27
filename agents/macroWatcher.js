@@ -102,18 +102,30 @@ function parseMessages(html) {
   return messages;
 }
 
-// ── AI Summarization ──────────────────────────────────────────────────────────
+// ── AI Filter + Summarization ─────────────────────────────────────────────────
+// Returns summary string if market-relevant, null if should be skipped.
 
-async function summarize(text, label) {
+async function filterAndSummarize(text, label) {
   const msg = await anthropic.messages.create({
     model:      'claude-haiku-4-5-20251001',
-    max_tokens: 150,
+    max_tokens: 200,
     messages: [{
       role:    'user',
-      content: `Summarize this ${label} post in 1-2 sentences. Focus on the market, economic, or policy angle if any. Be direct and neutral. Do not start with "The post says" or similar.\n\nPost:\n${text.slice(0, 1500)}`,
+      content: `You are a market intelligence filter for Indian equity investors.
+
+Evaluate if this ${label} post is relevant to any of: tariffs, trade policy, sanctions, war/geopolitics, oil/energy, interest rates, USD/currency, Fed/RBI, inflation, GDP, jobs data, import/export, China/India/US relations, commodities, crypto regulation, or any other macro topic that moves markets.
+
+If NOT relevant (e.g. personal attacks, sports, entertainment, domestic US politics with no market angle, general opinions): reply with exactly: SKIP
+
+If relevant: reply with a 1-2 sentence summary. Be direct and factual. Start with the key fact, not "Trump says" or "The post says".
+
+Post:
+${text.slice(0, 1500)}`,
     }],
   });
-  return msg.content[0].text.trim();
+  const result = msg.content[0].text.trim();
+  if (result === 'SKIP' || result.startsWith('SKIP')) return null;
+  return result;
 }
 
 // ── Per-channel processing ────────────────────────────────────────────────────
@@ -149,24 +161,28 @@ async function processChannel(channel) {
 
   for (const post of newMessages) {
     try {
-      const summary = await summarize(post.text, label);
+      const summary = await filterAndSummarize(post.text, label);
 
-      const { error } = await supabase.from('macro_alerts').insert({
-        channel:      channelId,
-        summary,
-        original_len: post.text.length,
-        post_id:      `${channelId}/${post.postId}`,
-        created_at:   post.timestamp,
-      });
-
-      if (error) {
-        // UNIQUE violation = already stored (safe to skip)
-        if (!error.message.includes('unique') && !error.message.includes('duplicate')) {
-          console.error(`[macroWatcher] DB insert error: ${error.message}`);
-        }
+      if (!summary) {
+        console.log(`[macroWatcher] ${label} #${post.postId}: skipped (not market-relevant)`);
       } else {
-        console.log(`[macroWatcher] ${label} #${post.postId}: ${summary.slice(0, 90)}…`);
-        await sendAlert(`${emoji} *Macro · ${label}*\n${summary}`);
+        const { error } = await supabase.from('macro_alerts').insert({
+          channel:      channelId,
+          summary,
+          original_len: post.text.length,
+          post_id:      `${channelId}/${post.postId}`,
+          created_at:   post.timestamp,
+        });
+
+        if (error) {
+          // UNIQUE violation = already stored (safe to skip)
+          if (!error.message.includes('unique') && !error.message.includes('duplicate')) {
+            console.error(`[macroWatcher] DB insert error: ${error.message}`);
+          }
+        } else {
+          console.log(`[macroWatcher] ${label} #${post.postId}: ${summary.slice(0, 90)}…`);
+          await sendAlert(`${emoji} *Macro · ${label}*\n${summary}`);
+        }
       }
 
       await sleep(1200); // stay under Anthropic rate limits
