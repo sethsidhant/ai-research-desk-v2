@@ -60,13 +60,16 @@ export async function GET() {
   if (!kite) return NextResponse.json({ error: 'Kite credentials not configured' }, { status: 500 })
   const { apiKey, accessToken } = kite
 
-  // Only fetch watchlisted stocks for this user — avoids sending 7814 tokens to Kite
-  const { data: watchlist } = await supabase
-    .from('user_stocks')
-    .select('stock_id')
-    .eq('user_id', user.id)
+  // Fetch watchlist + portfolio holdings — both need live prices
+  const [{ data: watchlist }, { data: holdings }] = await Promise.all([
+    supabase.from('user_stocks').select('stock_id').eq('user_id', user.id),
+    supabase.from('portfolio_holdings').select('stock_id').eq('user_id', user.id),
+  ])
 
-  const stockIds = (watchlist ?? []).map(w => w.stock_id)
+  const stockIds = [...new Set([
+    ...(watchlist ?? []).map(w => w.stock_id),
+    ...(holdings ?? []).map(h => h.stock_id),
+  ])]
   if (!stockIds.length) return NextResponse.json({ marketOpen, prices: {} })
 
   const { data: stocks } = await supabase

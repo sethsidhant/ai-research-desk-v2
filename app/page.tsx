@@ -313,7 +313,7 @@ export default async function DashboardPage() {
 
   // ── FII data ─────────────────────────────────────────────────────────────
   const cutoff24h = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
-  const [{ data: fiiSectors }, { data: fiiDiiRows }, { data: mfRows }, { data: macroAlerts }] = await Promise.all([
+  const [{ data: fiiSectors }, { data: fiiDiiRows }, { data: mfRows }, { data: trumpAlertRows }, { data: marketAlertRows }] = await Promise.all([
     supabase.from('fii_sector').select('sector, fortnight_flow'),
     supabase.from('fii_dii_daily')
       .select('date, fii_net, dii_net')
@@ -325,9 +325,16 @@ export default async function DashboardPage() {
       .limit(2),
     admin.from('macro_alerts')
       .select('channel, summary, created_at')
+      .in('channel', ['trump_ts_posts', 'trumptruthposts'])
       .gte('created_at', cutoff24h)
       .order('created_at', { ascending: false })
-      .limit(20),
+      .limit(4),
+    admin.from('macro_alerts')
+      .select('channel, summary, created_at')
+      .eq('channel', 'et_markets')
+      .gte('created_at', cutoff24h)
+      .order('created_at', { ascending: false })
+      .limit(4),
   ])
 
   const mfRow  = mfRows?.[0] ?? null
@@ -857,9 +864,7 @@ export default async function DashboardPage() {
 
                 {/* ── Trump Feed ───────────────────────────── */}
                 {(() => {
-                  const trumpAlerts = (macroAlerts ?? []).filter(a =>
-                    a.channel === 'trump_ts_posts' || a.channel === 'trumptruthposts'
-                  ).slice(0, 4)
+                  const trumpAlerts = trumpAlertRows ?? []
                   return (
                     <div className="pt-4 lg:pt-0 lg:px-6">
                       <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">🇺🇸 Trump</div>
@@ -885,7 +890,7 @@ export default async function DashboardPage() {
 
                 {/* ── Markets Feed ─────────────────────────── */}
                 {(() => {
-                  const marketAlerts = (macroAlerts ?? []).filter(a => a.channel === 'et_markets').slice(0, 4)
+                  const marketAlerts = marketAlertRows ?? []
                   return (
                     <div className="pt-4 lg:pt-0 lg:pl-6">
                       <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">📰 Macro</div>
