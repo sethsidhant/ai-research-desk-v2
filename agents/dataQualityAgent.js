@@ -231,7 +231,7 @@ async function main() {
 
   console.log(`[dataQualityAgent] ${summary}`);
 
-  await supabase.from('agent_reports').insert({
+  const { error: reportErr } = await supabase.from('agent_reports').insert({
     agent_name: 'data_quality_agent',
     status:     overallStatus,
     summary,
@@ -242,6 +242,8 @@ async function main() {
       ran_at: nowIST.toISOString(),
     },
   });
+  if (reportErr) console.error('[dataQualityAgent] agent_reports insert failed:', reportErr.message);
+  else console.log('[dataQualityAgent] Report written:', overallStatus);
 
   // Build Telegram message
   const icon = overallStatus === 'ok' ? '✅' : overallStatus === 'warning' ? '🟡' : '🔴';

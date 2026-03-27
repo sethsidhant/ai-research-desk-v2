@@ -148,7 +148,7 @@ async function main() {
     `Supabase: ${supabaseOk ? `ok (${sbLatencyMs}ms)` : 'error'}`,
   ].join(', ');
 
-  await supabase.from('agent_reports').insert({
+  const { error: reportErr } = await supabase.from('agent_reports').insert({
     agent_name: 'heartbeat_monitor',
     status:     overallStatus,
     summary,
@@ -160,6 +160,8 @@ async function main() {
     ran_at: new Date().toISOString(),
   });
 
+  if (reportErr) console.error('[heartbeatMonitor] agent_reports insert failed:', reportErr.message);
+  else console.log('[heartbeatMonitor] Report written:', overallStatus);
   console.log(`[heartbeatMonitor] Done — status: ${overallStatus}`);
 }
 

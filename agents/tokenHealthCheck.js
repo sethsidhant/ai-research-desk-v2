@@ -29,13 +29,15 @@ async function sendTelegram(text) {
 }
 
 async function writeReport(status, summary, report = {}) {
-  await supabase.from('agent_reports').insert({
+  const { error } = await supabase.from('agent_reports').insert({
     agent_name: 'token_health_check',
     status,
     summary,
     report,
     ran_at: new Date().toISOString(),
   });
+  if (error) console.error('[tokenHealthCheck] agent_reports insert failed:', error.message);
+  else console.log('[tokenHealthCheck] Report written:', status);
 }
 
 async function getAccessToken() {

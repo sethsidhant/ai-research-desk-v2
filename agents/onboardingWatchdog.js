@@ -53,12 +53,13 @@ async function main() {
 
   if (!allStockIds.length) {
     console.log('[onboardingWatchdog] No stocks tracked. Exiting.');
-    await supabase.from('agent_reports').insert({
+    const { error: e0 } = await supabase.from('agent_reports').insert({
       agent_name: 'onboarding_watchdog',
       status: 'ok',
       summary: 'No stocks tracked',
       report: { pending: [] },
     });
+    if (e0) console.error('[onboardingWatchdog] agent_reports insert failed:', e0.message);
     return;
   }
 
@@ -74,12 +75,13 @@ async function main() {
   if (!pending.length) {
     const summary = `All ${allStockIds.length} stocks have fundamentals`;
     console.log(`✅ ${summary}`);
-    await supabase.from('agent_reports').insert({
+    const { error: e1 } = await supabase.from('agent_reports').insert({
       agent_name: 'onboarding_watchdog',
       status: 'ok',
       summary,
       report: { total: allStockIds.length, pending: [] },
     });
+    if (e1) console.error('[onboardingWatchdog] agent_reports insert failed:', e1.message);
     return;
   }
 
@@ -98,12 +100,13 @@ async function main() {
 
   console.log(`[onboardingWatchdog] ${summary}`);
 
-  await supabase.from('agent_reports').insert({
+  const { error: e2 } = await supabase.from('agent_reports').insert({
     agent_name: 'onboarding_watchdog',
     status,
     summary,
     report: { total: allStockIds.length, onboarded, failed },
   });
+  if (e2) console.error('[onboardingWatchdog] agent_reports insert failed:', e2.message);
 
   if (onboarded.length > 0) {
     await sendTelegram(
