@@ -94,6 +94,7 @@ export default function HoldingsTable({
   const [lastUpdated, setLastUpdated]   = useState<Date | null>(null)
   const [secondsSince, setSecondsSince] = useState(0)
   const [flashes, setFlashes]           = useState<Record<string, 'up' | 'down' | null>>({})
+  const [dayChanges, setDayChanges]     = useState<Record<string, { change: number; changePct: number }>>({})
   const [sortKey, setSortKey]           = useState<SortKey>('allocation')
   const [sortDir, setSortDir]           = useState<SortDir>('desc')
   const [deleting, setDeleting]         = useState<string | null>(null)
@@ -141,6 +142,12 @@ export default function HoldingsTable({
         const live = (json.prices as any)[row.ticker]
         return live ? { ...row, current_price: live.last } : row
       }))
+
+      const newDayChanges: Record<string, { change: number; changePct: number }> = {}
+      for (const [ticker, live] of Object.entries(json.prices as Record<string, { last: number; change: number; changePct: number }>)) {
+        newDayChanges[ticker] = { change: live.change ?? 0, changePct: live.changePct ?? 0 }
+      }
+      setDayChanges(newDayChanges)
 
       if (Object.keys(newFlashes).length > 0) {
         setFlashes(newFlashes)
@@ -314,6 +321,40 @@ export default function HoldingsTable({
           </div>
         </>
       )}
+
+      {/* Live summary cards */}
+      {(() => {
+        const liveCurrent  = computedRows.reduce((s, r) => s + r.currentValue, 0)
+        const livePnl      = liveCurrent - totalInvested
+        const liveReturn   = totalInvested > 0 ? (livePnl / totalInvested) * 100 : 0
+        const todayGain    = computedRows.reduce((s, r) => {
+          const dc = dayChanges[r.ticker]
+          return s + (dc ? dc.change * r.quantity : 0)
+        }, 0)
+        const hasDayData   = Object.keys(dayChanges).length > 0
+        return totalInvested > 0 ? (
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
+            <LiveCard label="Invested"      value={fmtCurrency(totalInvested)} />
+            <LiveCard label="Current Value" value={fmtCurrency(liveCurrent)} />
+            <LiveCard
+              label="Total P&L"
+              value={`${livePnl >= 0 ? '+' : ''}${fmtCurrency(livePnl)}`}
+              highlight={livePnl >= 0 ? 'green' : 'red'}
+            />
+            <LiveCard
+              label="Return"
+              value={`${liveReturn >= 0 ? '+' : ''}${liveReturn.toFixed(2)}%`}
+              highlight={liveReturn >= 0 ? 'green' : 'red'}
+            />
+            <LiveCard
+              label="Today's Gain"
+              value={hasDayData ? `${todayGain >= 0 ? '+' : ''}${fmtCurrency(todayGain)}` : '—'}
+              highlight={hasDayData ? (todayGain >= 0 ? 'green' : 'red') : undefined}
+              note={hasDayData ? 'live' : 'awaiting prices'}
+            />
+          </div>
+        ) : null
+      })()}
 
       {/* Status bar */}
       <div className="flex items-center justify-between mb-3">
@@ -758,6 +799,19 @@ function ActionBtn({ onClick, children }: { onClick: () => void; children: React
     >
       {children}
     </button>
+  )
+}
+
+function LiveCard({ label, value, highlight, note }: { label: string; value: string; highlight?: 'green' | 'red'; note?: string }) {
+  const color = highlight === 'green' ? 'text-emerald-600' : highlight === 'red' ? 'text-red-600' : 'text-gray-900'
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl px-4 py-4 shadow-sm">
+      <div className={`text-xl sm:text-2xl font-bold ${color}`}>{value}</div>
+      <div className="text-xs text-gray-400 mt-1 flex items-center gap-1.5">
+        {label}
+        {note && <span className="text-[9px] text-gray-300">· {note}</span>}
+      </div>
+    </div>
   )
 }
 

@@ -339,23 +339,6 @@ export default async function PortfolioPage() {
           <span className="text-sm text-gray-400">{rows.length} holdings</span>
         </div>
 
-        {/* P&L summary cards */}
-        {totalInvested > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-            <SummaryCard label="Invested"      value={fmtCurrency(totalInvested)} />
-            <SummaryCard label="Current Value" value={fmtCurrency(totalCurrent)} />
-            <SummaryCard
-              label="Total P&L"
-              value={`${totalPnl >= 0 ? '+' : ''}${fmtCurrency(totalPnl)}`}
-              highlight={totalPnl >= 0 ? 'green' : 'red'}
-            />
-            <SummaryCard
-              label="Return"
-              value={`${totalReturn >= 0 ? '+' : ''}${totalReturn.toFixed(2)}%`}
-              highlight={totalReturn >= 0 ? 'green' : 'red'}
-            />
-          </div>
-        )}
 
         {/* Import strip */}
         <div className="mb-6">
