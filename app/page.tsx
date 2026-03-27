@@ -553,7 +553,7 @@ export default async function DashboardPage() {
 
                   {watchlistMovers.length > 0 && (
                     <div className="pt-2 border-t border-gray-100">
-                      <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">Today's Movers</div>
+                      <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">vs Entry Price</div>
                       <div className="space-y-1">
                         {watchGainers.map((h: any) => (
                           <div key={h.ticker} className="flex items-center justify-between">
@@ -682,24 +682,18 @@ export default async function DashboardPage() {
 
                   {portMovers.length > 0 && (
                     <div className="pt-2 border-t border-gray-100">
-                      <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">Today's Movers</div>
+                      <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">vs Avg Price</div>
                       <div className="space-y-1">
                         {portGainers.map((h: any) => (
                           <div key={h.ticker} className="flex items-center justify-between">
                             <span className="text-[11px] font-mono font-semibold text-gray-700">{h.ticker}</span>
-                            <div className="flex items-center gap-2">
-                              <span className="text-[10px] text-gray-400">{h.alloc.toFixed(0)}%</span>
-                              <span className="text-[11px] font-mono font-bold text-emerald-600">+{h.returnPct.toFixed(1)}%</span>
-                            </div>
+                            <span className="text-[11px] font-mono font-bold text-emerald-600">+{h.returnPct.toFixed(1)}%</span>
                           </div>
                         ))}
                         {portLosers.map((h: any) => (
                           <div key={h.ticker} className="flex items-center justify-between">
                             <span className="text-[11px] font-mono font-semibold text-gray-700">{h.ticker}</span>
-                            <div className="flex items-center gap-2">
-                              <span className="text-[10px] text-gray-400">{h.alloc.toFixed(0)}%</span>
-                              <span className="text-[11px] font-mono font-bold text-red-500">{h.returnPct.toFixed(1)}%</span>
-                            </div>
+                            <span className="text-[11px] font-mono font-bold text-red-500">{h.returnPct.toFixed(1)}%</span>
                           </div>
                         ))}
                       </div>
