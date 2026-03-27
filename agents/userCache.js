@@ -22,19 +22,35 @@ let _loadPromise = null;
 
 async function reload() {
   try {
-    const [prefsRes, stocksRes] = await Promise.all([
+    const [prefsRes, watchlistRes, portfolioRes] = await Promise.all([
       supabase.from('user_alert_preferences').select('*'),
       supabase.from('user_stocks').select('user_id, stocks(id, ticker, stock_name, instrument_token, bse_code)'),
+      supabase.from('portfolio_holdings').select('user_id, stocks(id, ticker, stock_name, instrument_token, bse_code)'),
     ]);
 
-    if (prefsRes.error)  console.error('[userCache] Prefs error:', prefsRes.error.message);
+    if (prefsRes.error)     console.error('[userCache] Prefs error:', prefsRes.error.message);
     else _prefs = prefsRes.data ?? [];
 
-    if (stocksRes.error) console.error('[userCache] Stocks error:', stocksRes.error.message);
-    else _userStocks = stocksRes.data ?? [];
+    if (watchlistRes.error) console.error('[userCache] Watchlist error:', watchlistRes.error.message);
+    if (portfolioRes.error) console.error('[userCache] Portfolio error:', portfolioRes.error.message);
+
+    // Merge watchlist + portfolio, dedup by (user_id, stock_id)
+    const seen  = new Set();
+    const merged = [];
+    for (const row of [...(watchlistRes.data ?? []), ...(portfolioRes.data ?? [])]) {
+      const stock = Array.isArray(row.stocks) ? row.stocks[0] : row.stocks;
+      if (!stock?.id) continue;
+      const key = `${row.user_id}:${stock.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push({ user_id: row.user_id, stocks: stock });
+    }
+    _userStocks = merged;
 
     _loaded = true;
-    console.log(`[userCache] Refreshed — ${_prefs.length} user prefs, ${_userStocks.length} watchlist rows`);
+    const watchlistCount  = (watchlistRes.data ?? []).length;
+    const portfolioCount  = (portfolioRes.data ?? []).length;
+    console.log(`[userCache] Refreshed — ${_prefs.length} user prefs, ${_userStocks.length} unique stock-user pairs (${watchlistCount} watchlist + ${portfolioCount} portfolio, deduped)`);
   } catch (err) {
     console.error('[userCache] Refresh error:', err.message);
   }
