@@ -111,13 +111,13 @@ async function main() {
     await sleep(350); // stay under Kite's 3 req/sec limit
   }
 
-  // 3. Index history (Nifty50 + Nifty500) — use earliest added_at across all stocks
-  const earliestDate = Object.values(addedAtMap).sort()[0] ?? "2024-01-01";
-  console.log(`\n[backfillHistory] Indices ${earliestDate} → ${yesterday}`);
+  // 3. Index history (Nifty50 + Nifty500) — always fetch 1 full year regardless of stock added_at
+  const oneYearAgo = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
+  console.log(`\n[backfillHistory] Indices ${oneYearAgo} → ${yesterday}`);
 
   const [n50Candles, n500Candles] = await Promise.all([
-    fetchKiteCandles(NIFTY50_TOKEN,  earliestDate, yesterday),
-    fetchKiteCandles(NIFTY500_TOKEN, earliestDate, yesterday),
+    fetchKiteCandles(NIFTY50_TOKEN,  oneYearAgo, yesterday),
+    fetchKiteCandles(NIFTY500_TOKEN, oneYearAgo, yesterday),
   ]);
 
   if (n50Candles.length && n500Candles.length) {

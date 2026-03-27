@@ -61,7 +61,11 @@ export function buildPortfolioChart(
   const sortedDates = Object.keys(byDate).sort()
   if (!sortedDates.length) return []
 
-  const firstIdx = nearestIndex(sortedDates[0])
+  // Baseline Nifty at the very first index date (1 year ago), not the first portfolio date
+  // This shows the full 1-year Nifty trend as context even if portfolio started later
+  const firstIdx = sortedIndexDates.length > 0
+    ? indexByDate[sortedIndexDates[0]]
+    : nearestIndex(sortedDates[0])
 
   return sortedDates
     .map(date => {
