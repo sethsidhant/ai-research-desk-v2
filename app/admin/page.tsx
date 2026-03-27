@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import BudgetForm from '@/components/BudgetForm'
 import AdminActions from '@/components/AdminActions'
+import InfraCard from '@/components/InfraCard'
 
 // ── Claude claude-sonnet-4-6 pricing (USD per 1M tokens) ────────────────────────────
 const PRICE_INPUT  = 3.00   // $3/M input tokens
@@ -164,6 +165,9 @@ export default async function AdminPage() {
     if (!latestReports[row.agent_name]) latestReports[row.agent_name] = row
   }
 
+  // ── 8. DB stats (via get_db_stats() SQL function) ─────────────────────────
+  const { data: dbStats } = await adminSupabase.rpc('get_db_stats')
+
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -203,14 +207,6 @@ export default async function AdminPage() {
                 schedule: 'Daily · 07:00 AM IST',
                 icon: '🔐',
                 description: 'Validates the Kite access token against the broker API before market open.',
-              },
-              {
-                key: 'heartbeat_monitor',
-                title: 'Heartbeat Monitor',
-                designation: 'Vital Signs Monitor',
-                schedule: 'Daily · 09:30 PM IST',
-                icon: '💓',
-                description: 'Checks pipeline cron jobs, Railway listener process, and Supabase DB health. Alerts on any failure.',
               },
               {
                 key: 'onboarding_watchdog',
@@ -288,6 +284,10 @@ export default async function AdminPage() {
                 </div>
               )
             })}
+            <InfraCard
+              latestReport={latestReports['heartbeat_monitor'] ?? null}
+              dbStats={dbStats ?? null}
+            />
           </div>
         </section>
 
