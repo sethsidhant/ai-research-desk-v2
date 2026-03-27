@@ -33,15 +33,18 @@ function run(script, args = '') {
 }
 
 async function onboardPendingStocks() {
-  // Find stocks in any user's watchlist that have never been onboarded
-  const { data, error } = await supabase
-    .from('user_stocks')
-    .select('stocks(ticker, fundamentals_updated_at)')
-  if (error || !data?.length) return;
+  // Find stocks in watchlist OR portfolio that have never been onboarded
+  const [watchlistRes, portfolioRes] = await Promise.all([
+    supabase.from('user_stocks').select('stocks(ticker, fundamentals_updated_at)'),
+    supabase.from('portfolio_holdings').select('stocks(ticker, fundamentals_updated_at)'),
+  ]);
+
+  const allRows = [...(watchlistRes.data ?? []), ...(portfolioRes.data ?? [])];
+  if (!allRows.length) return;
 
   const pending = [...new Set(
-    data
-      .map(r => r.stocks)
+    allRows
+      .map(r => Array.isArray(r.stocks) ? r.stocks[0] : r.stocks)
       .filter(s => s && !s.fundamentals_updated_at)
       .map(s => s.ticker)
   )];

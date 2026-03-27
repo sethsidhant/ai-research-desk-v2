@@ -50,21 +50,25 @@ async function main() {
 
   console.log(`\n[backfillHistory] Fetching EOD closes up to ${yesterday}\n`);
 
-  // 1. Get all watchlisted stocks with their earliest added_at
-  const { data: userStocks } = await supabase
-    .from("user_stocks")
-    .select("stock_id, added_at");
+  // 1. Get all tracked stocks (watchlist + portfolio) with their earliest date
+  const [watchlistRes, portfolioRes] = await Promise.all([
+    supabase.from("user_stocks").select("stock_id, added_at"),
+    supabase.from("portfolio_holdings").select("stock_id, investment_date, added_at"),
+  ]);
 
   const addedAtMap = {};
-  for (const us of userStocks ?? []) {
+  for (const us of watchlistRes.data ?? []) {
     const d = us.added_at?.slice(0, 10) ?? "2024-01-01";
-    if (!addedAtMap[us.stock_id] || d < addedAtMap[us.stock_id]) {
-      addedAtMap[us.stock_id] = d;
-    }
+    if (!addedAtMap[us.stock_id] || d < addedAtMap[us.stock_id]) addedAtMap[us.stock_id] = d;
+  }
+  for (const ph of portfolioRes.data ?? []) {
+    // Use investment_date (actual purchase date) as the backfill start — more accurate for portfolio chart
+    const d = ph.investment_date?.slice(0, 10) ?? ph.added_at?.slice(0, 10) ?? "2024-01-01";
+    if (!addedAtMap[ph.stock_id] || d < addedAtMap[ph.stock_id]) addedAtMap[ph.stock_id] = d;
   }
 
   const stockIds = Object.keys(addedAtMap);
-  if (!stockIds.length) { console.log("No watchlisted stocks."); return; }
+  if (!stockIds.length) { console.log("No tracked stocks."); return; }
 
   const { data: stocks } = await supabase
     .from("stocks")

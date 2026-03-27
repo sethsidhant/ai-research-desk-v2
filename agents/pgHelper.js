@@ -20,12 +20,18 @@ async function getAllStocks() {
 
 // Returns only stocks that appear in at least one user's watchlist
 async function getWatchlistedStocks() {
-  const { data, error } = await supabase
-    .from("user_stocks")
-    .select("stock_id");
-  if (error) throw new Error("getWatchlistedStocks (user_stocks): " + error.message);
+  // Includes both watchlist (user_stocks) and portfolio (portfolio_holdings) stocks
+  const [watchlistRes, portfolioRes] = await Promise.all([
+    supabase.from("user_stocks").select("stock_id"),
+    supabase.from("portfolio_holdings").select("stock_id"),
+  ]);
+  if (watchlistRes.error) throw new Error("getWatchlistedStocks (user_stocks): " + watchlistRes.error.message);
+  if (portfolioRes.error) throw new Error("getWatchlistedStocks (portfolio_holdings): " + portfolioRes.error.message);
 
-  const ids = [...new Set((data ?? []).map(r => r.stock_id))];
+  const ids = [...new Set([
+    ...(watchlistRes.data ?? []).map(r => r.stock_id),
+    ...(portfolioRes.data ?? []).map(r => r.stock_id),
+  ])];
   if (ids.length === 0) return [];
 
   const { data: stocks, error: err2 } = await supabase
