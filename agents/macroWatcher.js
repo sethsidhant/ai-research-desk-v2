@@ -91,7 +91,26 @@ async function fetchRSS(rssUrls) {
 // ── AI Filter + Summarization ─────────────────────────────────────────────────
 // Returns summary string if market-relevant, null if should be skipped.
 
+// Returns true if text is just a bare URL with no real content
+function isJustUrl(text) {
+  const stripped = text.replace(/[\u{1F000}-\u{1FFFF}]/gu, '').replace(/\s+/g, ' ').trim();
+  return /^https?:\/\/\S+$/.test(stripped);
+}
+
+const REFUSAL_PHRASES = [
+  "i don't have the ability",
+  "i cannot access",
+  "i'm unable to access",
+  "i can't access",
+  "i'm not able to access",
+  "please paste the",
+  "please provide the text",
+];
+
 async function filterAndSummarize(text, label) {
+  // Pre-filter: skip bare URLs — nothing to summarize
+  if (isJustUrl(text)) return null;
+
   const msg = await anthropic.messages.create({
     model:      'claude-haiku-4-5-20251001',
     max_tokens: 200,
@@ -101,7 +120,7 @@ async function filterAndSummarize(text, label) {
 
 Evaluate if this ${label} post is relevant to any of: tariffs, trade policy, sanctions, war/geopolitics, oil/energy, interest rates, USD/currency, Fed/RBI, inflation, GDP, jobs data, import/export, China/India/US relations, commodities, crypto regulation, or any other macro topic that moves markets.
 
-If NOT relevant (e.g. personal attacks, sports, entertainment, domestic US politics with no market angle, general opinions): reply with exactly: SKIP
+If NOT relevant (e.g. personal attacks, sports, entertainment, domestic US politics with no market angle, general opinions, or if the post contains only a URL with no text): reply with exactly: SKIP
 
 If relevant: reply with a 1-2 sentence summary IN ENGLISH. Be direct and factual. Start with the key fact, not "Trump says" or "The post says". If the post is in another language, translate and summarize in English.
 
@@ -111,6 +130,11 @@ ${text.slice(0, 1500)}`,
   });
   const result = msg.content[0].text.trim();
   if (result === 'SKIP' || result.startsWith('SKIP')) return null;
+
+  // Post-filter: detect AI refusals (URL-only posts sometimes slip through pre-filter)
+  const lower = result.toLowerCase();
+  if (REFUSAL_PHRASES.some(p => lower.includes(p))) return null;
+
   return result;
 }
 
