@@ -129,8 +129,7 @@ async function processSource(source) {
     return;
   }
 
-  const lastGuid  = await getLastGuid(id);
-  const firstRun  = lastGuid === null;
+  const lastGuid = await getLastGuid(id);
 
   // Items are newest-first in RSS; find new ones
   const newItems = [];
@@ -142,14 +141,6 @@ async function processSource(source) {
 
   if (!newItems.length) {
     console.log(`[macroWatcher] ${label}: up to date`);
-    return;
-  }
-
-  // First run: silently set watermark to latest item — avoid backlog spam
-  if (firstRun) {
-    const latestGuid = newItems[0].guid;
-    await setLastGuid(id, latestGuid);
-    console.log(`[macroWatcher] ${label}: first run — watermark set to latest, no notifications sent`);
     return;
   }
 

@@ -312,7 +312,7 @@ export default async function DashboardPage() {
     }))
 
   // ── FII data ─────────────────────────────────────────────────────────────
-  const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const cutoff24h = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
   const [{ data: fiiSectors }, { data: fiiDiiRows }, { data: mfRows }, { data: macroAlerts }] = await Promise.all([
     supabase.from('fii_sector').select('sector, fortnight_flow'),
     supabase.from('fii_dii_daily')
