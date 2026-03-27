@@ -9,14 +9,16 @@ import { WatchlistTodayGain, PortfolioTodayGain } from '@/components/DashboardTo
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
-function parseFirstHeadline(text: string | null): { source: string; headline: string } | null {
+function parseFirstHeadline(text: string | null): { source: string; headline: string; url: string | null } | null {
   if (!text) return null
   const sourceMatch   = text.match(/━━\s*(.+?)\s*━━/)
   const headlineMatch = text.match(/📌\s*(.+)/)
+  const urlMatch      = text.match(/🔗\s*(https?:\/\/\S+)/)
   if (!headlineMatch) return null
   return {
     source:   sourceMatch?.[1]?.trim() ?? 'News',
     headline: headlineMatch[1].trim(),
+    url:      urlMatch?.[1]?.trim() ?? null,
   }
 }
 
@@ -244,7 +246,7 @@ export default async function DashboardPage() {
 
   // Activity board — news items (last 2 days, watchlist + portfolio, deduplicated)
   const yesterday_date = new Date(Date.now() - 86400000).toISOString().slice(0, 10)
-  type NewsItem = { ticker: string; source: string; headline: string; isPortfolio: boolean }
+  type NewsItem = { ticker: string; source: string; headline: string; url: string | null; isPortfolio: boolean; lastUpdate: string }
   const newsItems: NewsItem[] = []
   const newsTickerSet = new Set<string>()
 
@@ -253,7 +255,7 @@ export default async function DashboardPage() {
     if (!t || newsTickerSet.has(t)) continue
     if ((w.stock?.last_news_update ?? '') >= yesterday_date) {
       const parsed = parseFirstHeadline(w.stock?.latest_headlines)
-      if (parsed) { newsItems.push({ ticker: t, ...parsed, isPortfolio: false }); newsTickerSet.add(t) }
+      if (parsed) { newsItems.push({ ticker: t, ...parsed, isPortfolio: false, lastUpdate: w.stock?.last_news_update ?? '' }); newsTickerSet.add(t) }
     }
   }
   for (const h of portRowsAll) {
@@ -261,9 +263,11 @@ export default async function DashboardPage() {
     if (!t || newsTickerSet.has(t)) continue
     if ((h.stock?.last_news_update ?? '') >= yesterday_date) {
       const parsed = parseFirstHeadline(h.stock?.latest_headlines)
-      if (parsed) { newsItems.push({ ticker: t, ...parsed, isPortfolio: true }); newsTickerSet.add(t) }
+      if (parsed) { newsItems.push({ ticker: t, ...parsed, isPortfolio: true, lastUpdate: h.stock?.last_news_update ?? '' }); newsTickerSet.add(t) }
     }
   }
+  // Sort by most recent update first so today's filings always appear at top
+  newsItems.sort((a, b) => (b.lastUpdate ?? '').localeCompare(a.lastUpdate ?? ''))
 
   // Activity board — combined technical alerts
   const actOversold  = [...new Set([...oversoldTickers,  ...portOversold])]
@@ -801,14 +805,21 @@ export default async function DashboardPage() {
                     <p className="text-xs text-gray-300">No news in the last 24h.</p>
                   ) : (
                     <div className="space-y-3.5">
-                      {newsItems.slice(0, 6).map((item, i) => (
+                      {newsItems.slice(0, 8).map((item, i) => (
                         <div key={i} className="flex gap-3">
                           <span className={`text-[11px] font-mono font-bold shrink-0 w-[62px] pt-[1px] leading-none ${item.isPortfolio ? 'text-blue-500' : 'text-gray-500'}`}>
                             {item.ticker}
                           </span>
                           <div className="min-w-0">
                             <div className="text-[9px] font-semibold text-gray-300 uppercase tracking-widest mb-0.5">{item.source}</div>
-                            <div className="text-xs text-blue-600 leading-snug line-clamp-2 hover:underline cursor-default">{item.headline}</div>
+                            {item.url ? (
+                              <a href={item.url} target="_blank" rel="noopener noreferrer"
+                                className="text-xs text-blue-600 leading-snug line-clamp-2 hover:underline cursor-pointer">
+                                {item.headline}
+                              </a>
+                            ) : (
+                              <div className="text-xs text-blue-600 leading-snug line-clamp-2">{item.headline}</div>
+                            )}
                           </div>
                         </div>
                       ))}
