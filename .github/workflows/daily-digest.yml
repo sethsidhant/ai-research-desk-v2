@@ -90,6 +90,7 @@ jobs:
       - name: Fetch FII/DII data
         run: node fiiAgent.js
         working-directory: agents
+        continue-on-error: true  # Screener/NSE may block GH Actions IPs — digest still sends
 
       - name: Send evening digest
         run: node telegramNotifier.js
