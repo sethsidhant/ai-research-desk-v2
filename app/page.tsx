@@ -311,7 +311,8 @@ export default async function DashboardPage() {
     }))
 
   // ── FII data ─────────────────────────────────────────────────────────────
-  const [{ data: fiiSectors }, { data: fiiDiiRows }, { data: mfRows }] = await Promise.all([
+  const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const [{ data: fiiSectors }, { data: fiiDiiRows }, { data: mfRows }, { data: macroAlerts }] = await Promise.all([
     supabase.from('fii_sector').select('sector, fortnight_flow'),
     supabase.from('fii_dii_daily')
       .select('date, fii_net, dii_net')
@@ -321,6 +322,11 @@ export default async function DashboardPage() {
       .select('date, eq_net, dbt_net')
       .order('date', { ascending: false })
       .limit(2),
+    admin.from('macro_alerts')
+      .select('channel, summary, created_at')
+      .gte('created_at', cutoff24h)
+      .order('created_at', { ascending: false })
+      .limit(8),
   ])
 
   const mfRow  = mfRows?.[0] ?? null
@@ -742,7 +748,7 @@ export default async function DashboardPage() {
                 <div className="text-[10px] text-gray-300">Last 24 hours</div>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr_1fr_1fr] gap-6 divide-y lg:divide-y-0 lg:divide-x divide-gray-100">
+              <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr_1fr_1fr_1.2fr] gap-6 divide-y lg:divide-y-0 lg:divide-x divide-gray-100">
 
                 {/* ── News ─────────────────────────────────── */}
                 <div className="pb-4 lg:pb-0 lg:pr-6">
@@ -862,6 +868,36 @@ export default async function DashboardPage() {
                           ))}
                         </>
                       )}
+                    </div>
+                  )}
+                </div>
+
+                {/* ── Macro Feed ───────────────────────────── */}
+                <div className="pt-4 lg:pt-0 lg:pl-6">
+                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">🌐 Macro Feed</div>
+                  {!macroAlerts || macroAlerts.length === 0 ? (
+                    <p className="text-xs text-gray-300">No macro alerts in last 24h.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {macroAlerts.map((alert, i) => {
+                        const istrump = alert.channel === 'trump_ts_posts'
+                        const label  = istrump ? '🇺🇸 Trump' : '📰 MC'
+                        const ago    = (() => {
+                          const mins = Math.round((Date.now() - new Date(alert.created_at).getTime()) / 60000)
+                          if (mins < 60)  return `${mins}m ago`
+                          if (mins < 1440) return `${Math.floor(mins / 60)}h ago`
+                          return `${Math.floor(mins / 1440)}d ago`
+                        })()
+                        return (
+                          <div key={i} className="space-y-0.5">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-[9px] font-semibold text-gray-400">{label}</span>
+                              <span className="text-[9px] text-gray-300 shrink-0">{ago}</span>
+                            </div>
+                            <p className="text-[11px] text-gray-700 leading-snug line-clamp-3">{alert.summary}</p>
+                          </div>
+                        )
+                      })}
                     </div>
                   )}
                 </div>

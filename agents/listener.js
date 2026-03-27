@@ -1,10 +1,12 @@
 // listener.js
 // Polls Supabase every 30s for watchlist stocks that need onboarding.
 // Also polls Telegram bot for /link commands to connect user accounts.
+// Also runs macroWatcher — polls public Telegram channels for macro news.
 
 require('dotenv').config({ path: '../.env.local' });
 const { execSync }     = require('child_process');
 const { createClient } = require('@supabase/supabase-js');
+const macroWatcher     = require('./macroWatcher');
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -172,6 +174,7 @@ async function start() {
     setInterval(pollBot, BOT_POLL_INTERVAL_MS);
     console.log('[listener] Telegram bot polling started');
   }
+  macroWatcher.start();
 }
 
 start();
