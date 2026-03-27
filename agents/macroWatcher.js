@@ -129,7 +129,8 @@ async function processSource(source) {
     return;
   }
 
-  const lastGuid = await getLastGuid(id);
+  const lastGuid  = await getLastGuid(id);
+  const firstRun  = lastGuid === null;
 
   // Items are newest-first in RSS; find new ones
   const newItems = [];
@@ -141,6 +142,14 @@ async function processSource(source) {
 
   if (!newItems.length) {
     console.log(`[macroWatcher] ${label}: up to date`);
+    return;
+  }
+
+  // First run: silently set watermark to latest item — avoid backlog spam
+  if (firstRun) {
+    const latestGuid = newItems[0].guid;
+    await setLastGuid(id, latestGuid);
+    console.log(`[macroWatcher] ${label}: first run — watermark set to latest, no notifications sent`);
     return;
   }
 
@@ -172,7 +181,13 @@ async function processSource(source) {
           }
         } else {
           console.log(`[macroWatcher] ${label}: ${summary.slice(0, 90)}…`);
-          await sendAlert(`${emoji} *Macro · ${label}*\n${summary}`);
+          // Only notify for items published within the last 2 hours
+          const ageMs = item.pubDate ? Date.now() - new Date(item.pubDate).getTime() : 0;
+          if (ageMs < 2 * 60 * 60 * 1000) {
+            await sendAlert(`${emoji} *Macro · ${label}*\n${summary}`);
+          } else {
+            console.log(`[macroWatcher] ${label}: stored silently (item is ${Math.round(ageMs / 60000)}m old)`);
+          }
         }
       }
 
