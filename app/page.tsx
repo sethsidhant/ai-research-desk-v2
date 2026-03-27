@@ -327,7 +327,7 @@ export default async function DashboardPage() {
       .select('channel, summary, created_at')
       .gte('created_at', cutoff24h)
       .order('created_at', { ascending: false })
-      .limit(8),
+      .limit(20),
   ])
 
   const mfRow  = mfRows?.[0] ?? null
@@ -544,6 +544,26 @@ export default async function DashboardPage() {
                     </div>
                   )}
 
+                  {watchlistMovers.length > 0 && (
+                    <div className="pt-2 border-t border-gray-100">
+                      <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">Today's Movers</div>
+                      <div className="space-y-1">
+                        {watchGainers.map((h: any) => (
+                          <div key={h.ticker} className="flex items-center justify-between">
+                            <span className="text-[11px] font-mono font-semibold text-gray-700">{h.ticker}</span>
+                            <span className="text-[11px] font-mono font-bold text-emerald-600">+{h.returnPct.toFixed(1)}%</span>
+                          </div>
+                        ))}
+                        {watchLosers.map((h: any) => (
+                          <div key={h.ticker} className="flex items-center justify-between">
+                            <span className="text-[11px] font-mono font-semibold text-gray-700">{h.ticker}</span>
+                            <span className="text-[11px] font-mono font-bold text-red-500">{h.returnPct.toFixed(1)}%</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="pt-1 text-xs text-gray-400 group-hover:text-gray-600 transition-colors">
                     {watchlistCount} stock{watchlistCount !== 1 ? 's' : ''} · View watchlist →
                   </div>
@@ -653,6 +673,32 @@ export default async function DashboardPage() {
                     </div>
                   )}
 
+                  {portMovers.length > 0 && (
+                    <div className="pt-2 border-t border-gray-100">
+                      <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">Today's Movers</div>
+                      <div className="space-y-1">
+                        {portGainers.map((h: any) => (
+                          <div key={h.ticker} className="flex items-center justify-between">
+                            <span className="text-[11px] font-mono font-semibold text-gray-700">{h.ticker}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] text-gray-400">{h.alloc.toFixed(0)}%</span>
+                              <span className="text-[11px] font-mono font-bold text-emerald-600">+{h.returnPct.toFixed(1)}%</span>
+                            </div>
+                          </div>
+                        ))}
+                        {portLosers.map((h: any) => (
+                          <div key={h.ticker} className="flex items-center justify-between">
+                            <span className="text-[11px] font-mono font-semibold text-gray-700">{h.ticker}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] text-gray-400">{h.alloc.toFixed(0)}%</span>
+                              <span className="text-[11px] font-mono font-bold text-red-500">{h.returnPct.toFixed(1)}%</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="pt-1 text-xs text-gray-400 group-hover:text-gray-600 transition-colors">
                     <Link href="/portfolio" className="hover:text-gray-800 transition-colors">
                       {portRows.length} holdings · View portfolio →
@@ -753,7 +799,7 @@ export default async function DashboardPage() {
                 <div className="text-[10px] text-gray-300">Last 24 hours</div>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr] gap-6 divide-y lg:divide-y-0 lg:divide-x divide-gray-100">
+              <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr_1fr_1fr] gap-6 divide-y lg:divide-y-0 lg:divide-x divide-gray-100">
 
                 {/* ── News ─────────────────────────────────── */}
                 <div className="pb-4 lg:pb-0 lg:pr-6">
@@ -805,83 +851,15 @@ export default async function DashboardPage() {
                   )}
                 </div>
 
-                {/* ── Watchlist Movers ─────────────────────── */}
-                <div className="pt-4 lg:pt-0 lg:px-6">
-                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">📋 Watchlist</div>
-                  {watchlistMovers.length === 0 ? (
-                    <p className="text-xs text-gray-300">Set entry prices to see movers.</p>
-                  ) : (
-                    <div>
-                      {watchGainers.length > 0 && (
-                        <>
-                          <div className="text-[10px] text-gray-400 mb-1.5">Top gainers</div>
-                          {watchGainers.map((h: any) => (
-                            <div key={h.ticker} className="flex items-center justify-between py-1">
-                              <span className="text-xs font-semibold text-gray-800">{h.ticker}</span>
-                              <span className="text-xs font-mono font-bold text-emerald-600">+{h.returnPct.toFixed(1)}%</span>
-                            </div>
-                          ))}
-                        </>
-                      )}
-                      {watchLosers.length > 0 && (
-                        <>
-                          <div className="text-[10px] text-gray-400 mt-3 mb-1.5 pt-2 border-t border-gray-100">Laggards</div>
-                          {watchLosers.map((h: any) => (
-                            <div key={h.ticker} className="flex items-center justify-between py-1">
-                              <span className="text-xs font-semibold text-gray-800">{h.ticker}</span>
-                              <span className="text-xs font-mono font-bold text-red-500">{h.returnPct.toFixed(1)}%</span>
-                            </div>
-                          ))}
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
 
-                {/* ── Portfolio Movers ─────────────────────── */}
-                <div className="pt-4 lg:pt-0 lg:pl-6">
-                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">💼 Portfolio</div>
-                  {portMovers.length === 0 ? (
-                    <p className="text-xs text-gray-300">No holdings with live prices.</p>
-                  ) : (
-                    <div>
-                      {portGainers.length > 0 && (
-                        <>
-                          <div className="text-[10px] text-gray-400 mb-1.5">Top gainers</div>
-                          {portGainers.map((h: any) => (
-                            <div key={h.ticker} className="flex items-center justify-between py-1">
-                              <span className="text-xs font-semibold text-gray-800">{h.ticker}</span>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <span className="text-[10px] font-mono text-gray-400">{h.alloc.toFixed(1)}%</span>
-                                <span className="text-xs font-mono font-bold text-emerald-600">+{h.returnPct.toFixed(1)}%</span>
-                              </div>
-                            </div>
-                          ))}
-                        </>
-                      )}
-                      {portLosers.length > 0 && (
-                        <>
-                          <div className="text-[10px] text-gray-400 mt-3 mb-1.5 pt-2 border-t border-gray-100">Laggards</div>
-                          {portLosers.map((h: any) => (
-                            <div key={h.ticker} className="flex items-center justify-between py-1">
-                              <span className="text-xs font-semibold text-gray-800">{h.ticker}</span>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <span className="text-[10px] font-mono text-gray-400">{h.alloc.toFixed(1)}%</span>
-                                <span className="text-xs font-mono font-bold text-red-500">{h.returnPct.toFixed(1)}%</span>
-                              </div>
-                            </div>
-                          ))}
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
+
+
 
                 {/* ── Trump Feed ───────────────────────────── */}
                 {(() => {
                   const trumpAlerts = (macroAlerts ?? []).filter(a =>
                     a.channel === 'trump_ts_posts' || a.channel === 'trumptruthposts'
-                  ).slice(0, 5)
+                  ).slice(0, 4)
                   return (
                     <div className="pt-4 lg:pt-0 lg:px-6">
                       <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">🇺🇸 Trump</div>
@@ -895,7 +873,7 @@ export default async function DashboardPage() {
                             return (
                               <div key={i} className="space-y-0.5">
                                 <div className="text-[9px] text-gray-300">{ago} ago</div>
-                                <p className="text-[11px] text-gray-700 leading-snug line-clamp-3">{alert.summary}</p>
+                                <p className="text-[11px] text-gray-700 leading-snug">{alert.summary}</p>
                               </div>
                             )
                           })}
@@ -907,7 +885,7 @@ export default async function DashboardPage() {
 
                 {/* ── Markets Feed ─────────────────────────── */}
                 {(() => {
-                  const marketAlerts = (macroAlerts ?? []).filter(a => a.channel === 'et_markets').slice(0, 5)
+                  const marketAlerts = (macroAlerts ?? []).filter(a => a.channel === 'et_markets').slice(0, 4)
                   return (
                     <div className="pt-4 lg:pt-0 lg:pl-6">
                       <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">📰 Macro</div>
@@ -921,7 +899,7 @@ export default async function DashboardPage() {
                             return (
                               <div key={i} className="space-y-0.5">
                                 <div className="text-[9px] text-gray-300">{ago} ago</div>
-                                <p className="text-[11px] text-gray-700 leading-snug line-clamp-3">{alert.summary}</p>
+                                <p className="text-[11px] text-gray-700 leading-snug">{alert.summary}</p>
                               </div>
                             )
                           })}
