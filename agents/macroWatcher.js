@@ -34,10 +34,19 @@ const SOURCES = [
     id:     'trump_ts_posts',
     label:  'Trump',
     emoji:  '🇺🇸',
-    // rsshub.ktachibana.party tested and confirmed working (rsshub.app returns 403)
+    // Posts Truth Social links (mostly image URLs, some Russian text reposts)
     rssUrls: [
       'https://rsshub.ktachibana.party/telegram/channel/trump_ts_posts',
       'https://rsshub.app/telegram/channel/trump_ts_posts',
+    ],
+  },
+  {
+    id:     'trumptruthposts',
+    label:  'Trump',
+    emoji:  '🇺🇸',
+    // English text reposts of Trump's Truth Social posts — full content in RSS
+    rssUrls: [
+      'https://rsshub.ktachibana.party/telegram/channel/trumptruthposts',
     ],
   },
   {
@@ -45,7 +54,7 @@ const SOURCES = [
     label:  'Markets News',
     emoji:  '📰',
     // MoneyControl RSS is malformed XML — ET Markets RSS is proven working alternative
-    // Filtered to macro-relevant items only (same AI filter as Trump)
+    // Filtered to macro-relevant items only via AI
     rssUrls: [
       'https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms',
     ],
@@ -128,14 +137,17 @@ Post:
 ${text.slice(0, 1500)}`,
     }],
   });
-  const result = msg.content[0].text.trim();
+  let result = msg.content[0].text.trim();
   if (result === 'SKIP' || result.startsWith('SKIP')) return null;
 
   // Post-filter: detect AI refusals (URL-only posts sometimes slip through pre-filter)
   const lower = result.toLowerCase();
   if (REFUSAL_PHRASES.some(p => lower.includes(p))) return null;
 
-  return result;
+  // Strip relevance prefix the AI sometimes adds ("Relevant.", "RELEVANT", "**RELEVANT**\n")
+  result = result.replace(/^\*{0,2}RELEVANT\*{0,2}[\s.:]*\n*/i, '').trim();
+
+  return result || null;
 }
 
 // ── Per-source processing ─────────────────────────────────────────────────────
@@ -160,7 +172,16 @@ async function processSource(source) {
   for (const item of items) {
     const guid = item.guid || item.link || item.id;
     if (guid === lastGuid) break; // hit last seen — stop
-    newItems.push({ guid, text: item.title || item.contentSnippet || '', pubDate: item.pubDate });
+    // Prefer full content over title; strip HTML tags
+    const raw = item.content || item.contentSnippet || item.title || '';
+    const text = raw
+      .replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')
+      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+      // strip leading header line (e.g. "📣 Trump Truth Post – Mar 26, 10:29 PM\n\n")
+      .replace(/^[^\n]+\n\n/, '')
+      .replace(/\s+/g, ' ').trim();
+    newItems.push({ guid, text, pubDate: item.pubDate });
   }
 
   if (!newItems.length) {
