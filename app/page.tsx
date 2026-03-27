@@ -886,7 +886,7 @@ export default async function DashboardPage() {
                     <div className="space-y-3">
                       {macroAlerts.map((alert, i) => {
                         const istrump = alert.channel === 'trump_ts_posts'
-                        const label  = istrump ? '🇺🇸 Trump' : '📰 MC'
+                        const label  = istrump ? '🇺🇸 Trump' : '📰 Markets'
                         const ago    = (() => {
                           const mins = Math.round((Date.now() - new Date(alert.created_at).getTime()) / 60000)
                           if (mins < 60)  return `${mins}m ago`

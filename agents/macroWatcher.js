@@ -1,16 +1,18 @@
-// macroWatcher.js — monitors public Telegram channels for macro news
-// Polls t.me/s/ web preview every 5 minutes — no API credentials needed.
-// AI-summarizes new posts with Claude Haiku, stores in macro_alerts table.
+// macroWatcher.js — monitors macro news sources via RSS
+// Polls every 5 minutes, AI-filters to market-relevant posts only,
+// stores AI summaries in macro_alerts table.
 //
-// Channels:
-//   trump_ts_posts — Trump Truth Social mirror
+// Sources:
+//   trump_ts_posts — Trump posts via RSSHub (Telegram channel → RSS)
+//   moneycontrolcom — MoneyControl markets news via direct RSS
 //
-// Add more channels to the CHANNELS array below.
+// No Telegram API credentials needed.
 
 require('dotenv').config({ path: '../.env.local' });
-const Anthropic       = require('@anthropic-ai/sdk');
+const Anthropic        = require('@anthropic-ai/sdk');
 const { createClient } = require('@supabase/supabase-js');
-const { sendAlert }   = require('./telegramAlert');
+const RSSParser        = require('rss-parser');
+const { sendAlert }    = require('./telegramAlert');
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -18,88 +20,72 @@ const supabase = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const anthropic  = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const rssParser  = new RSSParser({ timeout: 15000, headers: { 'User-Agent': 'Mozilla/5.0' } });
 
-const CHANNELS = [
-  { id: 'trump_ts_posts', label: 'Trump',        emoji: '🇺🇸' },
-  { id: 'moneycontrolcom', label: 'MoneyControl', emoji: '📰' },
+// ── Source definitions ─────────────────────────────────────────────────────────
+// rssUrl: the RSS feed to poll
+// id:     key used for dedup (post_id prefix) and app_settings watermark
+// label:  display name
+// emoji:  used in Telegram notifications
+
+const SOURCES = [
+  {
+    id:     'trump_ts_posts',
+    label:  'Trump',
+    emoji:  '🇺🇸',
+    // rsshub.ktachibana.party tested and confirmed working (rsshub.app returns 403)
+    rssUrls: [
+      'https://rsshub.ktachibana.party/telegram/channel/trump_ts_posts',
+      'https://rsshub.app/telegram/channel/trump_ts_posts',
+    ],
+  },
+  {
+    id:     'et_markets',
+    label:  'Markets News',
+    emoji:  '📰',
+    // MoneyControl RSS is malformed XML — ET Markets RSS is proven working alternative
+    // Filtered to macro-relevant items only (same AI filter as Trump)
+    rssUrls: [
+      'https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms',
+    ],
+  },
 ];
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-// ── Persistence ───────────────────────────────────────────────────────────────
+// ── Persistence (last-seen item GUID/link) ────────────────────────────────────
 
-async function getLastPostId(channelId) {
+async function getLastGuid(sourceId) {
   const { data } = await supabase
     .from('app_settings')
     .select('value')
-    .eq('key', `macro_watcher_last_${channelId}`)
+    .eq('key', `macro_watcher_last_${sourceId}`)
     .single();
-  return data?.value ? parseInt(data.value) : 0;
+  return data?.value ?? null;
 }
 
-async function setLastPostId(channelId, postId) {
+async function setLastGuid(sourceId, guid) {
   await supabase.from('app_settings').upsert(
-    { key: `macro_watcher_last_${channelId}`, value: String(postId) },
+    { key: `macro_watcher_last_${sourceId}`, value: guid },
     { onConflict: 'key' }
   );
 }
 
-// ── Fetch & Parse ─────────────────────────────────────────────────────────────
+// ── RSS fetch (tries each URL until one works) ────────────────────────────────
 
-async function fetchChannelPage(channelId) {
-  const url = `https://t.me/s/${channelId}`;
-  const res = await fetch(url, {
-    headers: {
-      'User-Agent':      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-      'Accept':          'text/html,application/xhtml+xml,*/*;q=0.8',
-      'Accept-Language': 'en-US,en;q=0.9',
-    },
-    signal: AbortSignal.timeout(15000),
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.text();
-}
-
-function stripHtml(html) {
-  return html
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&amp;/g,  '&')
-    .replace(/&lt;/g,   '<')
-    .replace(/&gt;/g,   '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g,  "'")
-    .replace(/\s+/g,    ' ')
-    .trim();
-}
-
-function parseMessages(html) {
-  const messages = [];
-  // Split HTML at each message container boundary
-  const blocks = html.split(/(?=<div[^>]+class="tgme_widget_message\b)/);
-
-  for (const block of blocks) {
-    // Post ID (e.g. data-post="trump_ts_posts/12345")
-    const postMatch = block.match(/data-post="[^/]+\/(\d+)"/);
-    if (!postMatch) continue;
-    const postId = parseInt(postMatch[1]);
-
-    // Message text div
-    const textMatch = block.match(/class="tgme_widget_message_text(?:\s[^"]*)?">([^]*?)<\/div>/);
-    if (!textMatch) continue;
-    const text = stripHtml(textMatch[1]);
-    if (text.length < 20) continue; // skip very short/media-only messages
-
-    // Timestamp
-    const timeMatch = block.match(/datetime="([^"]+)"/);
-    const timestamp = timeMatch ? new Date(timeMatch[1]).toISOString() : new Date().toISOString();
-
-    messages.push({ postId, text, timestamp });
+async function fetchRSS(rssUrls) {
+  for (const url of rssUrls) {
+    try {
+      const feed = await rssParser.parseURL(url);
+      console.log(`  RSS OK: ${url} (${feed.items?.length ?? 0} items)`);
+      return feed.items ?? [];
+    } catch (e) {
+      console.log(`  RSS failed: ${url} — ${e.message}`);
+    }
   }
-
-  return messages;
+  return null; // all failed
 }
 
 // ── AI Filter + Summarization ─────────────────────────────────────────────────
@@ -117,7 +103,7 @@ Evaluate if this ${label} post is relevant to any of: tariffs, trade policy, san
 
 If NOT relevant (e.g. personal attacks, sports, entertainment, domestic US politics with no market angle, general opinions): reply with exactly: SKIP
 
-If relevant: reply with a 1-2 sentence summary. Be direct and factual. Start with the key fact, not "Trump says" or "The post says".
+If relevant: reply with a 1-2 sentence summary IN ENGLISH. Be direct and factual. Start with the key fact, not "Trump says" or "The post says". If the post is in another language, translate and summarize in English.
 
 Post:
 ${text.slice(0, 1500)}`,
@@ -128,85 +114,87 @@ ${text.slice(0, 1500)}`,
   return result;
 }
 
-// ── Per-channel processing ────────────────────────────────────────────────────
+// ── Per-source processing ─────────────────────────────────────────────────────
 
-async function processChannel(channel) {
-  const { id: channelId, label, emoji } = channel;
+async function processSource(source) {
+  const { id, label, emoji, rssUrls } = source;
 
-  let html;
-  try {
-    html = await fetchChannelPage(channelId);
-  } catch (e) {
-    console.error(`[macroWatcher] ${label} fetch error: ${e.message}`);
+  const items = await fetchRSS(rssUrls);
+  if (!items) {
+    console.log(`[macroWatcher] ${label}: all RSS feeds failed`);
+    return;
+  }
+  if (!items.length) {
+    console.log(`[macroWatcher] ${label}: RSS feed empty`);
     return;
   }
 
-  const messages = parseMessages(html);
-  if (!messages.length) {
-    console.log(`[macroWatcher] ${label}: no messages parsed from page`);
+  const lastGuid = await getLastGuid(id);
+
+  // Items are newest-first in RSS; find new ones
+  const newItems = [];
+  for (const item of items) {
+    const guid = item.guid || item.link || item.id;
+    if (guid === lastGuid) break; // hit last seen — stop
+    newItems.push({ guid, text: item.title || item.contentSnippet || '', pubDate: item.pubDate });
+  }
+
+  if (!newItems.length) {
+    console.log(`[macroWatcher] ${label}: up to date`);
     return;
   }
 
-  const lastId      = await getLastPostId(channelId);
-  const newMessages = messages
-    .filter(m => m.postId > lastId)
-    .sort((a, b) => a.postId - b.postId);
+  console.log(`[macroWatcher] ${label}: ${newItems.length} new item(s)`);
 
-  if (!newMessages.length) {
-    console.log(`[macroWatcher] ${label}: up to date (last seen post ${lastId})`);
-    return;
-  }
-
-  console.log(`[macroWatcher] ${label}: ${newMessages.length} new post(s) since ${lastId}`);
-
-  for (const post of newMessages) {
+  // Process oldest-first so watermark advances correctly
+  for (const item of [...newItems].reverse()) {
+    if (!item.text || item.text.length < 10) {
+      await setLastGuid(id, item.guid);
+      continue;
+    }
     try {
-      const summary = await filterAndSummarize(post.text, label);
+      const summary = await filterAndSummarize(item.text, label);
 
       if (!summary) {
-        console.log(`[macroWatcher] ${label} #${post.postId}: skipped (not market-relevant)`);
+        console.log(`[macroWatcher] ${label}: skipped (not market-relevant) — ${item.text.slice(0, 60)}`);
       } else {
         const { error } = await supabase.from('macro_alerts').insert({
-          channel:      channelId,
+          channel:      id,
           summary,
-          original_len: post.text.length,
-          post_id:      `${channelId}/${post.postId}`,
-          created_at:   post.timestamp,
+          original_len: item.text.length,
+          post_id:      item.guid,
+          created_at:   item.pubDate ? new Date(item.pubDate).toISOString() : new Date().toISOString(),
         });
 
         if (error) {
-          // UNIQUE violation = already stored (safe to skip)
           if (!error.message.includes('unique') && !error.message.includes('duplicate')) {
             console.error(`[macroWatcher] DB insert error: ${error.message}`);
           }
         } else {
-          console.log(`[macroWatcher] ${label} #${post.postId}: ${summary.slice(0, 90)}…`);
+          console.log(`[macroWatcher] ${label}: ${summary.slice(0, 90)}…`);
           await sendAlert(`${emoji} *Macro · ${label}*\n${summary}`);
         }
       }
 
-      await sleep(1200); // stay under Anthropic rate limits
+      await setLastGuid(id, item.guid);
+      await sleep(1200); // Anthropic rate limit
     } catch (e) {
-      console.error(`[macroWatcher] Error on post ${post.postId}: ${e.message}`);
+      console.error(`[macroWatcher] Error processing item: ${e.message}`);
     }
   }
-
-  // Advance the watermark
-  const maxId = Math.max(...newMessages.map(m => m.postId));
-  await setLastPostId(channelId, maxId);
 }
 
 // ── Poll loop ─────────────────────────────────────────────────────────────────
 
 async function poll() {
-  for (const channel of CHANNELS) {
-    await processChannel(channel);
+  for (const source of SOURCES) {
+    await processSource(source);
     await sleep(2000);
   }
 }
 
 function start() {
-  console.log(`[macroWatcher] Starting — ${CHANNELS.length} channel(s), poll every ${POLL_INTERVAL_MS / 60000} min`);
+  console.log(`[macroWatcher] Starting — ${SOURCES.length} source(s), poll every ${POLL_INTERVAL_MS / 60000} min`);
   poll();
   setInterval(poll, POLL_INTERVAL_MS);
 }
