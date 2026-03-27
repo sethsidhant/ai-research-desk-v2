@@ -5,6 +5,7 @@ import Link from 'next/link'
 import SignOutButton from '@/components/SignOutButton'
 import MarketIndicesBar from '@/components/MarketIndicesBar'
 import { INDUSTRY_TO_FII_SECTOR } from '@/lib/fiiSectorMap'
+import { WatchlistTodayGain, PortfolioTodayGain } from '@/components/DashboardTodayGain'
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -450,6 +451,9 @@ export default async function DashboardPage() {
                           </div>
                         </div>
                       </div>
+                      <WatchlistTodayGain rows={portfolioRows
+                        .filter((w: any) => w.invested_amount && w.entry_price && w.stock?.current_price)
+                        .map((w: any) => ({ ticker: w.stock.ticker, invested: w.invested_amount, entryPrice: w.entry_price, currentPrice: w.stock.current_price }))} />
                     </div>
                   ) : (
                     <p className="text-xs text-gray-400">Set entry prices to track P&amp;L.</p>
@@ -589,6 +593,7 @@ export default async function DashboardPage() {
                         </div>
                       </div>
                     </div>
+                    <PortfolioTodayGain rows={portRows.map((h: any) => ({ ticker: h.stock.ticker, quantity: h.quantity, currentPrice: h.stock.current_price }))} />
                   </div>
 
                   {/* Sector exposure vs FII */}

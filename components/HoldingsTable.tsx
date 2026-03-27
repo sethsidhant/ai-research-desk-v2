@@ -331,6 +331,11 @@ export default function HoldingsTable({
           const dc = dayChanges[r.ticker]
           return s + (dc ? dc.change * r.quantity : 0)
         }, 0)
+        const prevCloseTotal = computedRows.reduce((s, r) => {
+          const dc = dayChanges[r.ticker]
+          return s + (dc ? (r.currentValue - dc.change * r.quantity) : r.currentValue)
+        }, 0)
+        const todayGainPct = prevCloseTotal > 0 ? (todayGain / prevCloseTotal) * 100 : 0
         const hasDayData   = Object.keys(dayChanges).length > 0
         return totalInvested > 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
@@ -349,6 +354,7 @@ export default function HoldingsTable({
             <LiveCard
               label="Today's Gain"
               value={hasDayData ? `${todayGain >= 0 ? '+' : ''}${fmtCurrency(todayGain)}` : '—'}
+              sub={hasDayData ? `${todayGainPct >= 0 ? '+' : ''}${todayGainPct.toFixed(2)}% today` : undefined}
               highlight={hasDayData ? (todayGain >= 0 ? 'green' : 'red') : undefined}
               note={hasDayData ? 'live' : 'awaiting prices'}
             />
@@ -802,11 +808,12 @@ function ActionBtn({ onClick, children }: { onClick: () => void; children: React
   )
 }
 
-function LiveCard({ label, value, highlight, note }: { label: string; value: string; highlight?: 'green' | 'red'; note?: string }) {
+function LiveCard({ label, value, highlight, note, sub }: { label: string; value: string; highlight?: 'green' | 'red'; note?: string; sub?: string }) {
   const color = highlight === 'green' ? 'text-emerald-600' : highlight === 'red' ? 'text-red-600' : 'text-gray-900'
   return (
     <div className="bg-white border border-gray-200 rounded-xl px-4 py-4 shadow-sm">
       <div className={`text-xl sm:text-2xl font-bold ${color}`}>{value}</div>
+      {sub && <div className={`text-xs font-semibold font-mono ${color} mt-0.5`}>{sub}</div>}
       <div className="text-xs text-gray-400 mt-1 flex items-center gap-1.5">
         {label}
         {note && <span className="text-[9px] text-gray-300">· {note}</span>}

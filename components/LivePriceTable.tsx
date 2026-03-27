@@ -204,6 +204,13 @@ export default function LivePriceTable({
     const virtualShares = r.invested_amount! / r.entry_price
     return s + dc.change * virtualShares
   }, 0)
+  const todayGainPrevClose = portfolioRows.reduce((s, r) => {
+    const dc = changes[r.ticker]
+    if (!r.entry_price || !r.current_price) return s
+    const virtualShares = r.invested_amount! / r.entry_price
+    return s + (r.current_price - (dc?.change ?? 0)) * virtualShares
+  }, 0)
+  const todayGainPct = todayGainPrevClose > 0 ? (todayGain / todayGainPrevClose) * 100 : 0
   const hasDayData = Object.keys(changes).length > 0
 
   const liveChartData: ChartPoint[] = (() => {
@@ -323,6 +330,7 @@ export default function LivePriceTable({
           <PLCard
             label="Today's Gain"
             value={hasDayData ? `${todayGain >= 0 ? '+' : ''}₹${Math.abs(todayGain).toLocaleString('en-IN', { maximumFractionDigits: 0 })}` : '—'}
+            sub={hasDayData ? `${todayGainPct >= 0 ? '+' : ''}${todayGainPct.toFixed(2)}% today` : undefined}
             highlight={hasDayData ? (todayGain >= 0 ? 'green' : 'red') : undefined}
             note={hasDayData ? 'live' : 'awaiting prices'}
           />
@@ -392,11 +400,12 @@ export default function LivePriceTable({
   )
 }
 
-function PLCard({ label, value, highlight, note }: { label: string; value: string; highlight?: 'green' | 'red'; note?: string }) {
+function PLCard({ label, value, highlight, note, sub }: { label: string; value: string; highlight?: 'green' | 'red'; note?: string; sub?: string }) {
   const valueColor = highlight === 'green' ? 'text-emerald-600' : highlight === 'red' ? 'text-red-600' : 'text-gray-900'
   return (
     <div className="bg-white border border-gray-200 rounded-xl px-4 py-4 shadow-sm">
       <div className={`text-2xl font-bold ${valueColor}`}>{value}</div>
+      {sub && <div className={`text-xs font-semibold font-mono ${valueColor} mt-0.5`}>{sub}</div>}
       <div className="flex items-center gap-1.5 mt-1">
         <div className="text-xs text-gray-400">{label}</div>
         {note && <span className="text-[9px] text-gray-300">{note}</span>}
