@@ -85,6 +85,7 @@ jobs:
           SCREENER_PASSWORD=${{ secrets.SCREENER_PASSWORD }}
           TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
           DASHBOARD_URL=${{ secrets.DASHBOARD_URL }}
+          KITE_API_KEY=${{ secrets.KITE_API_KEY }}
           EOF
 
       - name: Fetch FII/DII data

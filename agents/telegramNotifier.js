@@ -132,6 +132,50 @@ function buildDigest(stocks, prefs, fiiDii) {
   return body.length > 4000 ? body.slice(0, 3997) + "..." : body;
 }
 
+// ── Kite live prices ──────────────────────────────────────────────────────────
+// Fetches fresh closing/live prices for all stocks. Access token read from
+// Supabase app_settings (refreshed daily by Railway token job).
+async function fetchKitePrices(stockIds) {
+  const apiKey = process.env.KITE_API_KEY;
+  if (!apiKey) return {};
+
+  const { data: tokenRow } = await supabase
+    .from('app_settings').select('value').eq('key', 'kite_access_token').single();
+  const accessToken = tokenRow?.value;
+  if (!accessToken) return {};
+
+  const { data: stocks } = await supabase
+    .from('stocks').select('id, ticker, instrument_token').in('id', stockIds);
+  if (!stocks?.length) return {};
+
+  const valid = stocks.filter(s => s.instrument_token);
+  if (!valid.length) return {};
+
+  const tokens = valid.map(s => s.instrument_token).join('&i=');
+  try {
+    const res = await fetch(`https://api.kite.trade/quote?i=${tokens}`, {
+      headers: { 'X-Kite-Version': '3', 'Authorization': `token ${apiKey}:${accessToken}` },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) { console.log(`[kite] HTTP ${res.status}`); return {}; }
+    const json = await res.json();
+    const kiteData = json.data ?? {};
+    const tokenToId = {};
+    for (const s of valid) tokenToId[s.instrument_token] = s.id;
+    const prices = {};
+    for (const [, val] of Object.entries(kiteData)) {
+      const v = val;
+      const id = tokenToId[v.instrument_token];
+      if (id && v.last_price) prices[id] = v.last_price;
+    }
+    console.log(`[kite] Live prices fetched for ${Object.keys(prices).length} stocks`);
+    return prices;
+  } catch (e) {
+    console.log(`[kite] Price fetch failed: ${e.message} — falling back to DB prices`);
+    return {};
+  }
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 async function main() {
   console.log("📊 Telegram Notifier — per-user digest\n");
@@ -190,6 +234,9 @@ async function main() {
     const stockMap = {};
     for (const s of (stockDetails ?? [])) stockMap[s.id] = s;
 
+    // Fetch live prices from Kite — overrides stale DB current_price
+    const livePrices = await fetchKitePrices(stockIds);
+
     const digestStocks = stockIds
       .map(id => {
         const stock = stockMap[id];
@@ -197,7 +244,7 @@ async function main() {
         if (!stock) return null;
         return {
           stock_name:    stock.stock_name,
-          current_price: stock.current_price,
+          current_price: livePrices[id] ?? stock.current_price,
           rsi:           score?.rsi ?? null,
           pe_deviation:  score?.pe_deviation ?? null,
           above_50_dma:  score?.above_50_dma ?? null,
@@ -219,7 +266,7 @@ async function main() {
         if (!stock?.current_price) return null;
         return {
           stock_name:      stock.stock_name,
-          current_price:   stock.current_price,
+          current_price:   livePrices[s.stock_id] ?? stock.current_price,
           invested_amount: s.invested_amount,
           entry_price:     s.entry_price,
         };
