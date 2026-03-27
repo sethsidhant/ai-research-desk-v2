@@ -197,6 +197,15 @@ export default function LivePriceTable({
   const totalPnl      = totalCurrent - totalInvested
   const totalPnlPct   = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0
 
+  // Today's gain: Σ (dayChange × virtual shares)
+  const todayGain = portfolioRows.reduce((s, r) => {
+    const dc = changes[r.ticker]
+    if (!dc || !r.entry_price) return s
+    const virtualShares = r.invested_amount! / r.entry_price
+    return s + dc.change * virtualShares
+  }, 0)
+  const hasDayData = Object.keys(changes).length > 0
+
   const liveChartData: ChartPoint[] = (() => {
     if (totalInvested === 0 || chartData.length === 0) return chartData
     const todayLabel = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
@@ -298,9 +307,9 @@ export default function LivePriceTable({
             <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Virtual P&L Simulation</span>
             <span className="text-[9px] bg-amber-50 text-amber-600 border border-amber-200 px-1.5 py-0.5 rounded-full font-semibold">Based on interested entry price</span>
           </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <PLCard label="Interested Entry"     value={`₹${totalInvested.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
-          <PLCard label="Current Value" value={`₹${totalCurrent.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <PLCard label="Interested Entry" value={`₹${totalInvested.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
+          <PLCard label="Current Value"   value={`₹${totalCurrent.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`} />
           <PLCard
             label="Total P&L"
             value={`${totalPnl >= 0 ? '+' : ''}₹${Math.abs(totalPnl).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`}
@@ -310,6 +319,12 @@ export default function LivePriceTable({
             label="Return"
             value={`${totalPnlPct >= 0 ? '+' : ''}${totalPnlPct.toFixed(1)}%`}
             highlight={totalPnlPct >= 0 ? 'green' : 'red'}
+          />
+          <PLCard
+            label="Today's Gain"
+            value={hasDayData ? `${todayGain >= 0 ? '+' : ''}₹${Math.abs(todayGain).toLocaleString('en-IN', { maximumFractionDigits: 0 })}` : '—'}
+            highlight={hasDayData ? (todayGain >= 0 ? 'green' : 'red') : undefined}
+            note={hasDayData ? 'live' : 'awaiting prices'}
           />
         </div>
         </div>
@@ -377,12 +392,15 @@ export default function LivePriceTable({
   )
 }
 
-function PLCard({ label, value, highlight }: { label: string; value: string; highlight?: 'green' | 'red' }) {
+function PLCard({ label, value, highlight, note }: { label: string; value: string; highlight?: 'green' | 'red'; note?: string }) {
   const valueColor = highlight === 'green' ? 'text-emerald-600' : highlight === 'red' ? 'text-red-600' : 'text-gray-900'
   return (
     <div className="bg-white border border-gray-200 rounded-xl px-4 py-4 shadow-sm">
       <div className={`text-2xl font-bold ${valueColor}`}>{value}</div>
-      <div className="text-xs text-gray-400 mt-1">{label}</div>
+      <div className="flex items-center gap-1.5 mt-1">
+        <div className="text-xs text-gray-400">{label}</div>
+        {note && <span className="text-[9px] text-gray-300">{note}</span>}
+      </div>
     </div>
   )
 }
