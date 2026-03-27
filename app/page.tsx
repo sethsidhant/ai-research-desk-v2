@@ -555,16 +555,12 @@ export default async function DashboardPage() {
                     <div className="pt-2 border-t border-gray-100">
                       <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">vs Entry Price</div>
                       <div className="space-y-1">
-                        {watchGainers.map((h: any) => (
+                        {[...watchGainers, ...watchLosers].map((h: any) => (
                           <div key={h.ticker} className="flex items-center justify-between">
                             <span className="text-[11px] font-mono font-semibold text-gray-700">{h.ticker}</span>
-                            <span className="text-[11px] font-mono font-bold text-emerald-600">+{h.returnPct.toFixed(1)}%</span>
-                          </div>
-                        ))}
-                        {watchLosers.map((h: any) => (
-                          <div key={h.ticker} className="flex items-center justify-between">
-                            <span className="text-[11px] font-mono font-semibold text-gray-700">{h.ticker}</span>
-                            <span className="text-[11px] font-mono font-bold text-red-500">{h.returnPct.toFixed(1)}%</span>
+                            <span className={`text-[11px] font-mono font-bold ${h.returnPct >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                              {h.returnPct >= 0 ? '+' : ''}{h.returnPct.toFixed(1)}%
+                            </span>
                           </div>
                         ))}
                       </div>
@@ -684,16 +680,12 @@ export default async function DashboardPage() {
                     <div className="pt-2 border-t border-gray-100">
                       <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">vs Avg Price</div>
                       <div className="space-y-1">
-                        {portGainers.map((h: any) => (
+                        {[...portGainers, ...portLosers].map((h: any) => (
                           <div key={h.ticker} className="flex items-center justify-between">
                             <span className="text-[11px] font-mono font-semibold text-gray-700">{h.ticker}</span>
-                            <span className="text-[11px] font-mono font-bold text-emerald-600">+{h.returnPct.toFixed(1)}%</span>
-                          </div>
-                        ))}
-                        {portLosers.map((h: any) => (
-                          <div key={h.ticker} className="flex items-center justify-between">
-                            <span className="text-[11px] font-mono font-semibold text-gray-700">{h.ticker}</span>
-                            <span className="text-[11px] font-mono font-bold text-red-500">{h.returnPct.toFixed(1)}%</span>
+                            <span className={`text-[11px] font-mono font-bold ${h.returnPct >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                              {h.returnPct >= 0 ? '+' : ''}{h.returnPct.toFixed(1)}%
+                            </span>
                           </div>
                         ))}
                       </div>
