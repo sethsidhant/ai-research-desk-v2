@@ -182,10 +182,17 @@ function formatHeadlines(filings, etNews, googleNews) {
 async function main() {
   console.log("Starting News Agent V2...\n");
 
-  // Only fetch news for watchlisted stocks to avoid unnecessary API calls
-  const { data: watchlisted } = await supabase.from("user_stocks").select("stock_id");
-  const watchlistIds = [...new Set((watchlisted ?? []).map(r => r.stock_id))];
-  if (watchlistIds.length === 0) { console.log("No watchlisted stocks found."); return; }
+  // Fetch news for all tracked stocks — watchlist + portfolio
+  const [{ data: watchlisted }, { data: portfolio }] = await Promise.all([
+    supabase.from("user_stocks").select("stock_id"),
+    supabase.from("portfolio_holdings").select("stock_id"),
+  ]);
+  const trackedIds = [...new Set([
+    ...(watchlisted ?? []).map(r => r.stock_id),
+    ...(portfolio  ?? []).map(r => r.stock_id),
+  ])];
+  if (trackedIds.length === 0) { console.log("No tracked stocks found."); return; }
+  const watchlistIds = trackedIds; // reuse variable name for rest of function
 
   const { data: stocks, error } = await supabase
     .from("stocks")
@@ -194,7 +201,7 @@ async function main() {
     .order("ticker");
 
   if (error) { console.error("DB error:", error.message); process.exit(1); }
-  console.log(`Processing ${stocks.length} watchlisted stocks...\n`);
+  console.log(`Processing ${stocks.length} tracked stocks (watchlist + portfolio)...\n`);
 
   for (let i = 0; i < stocks.length; i++) {
     const { id, ticker, stock_name, bse_code } = stocks[i];
