@@ -106,9 +106,28 @@ function BriefModal({
   )
 }
 
+const COOLDOWN_MS = 2 * 60 * 60 * 1000 // 2 hours
+
+function cacheKey(type: string) { return `noesis_brief_${type}` }
+
+function loadCache(type: string): { brief: string; ts: number } | null {
+  try {
+    const raw = sessionStorage.getItem(cacheKey(type))
+    if (!raw) return null
+    const data = JSON.parse(raw)
+    if (Date.now() - data.ts > COOLDOWN_MS) { sessionStorage.removeItem(cacheKey(type)); return null }
+    return data
+  } catch { return null }
+}
+
+function saveCache(type: string, brief: string) {
+  try { sessionStorage.setItem(cacheKey(type), JSON.stringify({ brief, ts: Date.now() })) } catch { /* ignore */ }
+}
+
 export default function AiBriefButton({ items, type, title }: { items: Item[]; type: 'trump' | 'macro'; title: string }) {
-  const [state, setState] = useState<'idle' | 'loading' | 'done'>('idle')
-  const [brief, setBrief] = useState<string | null>(null)
+  const cached = typeof window !== 'undefined' ? loadCache(type) : null
+  const [state, setState] = useState<'idle' | 'loading' | 'done'>(cached ? 'done' : 'idle')
+  const [brief, setBrief] = useState<string | null>(cached?.brief ?? null)
   const [open, setOpen]   = useState(false)
 
   async function generate() {
@@ -121,7 +140,9 @@ export default function AiBriefButton({ items, type, title }: { items: Item[]; t
         body: JSON.stringify({ type, items }),
       })
       const json = await res.json()
-      setBrief(json.brief ?? 'Could not generate brief.')
+      const text = json.brief ?? 'Could not generate brief.'
+      saveCache(type, text)
+      setBrief(text)
       setState('done')
       setOpen(true)
     } catch {
