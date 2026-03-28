@@ -85,10 +85,10 @@ export default function Sidebar({ userEmail, isAdmin, open = true, onClose }: Si
                 className="font-display font-bold leading-none"
                 style={{ fontSize: '1.15rem', color: '#ffffff', letterSpacing: '-0.03em' }}
               >
-                Artha
+                Noesis
               </div>
               <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.35)', letterSpacing: '0.12em', textTransform: 'uppercase', marginTop: '2px' }}>
-                Research Desk
+                Know before you trade
               </div>
             </div>
           </div>

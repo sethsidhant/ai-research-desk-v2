@@ -56,7 +56,7 @@ export default function AppShell({ children, userEmail, isAdmin }: AppShellProps
               className="font-display font-bold"
               style={{ fontSize: '1rem', color: 'var(--artha-text)', letterSpacing: '-0.03em' }}
             >
-              Artha
+              Noesis
             </span>
           </div>
         </div>

@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Artha — Research Desk",
-  description: "Institutional-grade equity research platform",
+  title: "Noesis — Know before you trade.",
+  description: "Know before you trade.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

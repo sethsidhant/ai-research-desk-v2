@@ -70,8 +70,8 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-950">
       <div className="w-full max-w-sm p-8 bg-gray-900 rounded-2xl shadow-xl">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold text-white" style={{ fontFamily: 'Manrope, sans-serif', letterSpacing: '-0.04em' }}>Artha</h1>
-          <p className="text-gray-500 text-xs mt-0.5" style={{ fontFamily: 'Manrope, sans-serif' }}>Research Desk</p>
+          <h1 className="text-3xl font-bold text-white" style={{ fontFamily: 'Manrope, sans-serif', letterSpacing: '-0.04em' }}>Noesis</h1>
+          <p className="text-gray-500 text-xs mt-0.5" style={{ fontFamily: 'Manrope, sans-serif' }}>Know before you trade.</p>
         </div>
         <p className="text-gray-400 text-sm mb-6">Sign in to your account</p>
         <form onSubmit={handleLogin} className="space-y-4">
