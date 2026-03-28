@@ -675,7 +675,7 @@ export default async function DashboardPage() {
                 <div className="flex items-center justify-between mb-4">
                   <div className="artha-label">🇺🇸 Trump Watch</div>
                   {(trumpAlertRows ?? []).length > 0 && (
-                    <AiBriefButton items={trumpAlertRows ?? []} type="trump" />
+                    <AiBriefButton items={trumpAlertRows ?? []} type="trump" title="Trump Watch" />
                   )}
                 </div>
                 {(trumpAlertRows ?? []).length === 0 ? (
@@ -700,7 +700,7 @@ export default async function DashboardPage() {
                 <div className="flex items-center justify-between mb-4">
                   <div className="artha-label">📰 Macro News</div>
                   {(marketAlertRows ?? []).length > 0 && (
-                    <AiBriefButton items={marketAlertRows ?? []} type="macro" />
+                    <AiBriefButton items={marketAlertRows ?? []} type="macro" title="Macro News" />
                   )}
                 </div>
                 {(marketAlertRows ?? []).length === 0 ? (
