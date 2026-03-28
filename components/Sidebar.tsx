@@ -59,12 +59,11 @@ export default function Sidebar({ userEmail, isAdmin, open = true, onClose }: Si
       )}
 
       <aside
-        className="fixed inset-y-0 left-0 z-50 flex flex-col transition-transform duration-300 ease-in-out md:translate-x-0"
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col transition-transform duration-300 ease-in-out md:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}
         style={{
           width: '240px',
           background: 'linear-gradient(180deg, #0f2133 0%, #0b1c2e 60%, #091624 100%)',
           borderRight: '1px solid rgba(255,255,255,0.04)',
-          transform: open ? 'translateX(0)' : 'translateX(-240px)',
         }}
       >
         {/* ── Brand ───────────────────────────────────────────────────────── */}
