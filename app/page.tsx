@@ -7,6 +7,7 @@ import MarketStatusLight from '@/components/MarketStatusLight'
 import AppShell from '@/components/AppShell'
 import { INDUSTRY_TO_FII_SECTOR } from '@/lib/fiiSectorMap'
 import { WatchlistTodayGain, PortfolioTodayGain } from '@/components/DashboardTodayGain'
+import AiBriefButton from '@/components/AiBriefButton'
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -568,7 +569,7 @@ export default async function DashboardPage() {
             {/* News feed */}
             <div className="artha-card px-5 py-5">
               <div className="flex items-center justify-between mb-4">
-                <div className="artha-label">Recent News</div>
+                <div className="artha-label">Recent BSE Filings</div>
                 <div className="text-xs" style={{ color: 'var(--artha-text-faint)' }}>Last 48 hours</div>
               </div>
               {newsItems.length === 0 ? (
@@ -671,7 +672,12 @@ export default async function DashboardPage() {
             {/* Macro alerts: Trump + Markets */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               <div className="artha-card px-5 py-5">
-                <div className="artha-label mb-4">🇺🇸 Trump Watch</div>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="artha-label">🇺🇸 Trump Watch</div>
+                  {(trumpAlertRows ?? []).length > 0 && (
+                    <AiBriefButton items={trumpAlertRows ?? []} type="trump" />
+                  )}
+                </div>
                 {(trumpAlertRows ?? []).length === 0 ? (
                   <p className="text-sm" style={{ color: 'var(--artha-text-muted)' }}>No market-relevant posts this week.</p>
                 ) : (
@@ -691,7 +697,12 @@ export default async function DashboardPage() {
               </div>
 
               <div className="artha-card px-5 py-5">
-                <div className="artha-label mb-4">📰 Macro</div>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="artha-label">📰 Macro News</div>
+                  {(marketAlertRows ?? []).length > 0 && (
+                    <AiBriefButton items={marketAlertRows ?? []} type="macro" />
+                  )}
+                </div>
                 {(marketAlertRows ?? []).length === 0 ? (
                   <p className="text-sm" style={{ color: 'var(--artha-text-muted)' }}>No macro news this week.</p>
                 ) : (
