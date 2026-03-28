@@ -78,10 +78,13 @@ async function main() {
 
   const { data: stocks } = await supabase
     .from('stocks')
-    .select('id, ticker, stock_name, current_price, fundamentals_updated_at, stock_pe')
+    .select('id, ticker, stock_name, current_price, fundamentals_updated_at, stock_pe, mc_scid, analyst_rating, mc_earnings_json')
     .in('id', allStockIds);
 
   const stockList = stocks ?? [];
+  // ETFs/funds have no PE and no Screener fundamentals — exclude from PE-based checks
+  const etfList   = stockList.filter(s => s.fundamentals_updated_at && s.stock_pe == null);
+  const equityList = stockList.filter(s => !etfList.find(e => e.id === s.id));
 
   // ── 2. Stale price check ─────────────────────────────────────────────────
   const stalePrice = stockList.filter(s => {
@@ -95,20 +98,21 @@ async function main() {
     detail: `${stockList.length} stocks tracked`,
   });
 
-  // ── 3. Missing fundamentals ──────────────────────────────────────────────
-  const missingFundamentals = stockList.filter(s => !s.fundamentals_updated_at);
-  const staleFundamentals   = stockList.filter(s => {
+  // ── 3. Missing fundamentals (equity only — ETFs have no Screener data) ──
+  const missingFundamentals = equityList.filter(s => !s.fundamentals_updated_at);
+  const staleFundamentals   = equityList.filter(s => {
     if (!s.fundamentals_updated_at) return false;
     return new Date(s.fundamentals_updated_at) < new Date(last30);
   });
+  const etfNote = etfList.length > 0 ? ` (${etfList.length} ETF/fund excluded: ${etfList.map(s => s.ticker).join(', ')})` : '';
   checks.push({
     name:   'Fundamentals Coverage',
     ok:     missingFundamentals.length === 0,
     detail: missingFundamentals.length > 0
-      ? `⚠️ ${missingFundamentals.length} stocks missing: ${missingFundamentals.map(s => s.ticker).join(', ')}`
-      : `✅ All ${stockList.length} stocks have fundamentals`,
+      ? `⚠️ ${missingFundamentals.length} equities missing: ${missingFundamentals.map(s => s.ticker).join(', ')}${etfNote}`
+      : `✅ All ${equityList.length} equities have fundamentals${etfNote}`,
     warning: staleFundamentals.length > 0
-      ? `${staleFundamentals.length} stocks not refreshed in 30d: ${staleFundamentals.map(s => s.ticker).join(', ')}`
+      ? `${staleFundamentals.length} equities not refreshed in 30d: ${staleFundamentals.map(s => s.ticker).join(', ')}`
       : null,
   });
 
@@ -171,23 +175,39 @@ async function main() {
 
   // ── 7. MF SEBI data lag ──────────────────────────────────────────────────
   const { data: mfRow } = await supabase
-    .from('mf_sebi_monthly')
-    .select('month')
-    .order('month', { ascending: false })
+    .from('mf_sebi_daily')
+    .select('date')
+    .order('date', { ascending: false })
     .limit(1)
     .single();
 
-  const mfMonth    = mfRow?.month;
-  const mfAgeDays  = mfMonth ? Math.floor((Date.now() - new Date(mfMonth).getTime()) / 86400000) : 999;
+  const mfDate     = mfRow?.date;
+  const mfAgeDays  = mfDate ? Math.floor((Date.now() - new Date(mfDate).getTime()) / 86400000) : 999;
   checks.push({
     name:   'MF SEBI Data',
-    ok:     mfAgeDays <= 45, // Monthly data, allow up to 45 days
-    detail: mfMonth ? `Latest: ${mfMonth} (${mfAgeDays}d ago)` : '⚠️ No MF data found',
+    ok:     mfAgeDays <= 5, // Daily data — flag if older than 5 days
+    detail: mfDate ? `Latest: ${mfDate} (${mfAgeDays}d ago)` : '⚠️ No MF data found',
   });
 
-  // ── 8. Screener spot-check — 5 random stocks ─────────────────────────────
-  const sampleSize = Math.min(5, stockList.length);
-  const sample = stockList
+  // ── 8. MC Analyst Coverage ───────────────────────────────────────────────
+  const mcNoScid    = equityList.filter(s => !s.mc_scid);
+  const mcNoAnalyst = equityList.filter(s => s.mc_scid && !s.analyst_rating);
+  const mcCovered   = equityList.filter(s => s.mc_scid && s.analyst_rating);
+  const mcGapNote   = [
+    mcNoScid.length    > 0 ? `no scId: ${mcNoScid.map(s => s.ticker).join(', ')}` : null,
+    mcNoAnalyst.length > 0 ? `scId set, awaiting data: ${mcNoAnalyst.map(s => s.ticker).join(', ')}` : null,
+  ].filter(Boolean).join(' · ');
+  checks.push({
+    name:   'MC Analyst Coverage',
+    ok:     mcNoScid.length === 0 && mcNoAnalyst.length === 0,
+    detail: mcGapNote
+      ? `⚠️ ${mcCovered.length}/${equityList.length} covered · ${mcGapNote}`
+      : `✅ ${mcCovered.length}/${equityList.length} equities have analyst data`,
+  });
+
+  // ── 9. Screener spot-check — 5 random equities ───────────────────────────
+  const sampleSize = Math.min(5, equityList.length);
+  const sample = equityList
     .filter(s => s.current_price)
     .sort(() => Math.random() - 0.5)
     .slice(0, sampleSize);
@@ -197,6 +217,7 @@ async function main() {
     const nsePrice = await fetchNsePrice(s.ticker);
     if (nsePrice == null) {
       spotCheckResults.push({ ticker: s.ticker, db: s.current_price, live: null, ok: true, note: 'NSE unavailable' });
+      console.log(`[spotCheck] ${s.ticker}: NSE unavailable`);
       continue;
     }
     const deviation = Math.abs((s.current_price - nsePrice) / nsePrice) * 100;
@@ -211,13 +232,18 @@ async function main() {
     console.log(`[spotCheck] ${s.ticker}: DB ₹${s.current_price} vs NSE ₹${nsePrice} — ${deviation.toFixed(1)}% ${ok ? '✅' : '⚠️'}`);
   }
 
-  const spotFailed = spotCheckResults.filter(r => !r.ok);
+  const spotFailed  = spotCheckResults.filter(r => !r.ok);
+  const spotChecked = spotCheckResults.filter(r => r.live != null);
+  // Build per-stock lines for the report
+  const spotLines = spotChecked.map(r =>
+    `${r.ok ? '✅' : '⚠️'} ${r.ticker}: DB ₹${r.db} vs NSE ₹${r.live} (${r.deviation}%)`
+  );
   checks.push({
     name:   'Price Spot-Check vs NSE',
     ok:     spotFailed.length === 0,
-    detail: spotFailed.length > 0
-      ? `⚠️ ${spotFailed.length} price(s) deviated >5%: ${spotFailed.map(r => `${r.ticker} (${r.deviation}%)`).join(', ')}`
-      : `✅ ${spotCheckResults.filter(r => r.live != null).length} checked, all within 5%`,
+    detail: spotChecked.length === 0
+      ? 'NSE unavailable for all sampled stocks'
+      : spotLines.join('\n    '),
   });
 
   // ── Build report ──────────────────────────────────────────────────────────
@@ -252,7 +278,8 @@ async function main() {
     '',
     ...checks.map(c => `${c.ok ? '✅' : '⚠️'} *${c.name}*\n    ${c.detail}${c.warning ? '\n    ℹ️ ' + c.warning : ''}`),
     '',
-    `_${stockList.length} stocks · ${checks.length} checks · every 2 days_`,
+    `_${equityList.length} equities + ${etfList.length} ETFs · ${checks.length} checks · every 2 days_\n` +
+    (mcNoScid.length > 0 ? `⚠️ ${mcNoScid.length} stock(s) need MC scId: run \`node setScids.js TICKER SCID\`` : ''),
   ];
 
   await sendTelegram(lines.join('\n'));

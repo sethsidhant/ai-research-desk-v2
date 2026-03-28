@@ -8,20 +8,19 @@
 //   - stock_pe = livePrice / stored_eps
 //   - RSI + DMA technicals from Kite
 //   - Returns (6m, 1y) from Kite
-//   - Claude composite score
+//   - Deterministic composite score (scoreStock.js — no AI, free at scale)
 //   - Upsert daily_scores + insert daily_history (no OHLC/volume/returns stored)
 
 require("dotenv").config({ path: "../.env.local" });
-const Anthropic    = require("@anthropic-ai/sdk");
 const { execSync } = require("child_process");
 const fs           = require("fs");
 const path         = require("path");
 const { getTechnicals, getReturns, NIFTY50_TOKEN, NIFTY500_TOKEN } = require("./technicalService");
 const { getWatchlistedStocks, upsertStock, upsertDailyScore, insertHistory, closePool, logApiUsage, upsertIndexHistory } = require("./pgHelper");
-const { fetchMCData } = require("./fetchMCData");
+const { fetchMCData }  = require("./fetchMCData");
+const { scoreStock }   = require("./scoreStock");
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const sleep     = ms => new Promise(r => setTimeout(r, ms));
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -204,40 +203,21 @@ async function runDailyScoring() {
 
       console.log(`  PE: ${stockPE ?? "N/A"} | IndPE: ${industryPE ?? "N/A"} | Dev: ${peDeviation ?? "N/A"}% | RSI: ${tech?.rsi ?? "N/A"}`);
 
-      // Claude scoring — uses STORED fundamentals (roe, roce, debt_to_equity, etc.)
-      const prompt = `You are a senior Indian equity research analyst.
-
-Stock: ${stock_name} (${ticker})
-Industry: ${stock.industry ?? "N/A"}
-
-VALUATION:
-- Stock PE: ${stockPE ?? "N/A"} | Industry PE: ${industryPE ?? "N/A"} | PE Deviation: ${peDeviation != null ? peDeviation.toFixed(1) + "%" : "N/A"}
-- P/B: ${stock.pb ?? "N/A"} | EPS: ${stock.eps ?? "N/A"}
-
-QUALITY:
-- ROE: ${stock.roe ?? "N/A"}% | ROCE: ${stock.roce ?? "N/A"}% | D/E: ${stock.debt_to_equity ?? "N/A"}
-- Interest Coverage: ${stock.interest_coverage ?? "N/A"}x | Current Ratio: ${stock.current_ratio ?? "N/A"}
-
-GROWTH:
-- Revenue 3Y CAGR: ${stock.revenue_growth_3y ?? "N/A"}% | Profit 3Y CAGR: ${stock.profit_growth_3y ?? "N/A"}%
-
-OWNERSHIP:
-- Promoter: ${stock.promoter_holding ?? "N/A"}% | Pledged: ${stock.pledged_pct ?? "N/A"}% | FII: ${stock.fii_holding ?? "N/A"}%
-
-TECHNICALS:
-- RSI: ${tech?.rsi ?? "N/A"} | 50DMA: ${tech?.dma50Value ?? "N/A"} (${tech ? (tech.above50DMA ? "ABOVE" : "BELOW") : "N/A"}) | 200DMA: ${tech?.dma200Value ?? "N/A"} (${tech ? (tech.above200DMA ? "ABOVE" : "BELOW") : "N/A"})
-
-Return ONLY valid JSON:
-{"composite_score":<1-10>,"classification":"<Undervalued|Fairly Valued|Overvalued|High Quality|Speculative>","suggested_action":"<Strong Buy|Buy|Accumulate|Hold|Reduce|Avoid>"}`;
-
-      const response = await anthropic.messages.create({
-        model: "claude-sonnet-4-6", max_tokens: 150, temperature: 0.2,
-        messages: [{ role: "user", content: prompt }],
+      // Deterministic scoring — free at any scale
+      const result = scoreStock({
+        stock_pe:          stockPE,
+        industry_pe:       industryPE,
+        roe:               stock.roe,
+        roce:              stock.roce,
+        debt_to_equity:    stock.debt_to_equity,
+        revenue_growth_3y: stock.revenue_growth_3y,
+        profit_growth_3y:  stock.profit_growth_3y,
+        promoter_holding:  stock.promoter_holding,
+        pledged_pct:       stock.pledged_pct,
+        rsi:               tech?.rsi ?? null,
+        above50DMA:        tech?.above50DMA ?? null,
+        above200DMA:       tech?.above200DMA ?? null,
       });
-      await logApiUsage('engine', ticker, response.usage.input_tokens, response.usage.output_tokens);
-      const m = response.content[0].text.match(/\{[\s\S]*\}/);
-      if (!m) { console.log("  Invalid JSON from Claude — skipping"); continue; }
-      const result = JSON.parse(m[0]);
 
       // Upsert daily_scores (keep 6m/1y for dashboard display)
       await upsertDailyScore(stockId, todayStr, {

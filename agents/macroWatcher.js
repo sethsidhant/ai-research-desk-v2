@@ -208,7 +208,7 @@ async function processSource(source) {
           summary,
           original_len: item.text.length,
           post_id:      item.guid,
-          created_at:   item.pubDate ? new Date(item.pubDate).toISOString() : new Date().toISOString(),
+          created_at:   new Date().toISOString(),
         });
 
         if (error) {

@@ -1,23 +1,23 @@
 // onboardStock.js — Full pipeline for a single stock when first added to a watchlist.
-// Steps: 1) Fundamentals + Kite technicals + Claude score
+// Steps: 1) Fundamentals + Kite technicals + deterministic score
 //        2) BSE filings + ET news
-//        3) AI research summary
+//        3) AI research summary (Haiku)
 // Usage: node onboardStock.js TICKER
 
 require("dotenv").config({ path: "../.env.local" });
-const Anthropic    = require("@anthropic-ai/sdk");
 const { execSync } = require("child_process");
 const RSSParser    = require("rss-parser");
 const axios        = require("axios");
 const { getTechnicals, getReturns, NIFTY50_TOKEN, setKiteToken } = require("./technicalService");
 const { upsertStock, upsertDailyScore, insertHistory, logApiUsage } = require("./pgHelper");
 const { createClient } = require("@supabase/supabase-js");
-const { fetchMCData } = require("./fetchMCData");
+const { fetchMCData }  = require("./fetchMCData");
+const { scoreStock }   = require("./scoreStock");
 
 const ticker = process.argv[2];
 if (!ticker) { console.error("Usage: node onboardStock.js TICKER"); process.exit(1); }
 
-const anthropic  = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const supabase   = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY,
@@ -127,21 +127,21 @@ async function runFundamentals(stock) {
     getReturns(NIFTY50_TOKEN),
   ]);
 
-  const prompt = `You are a senior Indian equity research analyst.
-Stock: ${stock.stock_name} (${ticker})
-PE: ${f.pe ?? "N/A"} | Industry PE: ${industryPE ?? "N/A"} | PE Dev: ${peDeviation != null ? peDeviation.toFixed(1) + "%" : "N/A"}
-ROE: ${f.roe ?? "N/A"}% | ROCE: ${f.roce ?? "N/A"}% | D/E: ${f.debt_to_equity ?? "N/A"}
-RSI: ${tech?.rsi ?? "N/A"} | 50DMA: ${tech?.dma50Value ?? "N/A"} | 200DMA: ${tech?.dma200Value ?? "N/A"}
-Return ONLY valid JSON: {"composite_score":<1-10>,"classification":"<Undervalued|Fairly Valued|Overvalued|High Quality|Speculative>","suggested_action":"<Strong Buy|Buy|Accumulate|Hold|Reduce|Avoid>"}`;
-
-  const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-6", max_tokens: 150, temperature: 0.2,
-    messages: [{ role: "user", content: prompt }],
+  // Deterministic scoring — no AI call
+  const result = scoreStock({
+    stock_pe:          f.pe,
+    industry_pe:       industryPE,
+    roe:               f.roe,
+    roce:              f.roce,
+    debt_to_equity:    f.debt_to_equity,
+    revenue_growth_3y: f.revenue_growth_3y,
+    profit_growth_3y:  f.profit_growth_3y,
+    promoter_holding:  f.promoter_holding,
+    pledged_pct:       f.pledged_pct,
+    rsi:               tech?.rsi ?? null,
+    above50DMA:        tech?.above50DMA ?? null,
+    above200DMA:       tech?.above200DMA ?? null,
   });
-  await logApiUsage('onboard_score', ticker, response.usage.input_tokens, response.usage.output_tokens);
-  const m = response.content[0].text.match(/\{[\s\S]*\}/);
-  if (!m) { console.log("  Invalid JSON from Claude"); return false; }
-  const result = JSON.parse(m[0]);
 
   const todayStr = new Date().toISOString().slice(0, 10);
   await upsertDailyScore(stock.id, todayStr, {
@@ -398,10 +398,13 @@ Guidelines:
   let attempt = 0;
   while (attempt < 3) {
     try {
-      const response = await anthropic.messages.create({
-        model: "claude-sonnet-4-6", max_tokens: 550,
-        messages: [{ role: "user", content: prompt }],
+      const apiRes = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 550, messages: [{ role: 'user', content: prompt }] }),
       });
+      const aiJson   = await apiRes.json();
+      const response = { content: aiJson.content, usage: aiJson.usage ?? { input_tokens: 0, output_tokens: 0 } };
       await logApiUsage('onboard_summary', ticker, response.usage.input_tokens, response.usage.output_tokens);
       const summary = response.content[0].text;
       const today   = new Date().toISOString().split("T")[0];

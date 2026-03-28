@@ -3,16 +3,15 @@
 // Called by /api/run-stock/[ticker] when a user adds a stock.
 
 require("dotenv").config({ path: "../.env.local" });
-const Anthropic    = require("@anthropic-ai/sdk");
 const { execSync } = require("child_process");
 const { getTechnicals, getReturns, NIFTY50_TOKEN, NIFTY500_TOKEN, setKiteToken } = require("./technicalService");
 const { upsertStock, upsertDailyScore, insertHistory } = require("./pgHelper");
+const { scoreStock } = require("./scoreStock");
 const { createClient } = require("@supabase/supabase-js");
 
 const ticker = process.argv[2];
 if (!ticker) { console.error("Usage: node runOneStock.js TICKER"); process.exit(1); }
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const supabase  = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY,
@@ -125,21 +124,21 @@ async function main() {
     getReturns(NIFTY500_TOKEN),
   ]);
 
-  // 7. Claude scoring
-  const prompt = `You are a senior Indian equity research analyst.
-Stock: ${stock.stock_name} (${ticker})
-PE: ${f.pe ?? "N/A"} | Industry PE: ${industryPE ?? "N/A"} | PE Dev: ${peDeviation != null ? peDeviation.toFixed(1) + "%" : "N/A"}
-ROE: ${f.roe ?? "N/A"}% | ROCE: ${f.roce ?? "N/A"}% | D/E: ${f.debt_to_equity ?? "N/A"}
-RSI: ${tech?.rsi ?? "N/A"} | 50DMA: ${tech?.dma50Value ?? "N/A"} | 200DMA: ${tech?.dma200Value ?? "N/A"}
-Return ONLY valid JSON: {"composite_score":<1-10>,"classification":"<Undervalued|Fairly Valued|Overvalued|High Quality|Speculative>","suggested_action":"<Strong Buy|Buy|Accumulate|Hold|Reduce|Avoid>"}`;
-
-  const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-6", max_tokens: 150, temperature: 0.2,
-    messages: [{ role: "user", content: prompt }],
+  // 7. Deterministic scoring
+  const result = scoreStock({
+    stock_pe:          f.pe,
+    industry_pe:       industryPE,
+    roe:               f.roe,
+    roce:              f.roce,
+    debt_to_equity:    f.debt_to_equity,
+    revenue_growth_3y: f.revenue_growth_3y,
+    profit_growth_3y:  f.profit_growth_3y,
+    promoter_holding:  f.promoter_holding,
+    pledged_pct:       f.pledged_pct,
+    rsi:               tech?.rsi ?? null,
+    above50DMA:        tech?.above50DMA ?? null,
+    above200DMA:       tech?.above200DMA ?? null,
   });
-  const jsonMatch = response.content[0].text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) { console.log("Invalid JSON from Claude"); process.exit(1); }
-  const result = JSON.parse(jsonMatch[0]);
 
   // 8. Write scores + history
   await upsertDailyScore(stock.id, todayStr, {

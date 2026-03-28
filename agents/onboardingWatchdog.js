@@ -65,26 +65,18 @@ async function main() {
 
   const { data: stocks } = await supabase
     .from('stocks')
-    .select('id, ticker, fundamentals_updated_at')
+    .select('id, ticker, fundamentals_updated_at, stock_pe, mc_scid, analyst_rating, mc_earnings_json')
     .in('id', allStockIds);
 
-  const pending = (stocks ?? []).filter(s => !s.fundamentals_updated_at);
+  const stockList  = stocks ?? [];
+  // ETFs have no PE — exclude from MC analyst checks (they have no MC page)
+  const etfList    = stockList.filter(s => s.fundamentals_updated_at && s.stock_pe == null);
+  const equityList = stockList.filter(s => !etfList.find(e => e.id === s.id));
+  const pending    = stockList.filter(s => !s.fundamentals_updated_at);
 
   console.log(`[onboardingWatchdog] ${allStockIds.length} tracked, ${pending.length} missing fundamentals`);
 
-  if (!pending.length) {
-    const summary = `All ${allStockIds.length} stocks have fundamentals`;
-    console.log(`✅ ${summary}`);
-    const { error: e1 } = await supabase.from('agent_reports').insert({
-      agent_name: 'onboarding_watchdog',
-      status: 'ok',
-      summary,
-      report: { total: allStockIds.length, pending: [] },
-    });
-    if (e1) console.error('[onboardingWatchdog] agent_reports insert failed:', e1.message);
-    return;
-  }
-
+  // ── Onboarding section ───────────────────────────────────────────────────
   const onboarded = [];
   const failed    = [];
 
@@ -95,19 +87,37 @@ async function main() {
     else    failed.push(stock.ticker);
   }
 
-  const status  = failed.length > 0 ? (onboarded.length > 0 ? 'warning' : 'error') : 'ok';
-  const summary = `Onboarded: ${onboarded.length} · Failed: ${failed.length} (of ${pending.length} pending)`;
+  const onboardStatus  = failed.length > 0 ? (onboarded.length > 0 ? 'warning' : 'error') : 'ok';
+  const onboardSummary = pending.length === 0
+    ? `All ${allStockIds.length} stocks have fundamentals`
+    : `Onboarded: ${onboarded.length} · Failed: ${failed.length} (of ${pending.length} pending)`;
 
-  console.log(`[onboardingWatchdog] ${summary}`);
+  console.log(`[onboardingWatchdog] ${onboardSummary}`);
 
+  // ── MC scId + analyst gap check ──────────────────────────────────────────
+  const missingScid    = equityList.filter(s => !s.mc_scid);
+  const missingAnalyst = equityList.filter(s => s.mc_scid && !s.analyst_rating);
+  const missingEarnings = equityList.filter(s => s.mc_scid && !s.mc_earnings_json);
+
+  console.log(`[onboardingWatchdog] MC gaps — no scId: ${missingScid.length}, no analyst data: ${missingAnalyst.length}`);
+
+  // ── Write agent_reports ──────────────────────────────────────────────────
   const { error: e2 } = await supabase.from('agent_reports').insert({
     agent_name: 'onboarding_watchdog',
-    status,
-    summary,
-    report: { total: allStockIds.length, onboarded, failed },
+    status:     onboardStatus,
+    summary:    onboardSummary,
+    report: {
+      total: allStockIds.length,
+      onboarded,
+      failed,
+      mc_missing_scid:     missingScid.map(s => s.ticker),
+      mc_missing_analyst:  missingAnalyst.map(s => s.ticker),
+      mc_missing_earnings: missingEarnings.map(s => s.ticker),
+    },
   });
   if (e2) console.error('[onboardingWatchdog] agent_reports insert failed:', e2.message);
 
+  // ── Telegram alerts ──────────────────────────────────────────────────────
   if (onboarded.length > 0) {
     await sendTelegram(
       `🔍 *Onboarding Watchdog*\n\n` +
@@ -117,6 +127,26 @@ async function main() {
   }
   if (failed.length > 0 && onboarded.length === 0) {
     await sendTelegram(`🔴 *Onboarding Watchdog FAILED*\n\nFailed: ${failed.join(', ')}`);
+  }
+
+  // Report MC gaps every day so you don't forget
+  if (missingScid.length > 0 || missingAnalyst.length > 0) {
+    const lines = [`📊 *MC Data Gaps*\n`];
+    if (missingScid.length > 0) {
+      lines.push(`⚠️ *No scId set* (${missingScid.length}) — analyst + earnings data missing:`);
+      lines.push(`  ${missingScid.map(s => s.ticker).join(', ')}`);
+      lines.push(`  ➡️ Run: \`node setScids.js TICKER SCID\``);
+    }
+    if (missingAnalyst.length > 0) {
+      lines.push(`\n⚠️ *scId set but no analyst data* (${missingAnalyst.length}):`);
+      lines.push(`  ${missingAnalyst.map(s => s.ticker).join(', ')}`);
+      lines.push(`  ➡️ Will auto-fill on Saturday engine run`);
+    }
+    if (missingEarnings.length > 0) {
+      lines.push(`\n⚠️ *Missing earnings forecast* (${missingEarnings.length}):`);
+      lines.push(`  ${missingEarnings.map(s => s.ticker).join(', ')}`);
+    }
+    await sendTelegram(lines.join('\n'));
   }
 }
 
