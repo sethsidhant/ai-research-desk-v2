@@ -1,26 +1,128 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap');
 @import "tailwindcss";
 
+/* ── Artha Design Tokens ─────────────────────────────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Brand */
+  --artha-navy:          #0b1c30;
+  --artha-navy-mid:      #122540;
+  --artha-navy-light:    #1a3354;
+  --artha-primary:       #003d9b;
+  --artha-primary-light: #0052cc;
+  --artha-teal:          #006a61;
+  --artha-teal-light:    #00897b;
+  --artha-teal-subtle:   #e6f4f2;
+
+  /* Surfaces — tonal layering, no hard borders */
+  --artha-surface:       #f8f9ff;
+  --artha-surface-low:   #eff4ff;
+  --artha-surface-mid:   #e5eeff;
+  --artha-card:          #ffffff;
+
+  /* Text */
+  --artha-text:          #0b1c30;
+  --artha-text-secondary:#434654;
+  --artha-text-muted:    #6b7380;
+  --artha-text-faint:    #9ca3af;
+
+  /* Signals */
+  --artha-positive:      #006a61;
+  --artha-positive-bg:   #e6f4f2;
+  --artha-negative:      #c0392b;
+  --artha-negative-bg:   #fef2f2;
+  --artha-warning:       #b45309;
+  --artha-warning-bg:    #fffbeb;
+
+  /* Shadows */
+  --artha-shadow-sm:     0 1px 3px rgba(11, 28, 48, 0.06), 0 1px 2px rgba(11, 28, 48, 0.04);
+  --artha-shadow-md:     0 4px 12px rgba(11, 28, 48, 0.08), 0 2px 4px rgba(11, 28, 48, 0.04);
+  --artha-shadow-lg:     0 12px 32px rgba(11, 28, 48, 0.10), 0 4px 8px rgba(11, 28, 48, 0.06);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+/* ── Base ────────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--artha-surface);
+  color: var(--artha-text);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 0.875rem;
+  line-height: 1.5;
 }
+
+h1, h2, h3, h4, h5, h6,
+.font-display {
+  font-family: 'Manrope', system-ui, sans-serif;
+  letter-spacing: -0.02em;
+}
+
+/* ── Artha utility classes ───────────────────────────────────────────────── */
+
+/* Cards — lift without heavy shadow */
+.artha-card {
+  background: var(--artha-card);
+  border-radius: 0.875rem;
+  box-shadow: var(--artha-shadow-sm);
+}
+
+.artha-card-hover {
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+.artha-card-hover:hover {
+  box-shadow: var(--artha-shadow-md);
+  transform: translateY(-1px);
+}
+
+/* Tonal section separator — no border, just bg shift */
+.artha-section {
+  background: var(--artha-surface-low);
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
+/* KPI display numbers */
+.artha-kpi {
+  font-family: 'Manrope', sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+/* Positive / negative values */
+.artha-positive { color: var(--artha-positive); }
+.artha-negative { color: var(--artha-negative); }
+
+/* Badge chips */
+.artha-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.6rem;
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* Label style — uppercase micro labels */
+.artha-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--artha-text-muted);
+}
+
+/* Sidebar active glow line */
+.artha-nav-active {
+  background: rgba(0, 106, 97, 0.12);
+  border-left: 2.5px solid var(--artha-teal);
+  color: #4dd9cc;
+}
+
+/* Scrollbar — minimal */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(11, 28, 48, 0.15); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(11, 28, 48, 0.25); }

@@ -1,7 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import SignOutButton from '@/components/SignOutButton'
+import AppShell from '@/components/AppShell'
 import SettingsForm from './SettingsForm'
 
 const DEFAULT_PREFS = {
@@ -37,25 +36,21 @@ export default async function SettingsPage() {
   }
 
   const apiKeySet = !!(userSettings?.anthropic_api_key)
+  const isAdmin = user.email === process.env.ADMIN_EMAIL
 
   return (
-    <div className="min-h-screen bg-white">
-      <header className="border-b border-gray-200 px-6 py-4 flex items-center justify-between bg-white">
-        <div className="flex items-center gap-4">
-          <Link href="/" className="text-gray-500 hover:text-gray-900 text-sm transition-colors">
-            ← Dashboard
-          </Link>
-          <h1 className="text-xl font-bold text-gray-900">Settings</h1>
+    <AppShell userEmail={user.email!} isAdmin={isAdmin}>
+      <div className="px-6 py-5 max-w-screen-xl mx-auto">
+        <div className="mb-5">
+          <h1 className="font-display font-bold text-2xl" style={{ color: 'var(--artha-text)', letterSpacing: '-0.03em' }}>
+            Settings
+          </h1>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--artha-text-muted)' }}>Alert preferences &amp; account</p>
         </div>
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-gray-500">{user.email}</span>
-          <SignOutButton />
+        <div className="max-w-xl">
+          <SettingsForm prefs={prefs} apiKeySet={apiKeySet} />
         </div>
-      </header>
-
-      <main className="px-6 py-8 max-w-xl mx-auto">
-        <SettingsForm prefs={prefs} apiKeySet={apiKeySet} />
-      </main>
-    </div>
+      </div>
+    </AppShell>
   )
 }

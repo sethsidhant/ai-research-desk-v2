@@ -69,8 +69,11 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-950">
       <div className="w-full max-w-sm p-8 bg-gray-900 rounded-2xl shadow-xl">
-        <h1 className="text-2xl font-bold text-white mb-2">AI Research Desk</h1>
-        <p className="text-gray-400 text-sm mb-8">Sign in to your account</p>
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-white" style={{ fontFamily: 'Manrope, sans-serif', letterSpacing: '-0.04em' }}>Artha</h1>
+          <p className="text-gray-500 text-xs mt-0.5" style={{ fontFamily: 'Manrope, sans-serif' }}>Research Desk</p>
+        </div>
+        <p className="text-gray-400 text-sm mb-6">Sign in to your account</p>
         <form onSubmit={handleLogin} className="space-y-4">
           <input
             type="email" required placeholder="your@email.com" value={email}

@@ -338,11 +338,10 @@ export default function LivePriceTable({
         </div>
       )}
 
-      {/* FII Overview + Movers — side by side */}
-      {(fiiSectors.length > 0 || fiiDii || showMovers) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
-          {(fiiSectors.length > 0 || fiiDii) && <FIIOverviewCard sectors={fiiSectors} fiiDii={fiiDii} />}
-          {showMovers && <MoversStrip rows={rows} changes={changes} />}
+      {/* Movers */}
+      {showMovers && (
+        <div className="mb-6">
+          <MoversStrip rows={rows} changes={changes} />
         </div>
       )}
 

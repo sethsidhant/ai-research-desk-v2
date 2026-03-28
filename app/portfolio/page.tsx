@@ -2,8 +2,8 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import SignOutButton from '@/components/SignOutButton'
 import MarketIndicesBar from '@/components/MarketIndicesBar'
+import AppShell from '@/components/AppShell'
 import PortfolioChart, { type ChartPoint } from '@/components/PortfolioChart'
 import HoldingsTable, { type HoldingRow } from '@/components/HoldingsTable'
 import SectorAllocation from '@/components/SectorAllocation'
@@ -290,75 +290,38 @@ export default async function PortfolioPage() {
   const isAdmin = user.email === process.env.ADMIN_EMAIL
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* Header */}
-      <header className="border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4 bg-white">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-lg sm:text-xl font-bold text-gray-900">AI Research Desk</h1>
-            <p className="text-xs text-gray-400 mt-0.5 hidden sm:block">{today}</p>
-          </div>
-          <div className="flex items-center gap-2 sm:gap-4">
-            <span className="text-xs sm:text-sm text-gray-500 hidden sm:block">{user.email}</span>
-            {isAdmin && (
-              <Link href="/admin" className="text-xs sm:text-sm text-gray-500 hover:text-gray-900 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-gray-100">
-                Admin
-              </Link>
-            )}
-            <Link href="/market-pulse" className="text-xs sm:text-sm text-gray-500 hover:text-gray-900 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-gray-100">
-              Market Pulse
-            </Link>
-            <Link href="/" className="text-xs sm:text-sm text-gray-500 hover:text-gray-900 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-gray-100">
-              Overview
-            </Link>
-            <Link href="/watchlist" className="text-xs sm:text-sm text-gray-500 hover:text-gray-900 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-gray-100">
-              Watchlist
-            </Link>
-            <span className="text-xs sm:text-sm font-semibold text-gray-900 px-2 sm:px-3 py-1.5 rounded-lg bg-gray-100">
+    <AppShell userEmail={user.email!} isAdmin={isAdmin}>
+      <div className="px-6 py-5 max-w-screen-xl mx-auto">
+
+        {/* Page header */}
+        <div className="mb-5">
+          <div className="mb-2">
+            <h1 className="font-display font-bold text-2xl" style={{ color: 'var(--artha-text)', letterSpacing: '-0.03em' }}>
               Portfolio
-            </span>
-            <Link href="/settings" className="text-xs sm:text-sm text-gray-500 hover:text-gray-900 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-gray-100">
-              Settings
-            </Link>
-            <SignOutButton />
+            </h1>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--artha-text-muted)' }}>{today} · {rows.length} holdings</p>
           </div>
-        </div>
-        <div className="mt-2 sm:mt-3 overflow-x-auto">
           <MarketIndicesBar />
         </div>
-      </header>
-
-      <main className="px-3 sm:px-6 py-4 sm:py-8 max-w-screen-xl mx-auto">
-
-        {/* Page title */}
-        <div className="flex items-center gap-3 mb-6">
-          <h2 className="text-lg font-bold text-gray-900">Portfolio</h2>
-          <span className="text-sm text-gray-400">{rows.length} holdings</span>
-        </div>
-
 
         {/* Import strip */}
-        <div className="mb-6">
+        <div className="mb-5">
           <PortfolioImport />
         </div>
 
-        {/* Chart + Sector allocation side by side */}
+        {/* Chart + Sector allocation */}
         {(chartData.length >= 2 || rows.length > 0) && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
             {chartData.length >= 2 && (
-              <div className="lg:col-span-2 bg-white border border-gray-200 rounded-xl px-4 sm:px-6 py-4 shadow-sm">
-                <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Portfolio Return</div>
+              <div className="lg:col-span-2 artha-card px-5 py-4">
+                <div className="artha-label mb-3">Portfolio Return vs Nifty</div>
                 <PortfolioChart data={chartData} />
               </div>
             )}
             {rows.length > 0 && (
               <div className={chartData.length >= 2 ? '' : 'lg:col-span-3'}>
                 <SectorAllocation
-                  holdings={rows.map(r => ({
-                    industry:  r.industry,
-                    quantity:  r.quantity,
-                    avg_price: r.avg_price,
-                  }))}
+                  holdings={rows.map(r => ({ industry: r.industry, quantity: r.quantity, avg_price: r.avg_price }))}
                   fiiFlows={fiiFlowMap}
                 />
               </div>
@@ -369,21 +332,17 @@ export default async function PortfolioPage() {
         {/* Holdings table */}
         <HoldingsTable initialRows={rows} totalInvested={totalInvested} detailMap={detailMap} fiiFlows={fiiFlowMap} />
 
-        {/* Empty state */}
         {rows.length === 0 && (
           <div className="text-center py-20">
             <div className="text-4xl mb-4">📊</div>
-            <div className="text-base font-semibold text-gray-700 mb-2">No holdings yet</div>
-            <div className="text-sm text-gray-400 mb-6">
+            <div className="font-display font-semibold text-lg mb-2" style={{ color: 'var(--artha-text)' }}>No holdings yet</div>
+            <div className="text-sm mb-6" style={{ color: 'var(--artha-text-muted)' }}>
               Sync from Zerodha, upload a CSV, or add holdings manually above.
-            </div>
-            <div className="text-xs text-gray-300">
-              CSV format: <code className="bg-gray-50 px-2 py-0.5 rounded border border-gray-200 text-gray-500">Ticker,Quantity,AvgPrice,Broker</code>
             </div>
           </div>
         )}
-      </main>
-    </div>
+      </div>
+    </AppShell>
   )
 }
 

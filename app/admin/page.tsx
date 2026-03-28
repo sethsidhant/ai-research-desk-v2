@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
+import AppShell from '@/components/AppShell'
 import BudgetForm from '@/components/BudgetForm'
 import AdminActions from '@/components/AdminActions'
 import InfraCard from '@/components/InfraCard'
@@ -170,18 +170,17 @@ export default async function AdminPage() {
 
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="border-b border-gray-200 px-6 py-4 bg-white flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Admin Dashboard</h1>
-          <p className="text-xs text-gray-400 mt-0.5">Visible only to you</p>
-        </div>
-        <Link href="/" className="text-sm text-gray-500 hover:text-gray-900 px-3 py-1.5 rounded-lg hover:bg-gray-100">
-          ← Back to Dashboard
-        </Link>
-      </header>
+    <AppShell userEmail={user.email!} isAdmin={true}>
+      <div className="px-6 py-5 max-w-screen-xl mx-auto">
 
-      <main className="max-w-screen-xl mx-auto px-6 py-8 space-y-10">
+        <div className="mb-5">
+          <h1 className="font-display font-bold text-2xl" style={{ color: 'var(--artha-text)', letterSpacing: '-0.03em' }}>
+            Admin
+          </h1>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--artha-text-muted)' }}>Visible only to you</p>
+        </div>
+
+        <div className="space-y-10">
 
         {/* ── Users ─────────────────────────────────────────────── */}
         <section>
@@ -473,8 +472,9 @@ export default async function AdminPage() {
           </div>
         </section>
 
-      </main>
-    </div>
+        </div>
+      </div>
+    </AppShell>
   )
 }
 

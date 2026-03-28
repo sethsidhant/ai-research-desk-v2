@@ -2,10 +2,10 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import SignOutButton from '@/components/SignOutButton'
 import LivePriceTable from '@/components/LivePriceTable'
 import MarketIndicesBar from '@/components/MarketIndicesBar'
 import QuickAddStock from '@/components/QuickAddStock'
+import AppShell from '@/components/AppShell'
 import { type ChartPoint } from '@/components/PortfolioChart'
 
 export default async function WatchlistPage() {
@@ -268,64 +268,32 @@ export default async function WatchlistPage() {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
   })
 
-  return (
-    <div className="min-h-screen bg-white">
-      {/* Header */}
-      <header className="border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4 bg-white">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-lg sm:text-xl font-bold text-gray-900">AI Research Desk</h1>
-            <p className="text-xs text-gray-400 mt-0.5 hidden sm:block">{today}</p>
-          </div>
-          <div className="flex items-center gap-2 sm:gap-4">
-            <span className="text-xs sm:text-sm text-gray-500 hidden sm:block">{user.email}</span>
-            {user.email === process.env.ADMIN_EMAIL && (
-              <Link href="/admin" className="text-xs sm:text-sm text-gray-500 hover:text-gray-900 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-gray-100">
-                Admin
-              </Link>
-            )}
-            <Link href="/market-pulse" className="text-xs sm:text-sm text-gray-500 hover:text-gray-900 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-gray-100">
-              Market Pulse
-            </Link>
-            <Link href="/" className="text-xs sm:text-sm text-gray-500 hover:text-gray-900 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-gray-100">
-              Overview
-            </Link>
-            <Link href="/portfolio" className="text-xs sm:text-sm text-gray-500 hover:text-gray-900 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-gray-100">
-              Portfolio
-            </Link>
-            <Link href="/settings" className="text-xs sm:text-sm text-gray-500 hover:text-gray-900 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-gray-100">
-              Settings
-            </Link>
-            <SignOutButton />
-          </div>
-        </div>
-        {/* Indices bar */}
-        <div className="mt-2 sm:mt-3 overflow-x-auto">
-          <MarketIndicesBar />
-        </div>
-      </header>
+  const isAdmin = user.email === process.env.ADMIN_EMAIL
 
-      {/* Main */}
-      <main className="px-3 sm:px-6 py-4 sm:py-8 max-w-screen-xl mx-auto">
-        {/* Watchlist header row */}
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <h2 className="text-lg font-bold text-gray-900">Watchlist Portfolio</h2>
-            <span className="text-sm text-gray-400">{rows.length} stocks</span>
+  return (
+    <AppShell userEmail={user.email!} isAdmin={isAdmin}>
+      <div className="px-6 py-5 max-w-screen-xl mx-auto">
+        {/* Page header */}
+        <div className="mb-5">
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <h1 className="font-display font-bold text-2xl" style={{ color: 'var(--artha-text)', letterSpacing: '-0.03em' }}>
+                Watchlist
+              </h1>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--artha-text-muted)' }}>{today} · {rows.length} stocks</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <QuickAddStock />
+              <Link href="/watchlist/manage" className="text-xs font-medium transition-colors hover:opacity-80" style={{ color: 'var(--artha-teal)' }}>
+                Manage alerts →
+              </Link>
+            </div>
           </div>
-          <div className="flex items-center gap-3">
-            <QuickAddStock />
-            <Link
-              href="/watchlist/manage"
-              className="text-xs text-gray-400 hover:text-gray-700 transition-colors"
-            >
-              Manage alerts →
-            </Link>
-          </div>
+          <MarketIndicesBar />
         </div>
 
         <LivePriceTable initialRows={rows} chartData={chartData} fiiSectors={fiiSectors} fiiDii={fiiDiiRow} />
-      </main>
-    </div>
+      </div>
+    </AppShell>
   )
 }

@@ -2,8 +2,9 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import SignOutButton from '@/components/SignOutButton'
 import MarketIndicesBar from '@/components/MarketIndicesBar'
+import MarketStatusLight from '@/components/MarketStatusLight'
+import AppShell from '@/components/AppShell'
 import { INDUSTRY_TO_FII_SECTOR } from '@/lib/fiiSectorMap'
 import { WatchlistTodayGain, PortfolioTodayGain } from '@/components/DashboardTodayGain'
 
@@ -61,7 +62,7 @@ export default async function DashboardPage() {
   // Full watchlist with industry + price data
   const { data: watchlist } = await supabase
     .from('user_stocks')
-    .select('stock_id, invested_amount, entry_price, stocks(ticker, industry, current_price, last_news_update, latest_headlines)')
+    .select('stock_id, invested_amount, entry_price, stocks(ticker, industry, current_price, high_52w, low_52w, last_news_update, latest_headlines)')
     .eq('user_id', user.id)
 
   const today_date = new Date().toISOString().slice(0, 10)
@@ -122,7 +123,7 @@ export default async function DashboardPage() {
   const { data: scores } = allStockIds.length > 0
     ? await supabase
         .from('daily_scores')
-        .select('stock_id, rsi, above_200_dma')
+        .select('stock_id, rsi, above_200_dma, above_50_dma')
         .in('stock_id', allStockIds)
         .order('date', { ascending: false })
     : { data: [] }
@@ -147,6 +148,28 @@ export default async function DashboardPage() {
 
   const below200Tickers: string[] = allRows
     .filter((w: any) => latestScore[w.stock_id]?.above_200_dma === false)
+    .map((w: any) => w.stock?.ticker).filter(Boolean)
+
+  const below50Tickers: string[] = allRows
+    .filter((w: any) => latestScore[w.stock_id]?.above_50_dma === false)
+    .map((w: any) => w.stock?.ticker).filter(Boolean)
+
+  const near52wHighTickers: string[] = allRows
+    .filter((w: any) => {
+      const price = w.stock?.current_price
+      const high  = w.stock?.high_52w
+      if (!price || !high) return false
+      return (price / high) >= 0.95   // within 5% of 52W high
+    })
+    .map((w: any) => w.stock?.ticker).filter(Boolean)
+
+  const near52wLowTickers: string[] = allRows
+    .filter((w: any) => {
+      const price = w.stock?.current_price
+      const high  = w.stock?.high_52w
+      if (!price || !high) return false
+      return (price / high) <= 0.60   // 40%+ below 52W high
+    })
     .map((w: any) => w.stock?.ticker).filter(Boolean)
 
   // Portfolio signals
@@ -184,6 +207,27 @@ export default async function DashboardPage() {
       invested,
       pct: portTotalInvested > 0 ? Math.round((invested / portTotalInvested) * 100) : 0,
     }))
+
+  // ── Portfolio 5-day closing price (for 5d gain in KPI card) ────────────
+  const price5dMap: Record<string, number> = {}
+  if (portStockIds.length > 0) {
+    const cutoff5d = new Date(Date.now() - 8 * 86400000).toISOString().slice(0, 10)
+    const { data: hist5d } = await supabase
+      .from('daily_history')
+      .select('stock_id, date, closing_price')
+      .in('stock_id', portStockIds)
+      .not('closing_price', 'is', null)
+      .gte('date', cutoff5d)
+      .order('date', { ascending: true })
+    // Take the oldest price in the 8-day window as the 5-day-ago proxy
+    const seen5d = new Set<string>()
+    for (const r of (hist5d ?? [])) {
+      if (!seen5d.has(r.stock_id)) {
+        price5dMap[r.stock_id] = r.closing_price
+        seen5d.add(r.stock_id)
+      }
+    }
+  }
 
   // ── Volume breakouts (DB-based, yesterday EOD vs 20-day avg) ────────────
   type VolumeBreakout = { ticker: string; ratio: number; vol: number; avgVol: number; isPortfolio: boolean }
@@ -286,30 +330,46 @@ export default async function DashboardPage() {
   const portGainers = portMovers.slice(0, 2)
   const portLosers  = [...portMovers].reverse().slice(0, 2).filter((h: any) => h.returnPct < 0)
 
-  // ── Sector exposure ──────────────────────────────────────────────────────
-  // Group by FII sector name (via shared map), not raw BSE sub-industry
-  const sectorMap: Record<string, { count: number; invested: number }> = {}
+  // ── Sector exposure (watchlist + portfolio combined, deduplicated by ticker) ──
+  const sectorMap: Record<string, { count: number; invested: number; tickers: string[] }> = {}
+  const seenSectorTickers = new Set<string>()
+
   for (const w of allRows) {
+    const ticker = w.stock?.ticker
+    if (!ticker || seenSectorTickers.has(ticker)) continue
+    seenSectorTickers.add(ticker)
     const ind = w.stock?.industry
     const fiiSectorName = ind ? (INDUSTRY_TO_FII_SECTOR[ind] ?? ind) : null
     if (!fiiSectorName) continue
-    if (!sectorMap[fiiSectorName]) sectorMap[fiiSectorName] = { count: 0, invested: 0 }
+    if (!sectorMap[fiiSectorName]) sectorMap[fiiSectorName] = { count: 0, invested: 0, tickers: [] }
     sectorMap[fiiSectorName].count++
     sectorMap[fiiSectorName].invested += w.invested_amount ?? 0
+    sectorMap[fiiSectorName].tickers.push(ticker)
+  }
+  for (const h of portRowsAll) {
+    const ticker = h.stock?.ticker
+    if (!ticker || seenSectorTickers.has(ticker)) continue
+    seenSectorTickers.add(ticker)
+    const ind = h.stock?.industry
+    const fiiSectorName = ind ? (INDUSTRY_TO_FII_SECTOR[ind] ?? ind) : null
+    if (!fiiSectorName) continue
+    if (!sectorMap[fiiSectorName]) sectorMap[fiiSectorName] = { count: 0, invested: 0, tickers: [] }
+    sectorMap[fiiSectorName].count++
+    sectorMap[fiiSectorName].invested += h.quantity * h.avg_price
+    sectorMap[fiiSectorName].tickers.push(ticker)
   }
 
   const totalSectorInvested = Object.values(sectorMap).reduce((s, v) => s + v.invested, 0)
-  // fallback: if no invested amounts, weight by stock count
-  const totalSectorWeight   = totalSectorInvested > 0 ? totalSectorInvested : allRows.length
+  const totalSectorWeight   = totalSectorInvested > 0 ? totalSectorInvested : seenSectorTickers.size
 
-  // Sort by invested (fallback to count) descending — top 3
   const sectorExposure = Object.entries(sectorMap)
     .sort(([, a], [, b]) => (b.invested !== a.invested ? b.invested - a.invested : b.count - a.count))
     .slice(0, 5)
-    .map(([industry, { count, invested }]) => ({
+    .map(([industry, { count, invested, tickers }]) => ({
       industry,
       count,
       invested,
+      tickers,
       pct: totalSectorWeight > 0
         ? Math.round((totalSectorInvested > 0 ? invested : count) / totalSectorWeight * 100)
         : 0,
@@ -386,589 +446,514 @@ export default async function DashboardPage() {
   const hasSignals = filingTickers.length > 0 || oversoldTickers.length > 0 ||
                      overboughtTickers.length > 0 || below200Tickers.length > 0
 
+  const isAdmin = user.email === process.env.ADMIN_EMAIL
+
   return (
-    <div className="min-h-screen bg-white">
-      {/* Header */}
-      <header className="border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4 bg-white">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-lg sm:text-xl font-bold text-gray-900">AI Research Desk</h1>
-            <p className="text-xs text-gray-400 mt-0.5 hidden sm:block">{today}</p>
+    <AppShell userEmail={user.email!} isAdmin={isAdmin}>
+      <div className="px-6 py-5 max-w-screen-xl mx-auto">
+
+        {/* ── Page header ─────────────────────────────────────────────── */}
+        <div className="mb-5">
+          <div className="flex items-center gap-3 mb-2">
+            <p className="text-xs" style={{ color: 'var(--artha-text-muted)' }}>{today}</p>
+            <MarketStatusLight />
           </div>
-          <div className="flex items-center gap-2 sm:gap-4">
-            <span className="text-xs sm:text-sm text-gray-500 hidden sm:block">{user.email}</span>
-            {user.email === process.env.ADMIN_EMAIL && (
-              <Link href="/admin" className="text-xs sm:text-sm text-gray-500 hover:text-gray-900 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-gray-100">
-                Admin
-              </Link>
-            )}
-            <Link href="/market-pulse" className="text-xs sm:text-sm text-gray-500 hover:text-gray-900 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-gray-100">
-              Market Pulse
-            </Link>
-            <Link href="/watchlist" className="text-xs sm:text-sm text-gray-500 hover:text-gray-900 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-gray-100">
-              Watchlist
-            </Link>
-            <Link href="/portfolio" className="text-xs sm:text-sm text-gray-500 hover:text-gray-900 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-gray-100">
-              Portfolio
-            </Link>
-            <Link href="/settings" className="text-xs sm:text-sm text-gray-500 hover:text-gray-900 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-gray-100">
-              Settings
-            </Link>
-            <SignOutButton />
-          </div>
-        </div>
-        <div className="mt-2 sm:mt-3 overflow-x-auto">
           <MarketIndicesBar />
         </div>
-      </header>
 
-      {/* Main */}
-      <main className="px-3 sm:px-6 py-5 sm:py-8 max-w-screen-xl mx-auto">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* ── KPI row ─────────────────────────────────────────────────── */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
 
-          {/* ── Watchlist · Virtual P&L card ──────────────────────────── */}
-          <div className="sm:col-span-1">
-            <Link href="/watchlist" className="block bg-white border border-gray-200 rounded-xl px-4 py-4 shadow-sm hover:border-gray-300 hover:shadow-md transition-all group h-full">
-              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-3">Watchlist · Virtual P&amp;L</div>
-
-              {watchlistCount === 0 ? (
-                <div className="text-sm text-gray-400">No stocks yet. Add some to your watchlist →</div>
-              ) : (
-                <div className="space-y-3">
-
-                  {/* P&L */}
+          {/* Watchlist Return */}
+          {(() => {
+            const positive = totalPnl >= 0
+            const accentColor = positive ? 'var(--artha-teal)' : 'var(--artha-negative)'
+            const accentBg    = positive ? 'var(--artha-teal-subtle)' : 'var(--artha-negative-bg)'
+            return (
+              <Link href="/watchlist" className="artha-card artha-card-hover block overflow-hidden" style={{ padding: 0 }}>
+                {/* Coloured top accent */}
+                <div className="h-1 w-full" style={{ background: totalInvested > 0 ? accentColor : 'var(--artha-surface-low)' }} />
+                <div className="px-5 py-4">
+                  {/* Header row */}
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="artha-label">Watchlist Return</span>
+                    <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--artha-surface-low)', color: 'var(--artha-text-muted)' }}>
+                      {watchlistCount} stocks
+                    </span>
+                  </div>
                   {totalInvested > 0 ? (
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs text-gray-500">Invested</span>
-                        <span className="text-sm font-mono font-semibold text-gray-800">
-                          ₹{totalInvested.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs text-gray-500">Current</span>
-                        <span className="text-sm font-mono font-semibold text-gray-800">
-                          ₹{totalCurrent.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center pt-1 border-t border-gray-100">
-                        <span className="text-xs text-gray-500">Total Return</span>
-                        <div className="text-right">
-                          <span className={`text-base font-bold font-mono ${totalPnl >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                            {totalPnl >= 0 ? '+' : ''}{totalPnlPct.toFixed(1)}%
-                          </span>
-                          <div className={`text-[11px] font-mono ${totalPnl >= 0 ? 'text-emerald-500' : 'text-red-400'}`}>
-                            {totalPnl >= 0 ? '+' : ''}₹{Math.abs(totalPnl).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                    <>
+                      {/* Main return */}
+                      <div className="flex items-end justify-between gap-3 mb-3">
+                        <div>
+                          <div className="font-display font-bold text-3xl leading-none" style={{ color: accentColor, letterSpacing: '-0.03em' }}>
+                            {positive ? '+' : ''}{totalPnlPct.toFixed(2)}%
+                          </div>
+                          <div className="text-xs mt-1.5 font-mono" style={{ color: 'var(--artha-text-muted)' }}>
+                            {positive ? '+' : '−'}₹{Math.abs(totalPnl).toLocaleString('en-IN', { maximumFractionDigits: 0 })} total P&amp;L
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className="text-[11px]" style={{ color: 'var(--artha-text-faint)' }}>Invested</div>
+                          <div className="text-xs font-mono font-semibold" style={{ color: 'var(--artha-text-secondary)' }}>
+                            ₹{totalInvested.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                           </div>
                         </div>
                       </div>
+                      {/* Today's gain row */}
                       <WatchlistTodayGain rows={portfolioRows
                         .filter((w: any) => w.invested_amount && w.entry_price && w.stock?.current_price)
                         .map((w: any) => ({ ticker: w.stock.ticker, invested: w.invested_amount, entryPrice: w.entry_price, currentPrice: w.stock.current_price }))} />
-                    </div>
+                    </>
                   ) : (
-                    <p className="text-xs text-gray-400">Set entry prices to track P&amp;L.</p>
-                  )}
-
-                  {/* Sector exposure vs FII */}
-                  {sectorExposure.length > 0 && (
-                    <div className="pt-2 border-t border-gray-100">
-                      <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">
-                        Sector Exposure vs FII
-                      </div>
-                      <div className="space-y-1.5">
-                        {sectorExposure.map(({ industry, count, pct }) => {
-                          const fiiFlow  = fiiFlowMap[industry] ?? null
-                          const short    = SHORT_SECTOR[industry] ?? industry
-                          const buying   = fiiFlow != null && fiiFlow > 1000
-                          const selling  = fiiFlow != null && fiiFlow < -1000
-                          const mismatch = selling && pct >= 20
-                          const barColor = buying ? 'bg-emerald-400' : selling ? 'bg-red-400' : 'bg-gray-300'
-                          return (
-                            <div key={industry} className="space-y-0.5">
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="flex items-center gap-1.5 min-w-0">
-                                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${barColor}`} />
-                                  <span className="text-[11px] text-gray-700 truncate">{short}</span>
-                                  <span className="text-[10px] text-gray-400">{count} stock{count !== 1 ? 's' : ''}</span>
-                                </div>
-                                <div className="flex items-center gap-1.5 shrink-0">
-                                  <span className={`text-[11px] font-bold font-mono ${pct >= 40 ? 'text-orange-500' : 'text-gray-600'}`}>
-                                    {pct}%
-                                  </span>
-                                  {fiiFlow != null ? (
-                                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
-                                      buying  ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' :
-                                      selling ? 'bg-red-50 text-red-500 border border-red-100' :
-                                                'bg-gray-50 text-gray-400 border border-gray-100'
-                                    }`}>
-                                      {buying ? '▲ FII in' : selling ? '▼ FII out' : '— neutral'}
-                                    </span>
-                                  ) : (
-                                    <span className="text-[10px] text-gray-300">—</span>
-                                  )}
-                                  {mismatch && <span title="Heavy exposure + FII selling">⚠️</span>}
-                                </div>
-                              </div>
-                              {/* exposure bar */}
-                              <div className="h-0.5 w-full bg-gray-100 rounded-full overflow-hidden">
-                                <div className={`h-full rounded-full transition-all ${barColor} opacity-60`} style={{ width: `${pct}%` }} />
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
+                    <div className="text-sm py-2" style={{ color: 'var(--artha-text-muted)' }}>
+                      {watchlistCount} stocks tracked · set entry prices to see P&amp;L
                     </div>
                   )}
+                </div>
+              </Link>
+            )
+          })()}
 
-                  {/* Signals */}
-                  {hasSignals && (
-                    <div className="pt-2 border-t border-gray-100 space-y-1.5">
-                      {filingTickers.length > 0 && (
-                        <SignalRow
-                          label={`📋 ${filingTickers.length} filing${filingTickers.length > 1 ? 's' : ''} today`}
-                          tickers={filingTickers}
-                          color="amber"
-                        />
-                      )}
-                      {oversoldTickers.length > 0 && (
-                        <SignalRow
-                          label={`📉 ${oversoldTickers.length} oversold`}
-                          tickers={oversoldTickers}
-                          color="blue"
-                        />
-                      )}
-                      {overboughtTickers.length > 0 && (
-                        <SignalRow
-                          label={`📈 ${overboughtTickers.length} overbought`}
-                          tickers={overboughtTickers}
-                          color="orange"
-                        />
-                      )}
-                      {below200Tickers.length > 0 && (
-                        <SignalRow
-                          label={`📊 ${below200Tickers.length} below 200 DMA`}
-                          tickers={below200Tickers}
-                          color="red"
-                        />
-                      )}
-                    </div>
-                  )}
-
-                  {watchlistMovers.length > 0 && (
-                    <div className="pt-2 border-t border-gray-100">
-                      <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">vs Entry Price</div>
-                      <div className="space-y-1">
-                        {[...watchGainers, ...watchLosers].map((h: any) => (
-                          <div key={h.ticker} className="flex items-center justify-between">
-                            <span className="text-[11px] font-mono font-semibold text-gray-700">{h.ticker}</span>
-                            <span className={`text-[11px] font-mono font-bold ${h.returnPct >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                              {h.returnPct >= 0 ? '+' : ''}{h.returnPct.toFixed(1)}%
-                            </span>
+          {/* Portfolio Return */}
+          {(() => {
+            const positive = portPnl >= 0
+            const accentColor = portRows.length > 0 ? (positive ? 'var(--artha-teal)' : 'var(--artha-negative)') : 'var(--artha-text-faint)'
+            return (
+              <Link href="/portfolio" className="artha-card artha-card-hover block overflow-hidden" style={{ padding: 0 }}>
+                <div className="h-1 w-full" style={{ background: portRows.length > 0 ? accentColor : 'var(--artha-surface-low)' }} />
+                <div className="px-5 py-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="artha-label">Portfolio Return</span>
+                    <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--artha-surface-low)', color: 'var(--artha-text-muted)' }}>
+                      {portRows.length} holdings
+                    </span>
+                  </div>
+                  {portRows.length > 0 ? (
+                    <>
+                      <div className="flex items-end justify-between gap-3 mb-3">
+                        <div>
+                          <div className="font-display font-bold text-3xl leading-none" style={{ color: accentColor, letterSpacing: '-0.03em' }}>
+                            {positive ? '+' : ''}{portPnlPct.toFixed(2)}%
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="pt-1 text-xs text-gray-400 group-hover:text-gray-600 transition-colors">
-                    {watchlistCount} stock{watchlistCount !== 1 ? 's' : ''} · View watchlist →
-                  </div>
-
-                </div>
-              )}
-            </Link>
-          </div>
-
-          {/* ── Real Portfolio card ───────────────────────────────────── */}
-          <div className="sm:col-span-1">
-            <div className="bg-white border border-gray-200 rounded-xl px-4 py-4 shadow-sm hover:border-gray-300 hover:shadow-md transition-all group h-full">
-              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-3">
-                Real Portfolio{' '}
-                <Link href="/portfolio" className="text-blue-400 hover:text-blue-600 transition-colors">→</Link>
-              </div>
-
-              {portRows.length === 0 ? (
-                <div className="text-sm text-gray-400">
-                  No holdings yet.{' '}
-                  <Link href="/portfolio" className="text-blue-500 hover:underline">Sync from Zerodha or upload CSV →</Link>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {/* P&L summary */}
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs text-gray-500">Invested</span>
-                      <span className="text-sm font-mono font-semibold text-gray-800">
-                        ₹{portInvested.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs text-gray-500">Current</span>
-                      <span className="text-sm font-mono font-semibold text-gray-800">
-                        ₹{portCurrent.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center pt-1 border-t border-gray-100">
-                      <span className="text-xs text-gray-500">Total Return</span>
-                      <div className="text-right">
-                        <span className={`text-base font-bold font-mono ${portPnl >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                          {portPnl >= 0 ? '+' : ''}{portPnlPct.toFixed(1)}%
-                        </span>
-                        <div className={`text-[11px] font-mono ${portPnl >= 0 ? 'text-emerald-500' : 'text-red-400'}`}>
-                          {portPnl >= 0 ? '+' : ''}₹{Math.abs(portPnl).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-                        </div>
-                      </div>
-                    </div>
-                    <PortfolioTodayGain rows={portRows.map((h: any) => ({ ticker: h.stock.ticker, quantity: h.quantity, currentPrice: h.stock.current_price }))} />
-                  </div>
-
-                  {/* Sector exposure vs FII */}
-                  {portSectorExposure.length > 0 && (
-                    <div className="pt-2 border-t border-gray-100">
-                      <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">
-                        Sector Exposure vs FII
-                      </div>
-                      <div className="space-y-1.5">
-                        {portSectorExposure.map(({ industry, count, pct }) => {
-                          const fiiFlow  = fiiFlowMap[industry] ?? null
-                          const short    = SHORT_SECTOR[industry] ?? industry
-                          const buying   = fiiFlow != null && fiiFlow > 1000
-                          const selling  = fiiFlow != null && fiiFlow < -1000
-                          const mismatch = selling && pct >= 20
-                          const barColor = buying ? 'bg-emerald-400' : selling ? 'bg-red-400' : 'bg-gray-300'
-                          return (
-                            <div key={industry} className="space-y-0.5">
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="flex items-center gap-1.5 min-w-0">
-                                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${barColor}`} />
-                                  <span className="text-[11px] text-gray-700 truncate">{short}</span>
-                                  <span className="text-[10px] text-gray-400">{count}×</span>
-                                </div>
-                                <div className="flex items-center gap-1.5 shrink-0">
-                                  <span className={`text-[11px] font-bold font-mono ${pct >= 40 ? 'text-orange-500' : 'text-gray-600'}`}>{pct}%</span>
-                                  {fiiFlow != null ? (
-                                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${buying ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : selling ? 'bg-red-50 text-red-500 border border-red-100' : 'bg-gray-50 text-gray-400 border border-gray-100'}`}>
-                                      {buying ? '▲ FII in' : selling ? '▼ FII out' : '— neutral'}
-                                    </span>
-                                  ) : <span className="text-[10px] text-gray-300">—</span>}
-                                  {mismatch && <span title="Heavy exposure + FII selling">⚠️</span>}
-                                </div>
-                              </div>
-                              <div className="h-0.5 w-full bg-gray-100 rounded-full overflow-hidden">
-                                <div className={`h-full rounded-full ${barColor} opacity-60`} style={{ width: `${pct}%` }} />
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Portfolio signals */}
-                  {portHasSignals && (
-                    <div className="pt-2 border-t border-gray-100 space-y-1.5">
-                      {portOversold.length > 0 && (
-                        <SignalRow label={`📉 ${portOversold.length} oversold`} tickers={portOversold} color="blue" />
-                      )}
-                      {portOverbought.length > 0 && (
-                        <SignalRow label={`📈 ${portOverbought.length} overbought`} tickers={portOverbought} color="orange" />
-                      )}
-                      {portBelow200.length > 0 && (
-                        <SignalRow label={`📊 ${portBelow200.length} below 200 DMA`} tickers={portBelow200} color="red" />
-                      )}
-                    </div>
-                  )}
-
-                  {portMovers.length > 0 && (
-                    <div className="pt-2 border-t border-gray-100">
-                      <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">vs Avg Price</div>
-                      <div className="space-y-1">
-                        {[...portGainers, ...portLosers].map((h: any) => (
-                          <div key={h.ticker} className="flex items-center justify-between">
-                            <span className="text-[11px] font-mono font-semibold text-gray-700">{h.ticker}</span>
-                            <span className={`text-[11px] font-mono font-bold ${h.returnPct >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                              {h.returnPct >= 0 ? '+' : ''}{h.returnPct.toFixed(1)}%
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="pt-1 text-xs text-gray-400 group-hover:text-gray-600 transition-colors">
-                    <Link href="/portfolio" className="hover:text-gray-800 transition-colors">
-                      {portRows.length} holdings · View portfolio →
-                    </Link>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* ── FII/DII + MF card ─────────────────────────────────────── */}
-          <div className="sm:col-span-1">
-            <div className="bg-white border border-gray-200 rounded-xl px-4 py-4 shadow-sm h-full">
-
-              {/* FII / DII boxes */}
-              {fiiDiiRow && (
-                <div className="mb-4">
-                  <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">
-                    FII / DII · {new Date(fiiDiiRow.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    {/* FII */}
-                    <div className={`rounded-lg px-3 py-2.5 ${fiiDiiRow.fii_net >= 0 ? 'bg-emerald-50 border border-emerald-100' : 'bg-red-50 border border-red-100'}`}>
-                      <div className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 mb-0.5">FII Net</div>
-                      <div className={`text-sm font-bold font-mono ${fiiDiiRow.fii_net >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                        {fiiDiiRow.fii_net >= 0 ? '▲' : '▼'} {fmtCr(Math.abs(fiiDiiRow.fii_net))}
-                      </div>
-                      <div className="flex items-center gap-3 mt-1 flex-wrap">
-                        {fiiDiiYest && (
-                          <span className={`text-[10px] font-mono ${(fiiDiiRow.fii_net - fiiDiiYest.fii_net) >= 0 ? 'text-emerald-500' : 'text-red-400'}`}>
-                            {(fiiDiiRow.fii_net - fiiDiiYest.fii_net) >= 0 ? '▲' : '▼'} {fmtCr(Math.abs(fiiDiiRow.fii_net - fiiDiiYest.fii_net))} vs yest
-                          </span>
-                        )}
-                        <span className="text-[10px] text-gray-400 font-mono">
-                          5d: <span className={fii5d >= 0 ? 'text-emerald-500' : 'text-red-400'}>{fii5d >= 0 ? '+' : ''}{fmtCr(fii5d)}</span>
-                        </span>
-                      </div>
-                    </div>
-                    {/* DII */}
-                    <div className={`rounded-lg px-3 py-2.5 ${fiiDiiRow.dii_net >= 0 ? 'bg-emerald-50 border border-emerald-100' : 'bg-red-50 border border-red-100'}`}>
-                      <div className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 mb-0.5">DII Net</div>
-                      <div className={`text-sm font-bold font-mono ${fiiDiiRow.dii_net >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                        {fiiDiiRow.dii_net >= 0 ? '▲' : '▼'} {fmtCr(Math.abs(fiiDiiRow.dii_net))}
-                      </div>
-                      <div className="flex items-center gap-3 mt-1 flex-wrap">
-                        {fiiDiiYest && (
-                          <span className={`text-[10px] font-mono ${(fiiDiiRow.dii_net - fiiDiiYest.dii_net) >= 0 ? 'text-emerald-500' : 'text-red-400'}`}>
-                            {(fiiDiiRow.dii_net - fiiDiiYest.dii_net) >= 0 ? '▲' : '▼'} {fmtCr(Math.abs(fiiDiiRow.dii_net - fiiDiiYest.dii_net))} vs yest
-                          </span>
-                        )}
-                        <span className="text-[10px] text-gray-400 font-mono">
-                          5d: <span className={dii5d >= 0 ? 'text-emerald-500' : 'text-red-400'}>{dii5d >= 0 ? '+' : ''}{fmtCr(dii5d)}</span>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  {fiiStreakDir && fiiStreak >= 2 && (
-                    <div className={`mt-2 text-[10px] font-semibold px-2 py-1 rounded-lg inline-block ${fiiStreakDir === 'buying' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'}`}>
-                      FII {fiiStreakDir} for {fiiStreak} days straight
-                    </div>
-                  )}
-
-                  {/* MF row */}
-                  {mfRow && (
-                    <div className="mt-3 pt-2 border-t border-gray-100">
-                      <div className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 mb-1.5">
-                        MF · SEBI · {new Date(mfRow.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className={`rounded-lg px-2.5 py-1.5 ${(mfRow.eq_net ?? 0) >= 0 ? 'bg-emerald-50 border border-emerald-100' : 'bg-red-50 border border-red-100'}`}>
-                          <div className="text-[9px] text-gray-400 mb-0.5">Equity</div>
-                          <div className={`text-xs font-bold font-mono ${(mfRow.eq_net ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                            {(mfRow.eq_net ?? 0) >= 0 ? '▲' : '▼'} {fmtCr(Math.abs(mfRow.eq_net ?? 0))}
+                          <div className="text-xs mt-1.5 font-mono" style={{ color: 'var(--artha-text-muted)' }}>
+                            {positive ? '+' : '−'}₹{Math.abs(portPnl).toLocaleString('en-IN', { maximumFractionDigits: 0 })} total P&amp;L
                           </div>
                         </div>
-                        <div className={`rounded-lg px-2.5 py-1.5 ${(mfRow.dbt_net ?? 0) >= 0 ? 'bg-emerald-50 border border-emerald-100' : 'bg-red-50 border border-red-100'}`}>
-                          <div className="text-[9px] text-gray-400 mb-0.5">Debt</div>
-                          <div className={`text-xs font-bold font-mono ${(mfRow.dbt_net ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                            {(mfRow.dbt_net ?? 0) >= 0 ? '▲' : '▼'} {fmtCr(Math.abs(mfRow.dbt_net ?? 0))}
+                        <div className="text-right shrink-0">
+                          <div className="text-[11px]" style={{ color: 'var(--artha-text-faint)' }}>Invested</div>
+                          <div className="text-xs font-mono font-semibold" style={{ color: 'var(--artha-text-secondary)' }}>
+                            ₹{portInvested.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                           </div>
                         </div>
                       </div>
-                    </div>
+                      <PortfolioTodayGain rows={portRows.map((h: any) => ({ ticker: h.stock.ticker, quantity: h.quantity, currentPrice: h.stock.current_price, price5dAgo: price5dMap[h.stock_id] ?? null }))} />
+                    </>
+                  ) : (
+                    <div className="text-sm py-2" style={{ color: 'var(--artha-text-muted)' }}>No holdings yet</div>
                   )}
                 </div>
-              )}
+              </Link>
+            )
+          })()}
 
-            </div>
-          </div>
+        </div>
 
-          {/* ── Activity Board — full width row ───────────────────────── */}
-          <div className="sm:col-span-3">
-            <div className="bg-white border border-gray-200 rounded-xl px-5 py-4 shadow-sm">
+        {/* ── Main grid ───────────────────────────────────────────────── */}
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+
+          {/* ── Left: Activity feed (2/3 width) ───────────────────────── */}
+          <div className="xl:col-span-2 space-y-5">
+
+            {/* News feed */}
+            <div className="artha-card px-5 py-5">
               <div className="flex items-center justify-between mb-4">
-                <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">
-                  Activity · Watchlist &amp; Portfolio
+                <div className="artha-label">Recent News</div>
+                <div className="text-xs" style={{ color: 'var(--artha-text-faint)' }}>Last 48 hours</div>
+              </div>
+              {newsItems.length === 0 ? (
+                <p className="text-sm" style={{ color: 'var(--artha-text-muted)' }}>No news in the last 48 hours.</p>
+              ) : (
+                <div className="space-y-4">
+                  {newsItems.slice(0, 8).map((item, i) => (
+                    <div key={i} className="flex gap-3 items-start">
+                      <div className="shrink-0 w-16 pt-0.5">
+                        <span
+                          className="block w-full text-center font-mono font-bold text-xs px-1 py-0.5 rounded-md truncate"
+                          style={{
+                            background: item.isPortfolio ? 'var(--artha-surface-low)' : 'var(--artha-surface)',
+                            color: item.isPortfolio ? 'var(--artha-primary)' : 'var(--artha-text-secondary)',
+                            border: `1px solid ${item.isPortfolio ? 'rgba(0,61,155,0.15)' : 'rgba(11,28,48,0.08)'}`,
+                          }}
+                        >
+                          {item.ticker}
+                        </span>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="artha-label mb-0.5">{item.source}</div>
+                        {item.url ? (
+                          <a href={item.url} target="_blank" rel="noopener noreferrer"
+                            className="text-sm leading-snug line-clamp-2 hover:underline"
+                            style={{ color: 'var(--artha-text-secondary)' }}>
+                            {item.headline}
+                          </a>
+                        ) : (
+                          <p className="text-sm leading-snug line-clamp-2" style={{ color: 'var(--artha-text-secondary)' }}>
+                            {item.headline}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div className="text-[10px] text-gray-300">Last 24 hours</div>
+              )}
+            </div>
+
+            {/* Activity: signals + volume alerts */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+
+              {/* Technical signals */}
+              <div className="artha-card px-5 py-5">
+                <div className="artha-label mb-4">Technical Signals</div>
+                {(actOversold.length + actOverbought.length + actBelow200.length + below50Tickers.length + near52wHighTickers.length + near52wLowTickers.length) === 0 ? (
+                  <p className="text-sm" style={{ color: 'var(--artha-text-muted)' }}>No signals right now.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {actOversold.length > 0 && <SignalChip label="Oversold (RSI<30)" tickers={actOversold} color="blue" />}
+                    {actOverbought.length > 0 && <SignalChip label="Overbought (RSI>70)" tickers={actOverbought} color="orange" />}
+                    {actBelow200.length > 0 && <SignalChip label="Below 200 DMA" tickers={actBelow200} color="red" />}
+                    {below50Tickers.length > 0 && <SignalChip label="Below 50 DMA" tickers={below50Tickers} color="orange" />}
+                    {near52wHighTickers.length > 0 && <SignalChip label="Near 52W High (≤5%)" tickers={near52wHighTickers} color="teal" />}
+                    {near52wLowTickers.length > 0 && <SignalChip label="Near 52W Low (≥40% off)" tickers={near52wLowTickers} color="red" />}
+                  </div>
+                )}
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr_1fr_1fr] gap-6 divide-y lg:divide-y-0 lg:divide-x divide-gray-100">
-
-                {/* ── News ─────────────────────────────────── */}
-                <div className="pb-4 lg:pb-0 lg:pr-6">
-                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">📋 Recent News</div>
-                  {newsItems.length === 0 ? (
-                    <p className="text-xs text-gray-300">No news in the last 24h.</p>
-                  ) : (
-                    <div className="space-y-3.5">
-                      {newsItems.slice(0, 8).map((item, i) => (
-                        <div key={i} className="flex gap-3">
-                          <span className={`text-[11px] font-mono font-bold shrink-0 w-[62px] pt-[1px] leading-none ${item.isPortfolio ? 'text-blue-500' : 'text-gray-500'}`}>
-                            {item.ticker}
+              {/* Volume alerts */}
+              <div className="artha-card px-5 py-5">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="artha-label">Volume Breakouts</div>
+                  <div className="text-xs" style={{ color: 'var(--artha-text-faint)' }}>vs 20d avg</div>
+                </div>
+                {volumeAlerts.length === 0 ? (
+                  <p className="text-sm" style={{ color: 'var(--artha-text-muted)' }}>No unusual volume yesterday.</p>
+                ) : (
+                  <div className="space-y-2.5">
+                    {volumeAlerts.slice(0, 6).map(v => (
+                      <div key={v.ticker} className="flex items-center justify-between">
+                        <span
+                          className="font-mono font-bold text-xs px-2 py-0.5 rounded"
+                          style={{
+                            background: v.isPortfolio ? 'var(--artha-surface-low)' : 'var(--artha-surface)',
+                            color: v.isPortfolio ? 'var(--artha-primary)' : 'var(--artha-text)',
+                          }}
+                        >
+                          {v.ticker}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs" style={{ color: 'var(--artha-text-muted)' }}>
+                            {v.vol >= 1000000 ? `${(v.vol / 1000000).toFixed(1)}M` : `${(v.vol / 1000).toFixed(0)}K`}
                           </span>
-                          <div className="min-w-0">
-                            <div className="text-[9px] font-semibold text-gray-300 uppercase tracking-widest mb-0.5">{item.source}</div>
-                            {item.url ? (
-                              <a href={item.url} target="_blank" rel="noopener noreferrer"
-                                className="text-xs text-blue-600 leading-snug line-clamp-2 hover:underline cursor-pointer">
-                                {item.headline}
-                              </a>
-                            ) : (
-                              <div className="text-xs text-blue-600 leading-snug line-clamp-2">{item.headline}</div>
-                            )}
+                          <span
+                            className="font-mono font-bold text-xs"
+                            style={{ color: v.ratio >= 3 ? 'var(--artha-negative)' : v.ratio >= 2 ? '#ea580c' : '#d97706' }}
+                          >
+                            {v.ratio.toFixed(1)}×
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Macro alerts: Trump + Markets */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <div className="artha-card px-5 py-5">
+                <div className="artha-label mb-4">🇺🇸 Trump Watch</div>
+                {(trumpAlertRows ?? []).length === 0 ? (
+                  <p className="text-sm" style={{ color: 'var(--artha-text-muted)' }}>No market-relevant posts this week.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {(trumpAlertRows ?? []).map((alert, i) => {
+                      const mins = Math.round((Date.now() - new Date(alert.created_at).getTime()) / 60000)
+                      const ago  = mins < 60 ? `${mins}m ago` : mins < 1440 ? `${Math.floor(mins / 60)}h ago` : `${Math.floor(mins / 1440)}d ago`
+                      return (
+                        <div key={i}>
+                          <div className="text-xs mb-0.5" style={{ color: 'var(--artha-text-faint)' }}>{ago}</div>
+                          <p className="text-sm leading-snug" style={{ color: 'var(--artha-text-secondary)' }}>{alert.summary}</p>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="artha-card px-5 py-5">
+                <div className="artha-label mb-4">📰 Macro</div>
+                {(marketAlertRows ?? []).length === 0 ? (
+                  <p className="text-sm" style={{ color: 'var(--artha-text-muted)' }}>No macro news this week.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {(marketAlertRows ?? []).map((alert, i) => {
+                      const mins = Math.round((Date.now() - new Date(alert.created_at).getTime()) / 60000)
+                      const ago  = mins < 60 ? `${mins}m ago` : mins < 1440 ? `${Math.floor(mins / 60)}h ago` : `${Math.floor(mins / 1440)}d ago`
+                      return (
+                        <div key={i}>
+                          <div className="text-xs mb-0.5" style={{ color: 'var(--artha-text-faint)' }}>{ago}</div>
+                          <p className="text-sm leading-snug" style={{ color: 'var(--artha-text-secondary)' }}>{alert.summary}</p>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* ── Right: Data sidebar (1/3 width) ───────────────────────── */}
+          <div className="space-y-4">
+
+            {/* FII / DII detail */}
+            {fiiDiiRow && (
+              <div className="artha-card px-4 py-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="artha-label">FII · DII Flows</div>
+                  <div className="text-xs" style={{ color: 'var(--artha-text-faint)' }}>
+                    {new Date(fiiDiiRow.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  {[
+                    { label: 'FII Net', val: fiiDiiRow.fii_net, prev: fiiDiiYest?.fii_net, rolling: fii5d },
+                    { label: 'DII Net', val: fiiDiiRow.dii_net, prev: fiiDiiYest?.dii_net, rolling: dii5d },
+                  ].map(({ label, val, prev, rolling }) => (
+                    <div
+                      key={label}
+                      className="rounded-xl px-3 py-2.5"
+                      style={{ background: val >= 0 ? 'var(--artha-teal-subtle)' : 'var(--artha-negative-bg)' }}
+                    >
+                      <div className="artha-label mb-1">{label}</div>
+                      <div className="font-display font-bold text-sm" style={{ color: val >= 0 ? 'var(--artha-teal)' : 'var(--artha-negative)' }}>
+                        {val >= 0 ? '+' : ''}{fmtCr(val)}
+                      </div>
+                      {prev != null && (
+                        <div className="text-xs mt-0.5" style={{ color: 'var(--artha-text-muted)' }}>
+                          5d: <span style={{ color: rolling >= 0 ? 'var(--artha-teal)' : 'var(--artha-negative)' }}>
+                            {rolling >= 0 ? '+' : ''}{fmtCr(rolling)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {fiiStreakDir && fiiStreak >= 2 && (
+                  <div
+                    className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+                    style={{
+                      background: fiiStreakDir === 'buying' ? 'var(--artha-teal-subtle)' : 'var(--artha-negative-bg)',
+                      color: fiiStreakDir === 'buying' ? 'var(--artha-teal)' : 'var(--artha-negative)',
+                    }}
+                  >
+                    FII {fiiStreakDir} for {fiiStreak} consecutive days
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* MF SEBI */}
+            {mfRow && (
+              <div className="artha-card px-4 py-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="artha-label">MF · SEBI Flows</div>
+                  <div className="text-xs" style={{ color: 'var(--artha-text-faint)' }}>
+                    {new Date(mfRow.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: 'Equity', val: mfRow.eq_net ?? 0 },
+                    { label: 'Debt',   val: mfRow.dbt_net ?? 0 },
+                  ].map(({ label, val }) => (
+                    <div key={label} className="rounded-xl px-3 py-2.5" style={{ background: val >= 0 ? 'var(--artha-teal-subtle)' : 'var(--artha-negative-bg)' }}>
+                      <div className="artha-label mb-1">{label}</div>
+                      <div className="font-display font-bold text-sm" style={{ color: val >= 0 ? 'var(--artha-teal)' : 'var(--artha-negative)' }}>
+                        {val >= 0 ? '+' : ''}{fmtCr(val)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Sector Exposure vs FII */}
+            {sectorExposure.length > 0 && (
+              <div className="artha-card px-4 py-4">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="artha-label">Your Sectors vs FII</div>
+                </div>
+                <p className="text-[11px] mb-3" style={{ color: 'var(--artha-text-muted)' }}>
+                  Portfolio allocation · FII fortnight flow
+                </p>
+                <div className="space-y-2">
+                  {sectorExposure.map(({ industry, count, pct, tickers }) => {
+                    const fiiFlow = fiiFlowMap[industry] ?? null
+                    const short   = SHORT_SECTOR[industry] ?? industry
+                    const buying  = fiiFlow != null && fiiFlow > 1000
+                    const selling = fiiFlow != null && fiiFlow < -1000
+                    const neutral = fiiFlow != null && !buying && !selling
+                    const noData  = fiiFlow == null
+
+                    const rowBg    = buying  ? 'rgba(0,106,97,0.06)'  : selling ? 'rgba(192,57,43,0.06)' : 'var(--artha-surface)'
+                    const barColor = buying  ? 'var(--artha-teal)'    : selling ? 'var(--artha-negative)' : 'var(--artha-text-faint)'
+                    const fiiColor = buying  ? 'var(--artha-teal)'    : selling ? 'var(--artha-negative)' : 'var(--artha-text-muted)'
+                    const fiiLabel = buying  ? '↑ FII buying'         : selling ? '↓ FII selling'         : neutral ? 'Neutral' : '—'
+
+                    return (
+                      <div
+                        key={industry}
+                        className="rounded-xl px-3 py-2.5"
+                        style={{ background: rowBg }}
+                      >
+                        {/* Row: sector · stocks pill · [spacer] · % · FII badge */}
+                        <div className="flex items-center gap-2 mb-1.5">
+                          {/* Sector name — takes all remaining space */}
+                          <span className="text-xs font-semibold flex-1 truncate" style={{ color: 'var(--artha-text)' }}>{short}</span>
+
+                          {/* Stock count pill with hover tooltip */}
+                          <span
+                            className="relative group text-[10px] px-1.5 py-0.5 rounded font-mono shrink-0 cursor-default"
+                            style={{ background: 'rgba(11,28,48,0.06)', color: 'var(--artha-text-muted)' }}
+                          >
+                            {count}×
+                            <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-10 hidden group-hover:flex flex-col gap-0.5 rounded-lg px-2.5 py-2 shadow-lg whitespace-nowrap"
+                              style={{ background: 'var(--artha-navy)' }}>
+                              {tickers.map(t => (
+                                <span key={t} className="font-mono font-bold text-[11px]" style={{ color: '#fff' }}>{t}</span>
+                              ))}
+                              <span className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent" style={{ borderTopColor: 'var(--artha-navy)' }} />
+                            </span>
+                          </span>
+
+                          {/* Allocation % — fixed width, right-aligned */}
+                          <span className="font-mono font-bold text-xs w-8 text-right shrink-0" style={{ color: 'var(--artha-text)' }}>{pct}%</span>
+
+                          {/* FII badge — fixed width, centered */}
+                          <span
+                            className="text-[10px] font-semibold px-0 py-0.5 rounded text-center shrink-0"
+                            style={{
+                              width: '76px',
+                              background: buying ? 'var(--artha-teal-subtle)' : selling ? 'var(--artha-negative-bg)' : 'rgba(11,28,48,0.06)',
+                              color: noData ? 'transparent' : fiiColor,
+                            }}
+                          >
+                            {noData ? '—' : fiiLabel}
+                          </span>
+                        </div>
+
+                        {/* Progress bar */}
+                        <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(11,28,48,0.08)' }}>
+                          <div className="h-full rounded-full" style={{ width: `${pct}%`, background: barColor }} />
+                        </div>
+
+                        {/* FII flow amount */}
+                        {fiiFlow != null && (
+                          <div className="text-[10px] mt-1 text-right" style={{ color: fiiColor }}>
+                            {fiiFlow >= 0 ? '+' : ''}{fmtCr(fiiFlow)} fortnight
                           </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* FII sector top movers */}
+            {(top3.length > 0 || bot3.length > 0) && (
+              <div className="artha-card px-4 py-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="artha-label">FII Sector Flows</div>
+                  <div className="text-xs" style={{ color: 'var(--artha-text-faint)' }}>Fortnight</div>
+                </div>
+                {top3.length > 0 && (
+                  <div className="mb-3">
+                    <div className="text-xs font-semibold mb-1.5" style={{ color: 'var(--artha-teal)' }}>Top Buying</div>
+                    <div className="space-y-1.5">
+                      {top3.map(s => (
+                        <div key={s.name} className="flex items-center justify-between gap-2">
+                          <span className="text-xs truncate" style={{ color: 'var(--artha-text-secondary)' }}>{s.name}</span>
+                          <span className="font-mono font-bold text-xs shrink-0" style={{ color: 'var(--artha-teal)' }}>+{fmtCr(s.flow)}</span>
                         </div>
                       ))}
                     </div>
-                  )}
-                </div>
-
-                {/* ── Volume Alerts ────────────────────────── */}
-                <div className="pt-4 lg:pt-0 lg:px-6">
-                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">🔊 Volume Alerts</div>
-                  {volumeAlerts.length === 0 ? (
-                    <p className="text-xs text-gray-300">No unusual volume yesterday.</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {volumeAlerts.slice(0, 6).map(v => {
-                        const color = v.ratio >= 3 ? 'text-red-500' : v.ratio >= 2 ? 'text-orange-500' : 'text-amber-500'
-                        return (
-                          <div key={v.ticker} className="flex items-center justify-between gap-2">
-                            <span className={`text-[11px] font-mono font-bold ${v.isPortfolio ? 'text-blue-500' : 'text-gray-600'}`}>
-                              {v.ticker}
-                            </span>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <span className="text-[10px] font-mono text-gray-400">
-                                {v.vol >= 1000000 ? `${(v.vol / 1000000).toFixed(1)}M` : `${(v.vol / 1000).toFixed(0)}K`}
-                              </span>
-                              <span className={`text-[11px] font-mono font-bold ${color}`}>{v.ratio.toFixed(1)}×</span>
-                            </div>
-                          </div>
-                        )
-                      })}
-                      <p className="text-[9px] text-gray-300 pt-0.5">vs 20-day avg · yesterday EOD</p>
-                    </div>
-                  )}
-                </div>
-
-
-
-
-
-                {/* ── Trump Feed ───────────────────────────── */}
-                {(() => {
-                  const trumpAlerts = trumpAlertRows ?? []
-                  return (
-                    <div className="pt-4 lg:pt-0 lg:px-6">
-                      <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">🇺🇸 Trump</div>
-                      {trumpAlerts.length === 0 ? (
-                        <p className="text-xs text-gray-300">No market-relevant posts this week.</p>
-                      ) : (
-                        <div className="space-y-3">
-                          {trumpAlerts.map((alert, i) => {
-                            const mins = Math.round((Date.now() - new Date(alert.created_at).getTime()) / 60000)
-                            const ago  = mins < 60 ? `${mins}m` : mins < 1440 ? `${Math.floor(mins / 60)}h` : `${Math.floor(mins / 1440)}d`
-                            return (
-                              <div key={i} className="space-y-0.5">
-                                <div className="text-[9px] text-gray-300">{ago} ago</div>
-                                <p className="text-[11px] text-gray-700 leading-snug">{alert.summary}</p>
-                              </div>
-                            )
-                          })}
+                  </div>
+                )}
+                {bot3.length > 0 && (
+                  <div>
+                    <div className="text-xs font-semibold mb-1.5" style={{ color: 'var(--artha-negative)' }}>Top Selling</div>
+                    <div className="space-y-1.5">
+                      {bot3.map(s => (
+                        <div key={s.name} className="flex items-center justify-between gap-2">
+                          <span className="text-xs truncate" style={{ color: 'var(--artha-text-secondary)' }}>{s.name}</span>
+                          <span className="font-mono font-bold text-xs shrink-0" style={{ color: 'var(--artha-negative)' }}>{fmtCr(s.flow)}</span>
                         </div>
-                      )}
+                      ))}
                     </div>
-                  )
-                })()}
-
-                {/* ── Markets Feed ─────────────────────────── */}
-                {(() => {
-                  const marketAlerts = marketAlertRows ?? []
-                  return (
-                    <div className="pt-4 lg:pt-0 lg:pl-6">
-                      <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">📰 Macro</div>
-                      {marketAlerts.length === 0 ? (
-                        <p className="text-xs text-gray-300">No macro news this week.</p>
-                      ) : (
-                        <div className="space-y-3">
-                          {marketAlerts.map((alert, i) => {
-                            const mins = Math.round((Date.now() - new Date(alert.created_at).getTime()) / 60000)
-                            const ago  = mins < 60 ? `${mins}m` : mins < 1440 ? `${Math.floor(mins / 60)}h` : `${Math.floor(mins / 1440)}d`
-                            return (
-                              <div key={i} className="space-y-0.5">
-                                <div className="text-[9px] text-gray-300">{ago} ago</div>
-                                <p className="text-[11px] text-gray-700 leading-snug">{alert.summary}</p>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )
-                })()}
-
+                  </div>
+                )}
               </div>
-            </div>
+            )}
           </div>
-
         </div>
-      </main>
-    </div>
+      </div>
+    </AppShell>
   )
 }
 
 // ─── helper components ───────────────────────────────────────────────────────
 
-function AlertChipRow({ badge, badgeColor, tickers }: {
-  badge:      string
-  badgeColor: string
-  tickers:    string[]
+function SignalChip({ label, tickers, color }: {
+  label:   string
+  tickers: string[]
+  color:   'amber' | 'blue' | 'orange' | 'red' | 'teal'
 }) {
+  const styles = {
+    amber:  { bg: '#fef3c7', text: '#92400e' },
+    blue:   { bg: 'var(--artha-surface-low)', text: 'var(--artha-primary)' },
+    orange: { bg: '#fff7ed', text: '#9a3412' },
+    red:    { bg: 'var(--artha-negative-bg)', text: 'var(--artha-negative)' },
+    teal:   { bg: 'var(--artha-teal-subtle)', text: 'var(--artha-teal)' },
+  }
+  const s = styles[color]
   return (
-    <div className="flex items-center gap-2 flex-wrap">
-      <span className={`text-[10px] font-semibold px-2 py-1 rounded-lg shrink-0 whitespace-nowrap ${badgeColor}`}>
-        {badge}
-      </span>
-      {tickers.slice(0, 5).map(t => (
-        <span key={t} className="text-[10px] font-mono font-bold text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded">
-          {t}
-        </span>
-      ))}
-      {tickers.length > 5 && (
-        <span className="text-[10px] text-gray-400">+{tickers.length - 5}</span>
-      )}
+    <div>
+      <div className="text-xs font-semibold mb-1.5" style={{ color: s.text }}>{label}</div>
+      <div className="flex flex-wrap gap-1">
+        {tickers.slice(0, 6).map(t => (
+          <span
+            key={t}
+            className="font-mono font-bold text-xs px-2 py-0.5 rounded-md"
+            style={{ background: s.bg, color: s.text }}
+          >
+            {t}
+          </span>
+        ))}
+        {tickers.length > 6 && (
+          <span className="text-xs self-center" style={{ color: 'var(--artha-text-muted)' }}>+{tickers.length - 6}</span>
+        )}
+      </div>
     </div>
   )
 }
 
+// Legacy — keep for any remaining references
 function SignalRow({ label, tickers, color }: {
   label:   string
   tickers: string[]
   color:   'amber' | 'blue' | 'orange' | 'red'
 }) {
-  const styles = {
-    amber:  'bg-amber-50 text-amber-600 border-amber-200',
-    blue:   'bg-blue-50 text-blue-600 border-blue-200',
-    orange: 'bg-orange-50 text-orange-600 border-orange-200',
-    red:    'bg-red-50 text-red-500 border-red-200',
-  }
-  return (
-    <div className="flex items-start gap-1.5 flex-wrap">
-      <span className={`text-[10px] border px-1.5 py-0.5 rounded font-semibold shrink-0 ${styles[color]}`}>
-        {label}
-      </span>
-      <div className="flex flex-wrap gap-1">
-        {tickers.slice(0, 4).map(t => (
-          <span key={t} className="text-[10px] font-mono font-semibold text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded">
-            {t}
-          </span>
-        ))}
-        {tickers.length > 4 && <span className="text-[10px] text-gray-400 self-center">+{tickers.length - 4}</span>}
-      </div>
-    </div>
-  )
+  return <SignalChip label={label} tickers={tickers} color={color} />
 }
+
