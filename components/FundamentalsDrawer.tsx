@@ -114,9 +114,38 @@ function fmtHistVal(v: number | null): string {
   return v.toLocaleString('en-IN', { maximumFractionDigits: 2 })
 }
 
-function ScreenerHistoryTable({ section }: { section: ScreenerSection }) {
+// Labels where LOWER value = better (invert green/red)
+const INVERT_KEYWORDS = ['borrowing', 'debt', 'days', 'payable', 'expense', 'pledged', 'interest payable', 'provisions']
+
+function isInverted(label: string): boolean {
+  const l = label.toLowerCase()
+  return INVERT_KEYWORDS.some(k => l.includes(k))
+}
+
+// Comparison offset: quarterly YoY = 4 back, everything else = 1 back
+function getOffset(sectionKey: HistorySection, qMode: 'qoq' | 'yoy'): number {
+  if (sectionKey === 'quarterly') return qMode === 'yoy' ? 4 : 1
+  return 1
+}
+
+function cellBg(current: number | null, ref: number | null, inverted: boolean): string {
+  if (current == null || ref == null || ref === 0) return ''
+  const better = inverted ? current < ref : current > ref
+  const worse  = inverted ? current > ref : current < ref
+  if (better) return 'bg-green-50'
+  if (worse)  return 'bg-red-50'
+  return ''
+}
+
+function ScreenerHistoryTable({ section, sectionKey, qMode }: {
+  section: ScreenerSection
+  sectionKey: HistorySection
+  qMode: 'qoq' | 'yoy'
+}) {
   const { headers, rows } = section
   if (!rows.length) return <div className="text-base text-gray-400 py-6">No data available</div>
+
+  const offset = getOffset(sectionKey, qMode)
 
   return (
     <div>
@@ -132,14 +161,23 @@ function ScreenerHistoryTable({ section }: { section: ScreenerSection }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, ri) => (
-              <tr key={ri} className={`hover:bg-blue-50/40 transition-colors ${ri % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
-                <td className="py-2.5 px-4 sticky left-0 font-semibold text-sm text-gray-700 whitespace-nowrap border-r border-b border-gray-100 z-10" style={{ background: 'inherit' }}>{row.label}</td>
-                {row.values.map((v, vi) => (
-                  <td key={vi} className={`py-2.5 px-4 text-right text-sm font-mono whitespace-nowrap border-b border-gray-100 ${v == null ? 'text-gray-300' : 'text-gray-800'}`}>{fmtHistVal(v)}</td>
-                ))}
-              </tr>
-            ))}
+            {rows.map((row, ri) => {
+              const inverted = isInverted(row.label)
+              return (
+                <tr key={ri}>
+                  <td className={`py-2.5 px-4 sticky left-0 font-semibold text-sm text-gray-700 whitespace-nowrap border-r border-b border-gray-100 z-10 ${ri % 2 === 0 ? 'bg-white' : 'bg-gray-50/60'}`}>{row.label}</td>
+                  {row.values.map((v, vi) => {
+                    const ref = row.values[vi + offset] ?? null
+                    const bg  = cellBg(v, ref, inverted)
+                    return (
+                      <td key={vi} className={`py-2.5 px-4 text-right text-sm font-mono whitespace-nowrap border-b border-gray-100 ${bg} ${v == null ? 'text-gray-300' : 'text-gray-800'}`}>
+                        {fmtHistVal(v)}
+                      </td>
+                    )
+                  })}
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>
@@ -180,6 +218,7 @@ const HISTORY_SECTIONS: { id: HistorySection; label: string }[] = [
 export default function FundamentalsDrawer({ row, onClose }: { row: WatchlistRow | null; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>('overview')
   const [historySection, setHistorySection] = useState<HistorySection>('quarterly')
+  const [qMode, setQMode] = useState<'qoq' | 'yoy'>('yoy')
 
   useEffect(() => { if (row) setTab('overview') }, [row?.stock_id])
 
@@ -199,7 +238,7 @@ export default function FundamentalsDrawer({ row, onClose }: { row: WatchlistRow
   return (
     <>
       <div className="fixed inset-0 bg-black/20 z-40" onClick={onClose} />
-      <div className={`fixed right-0 top-0 h-full w-full bg-white shadow-2xl z-50 flex flex-col transition-[width] duration-200 ${tab === 'history' ? 'sm:w-[min(96vw,1400px)]' : 'sm:w-[420px]'}`}>
+      <div className={`fixed right-0 top-0 h-full w-full bg-white shadow-2xl z-50 flex flex-col transition-[width] duration-200 ${tab === 'history' ? 'sm:w-screen' : 'sm:w-[420px]'}`}>
 
         {/* Header */}
         <div className="flex items-start justify-between px-5 py-4 border-b border-gray-200">
@@ -375,27 +414,44 @@ export default function FundamentalsDrawer({ row, onClose }: { row: WatchlistRow
 
           {tab === 'history' && row.earnings_history && (
             <div>
-              {/* Sub-section tabs */}
-              <div className="flex gap-2 flex-wrap mb-5">
-                {HISTORY_SECTIONS.map(s => (
-                  <button
-                    key={s.id}
-                    onClick={() => setHistorySection(s.id)}
-                    className={`px-4 py-1.5 text-xs font-semibold rounded-full transition-colors ${
-                      historySection === s.id
-                        ? 'bg-gray-900 text-white'
-                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                    }`}
-                  >
-                    {s.label}
-                  </button>
-                ))}
+              {/* Sub-section pills + YoY/QoQ toggle */}
+              <div className="flex items-center justify-between flex-wrap gap-3 mb-5">
+                <div className="flex gap-2 flex-wrap">
+                  {HISTORY_SECTIONS.map(s => (
+                    <button
+                      key={s.id}
+                      onClick={() => setHistorySection(s.id)}
+                      className={`px-4 py-1.5 text-xs font-semibold rounded-full transition-colors ${
+                        historySection === s.id
+                          ? 'bg-gray-900 text-white'
+                          : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                      }`}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+                {historySection === 'quarterly' && (
+                  <div className="flex items-center gap-1 bg-gray-100 rounded-full p-0.5">
+                    {(['yoy', 'qoq'] as const).map(m => (
+                      <button
+                        key={m}
+                        onClick={() => setQMode(m)}
+                        className={`px-3 py-1 text-xs font-semibold rounded-full transition-colors ${
+                          qMode === m ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400 hover:text-gray-600'
+                        }`}
+                      >
+                        {m.toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {(() => {
                 const section = row.earnings_history![historySection]
                 if (!section) return <div className="text-xs text-gray-400 py-4">No data for this section</div>
-                return <ScreenerHistoryTable section={section} />
+                return <ScreenerHistoryTable section={section} sectionKey={historySection} qMode={qMode} />
               })()}
             </div>
           )}
