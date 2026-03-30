@@ -211,15 +211,15 @@ export default function SettingsForm({ prefs, apiKeySet }: { prefs: Prefs; apiKe
         </div>
       </section>
 
-      {/* Trump / Market News Alerts */}
+      {/* Macro Market Alerts */}
       <section>
-        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">Trump Market Alerts</h2>
+        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">Macro Market Alerts</h2>
         <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm space-y-4">
-          <p className="text-xs text-gray-400">Get instant Telegram alerts when Trump posts on Truth Social about tariffs, trade, China, Fed, energy, pharma, tech, or other market-moving topics.</p>
+          <p className="text-xs text-gray-400">Get instant Telegram alerts for macro market-moving events — Trump posts on tariffs/trade/Fed, global macro news, and key policy developments.</p>
           <Toggle
             name="trump_alerts"
-            label="🇺🇸 Trump post alerts"
-            description="Real-time alert when a market-relevant Truth Social post is detected"
+            label="🌍 Macro &amp; Trump alerts"
+            description="Real-time alert for market-relevant macro news and Trump Truth Social posts"
             defaultChecked={prefs.trump_alerts}
           />
         </div>
