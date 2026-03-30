@@ -53,15 +53,28 @@ function buildPlDigest(plStocks, label) {
 }
 
 // ── FII/DII section ───────────────────────────────────────────────────────────
+
+// Returns true if FII/DII data is recent (within last 4 days — covers weekends + 1 missed day)
+function isFiiDiiFresh(fiiDii) {
+  if (!fiiDii?.date) return false;
+  const dataDate = new Date(fiiDii.date);
+  const nowIST   = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+  const diffDays = (nowIST - dataDate) / (1000 * 60 * 60 * 24);
+  return diffDays <= 4;
+}
+
 function buildFiiDiiSection(fiiDii) {
-  if (!fiiDii) return null;
+  if (!fiiDii) return "🌍 *FII / DII Activity*\n\n⏳ Awaiting today's figures";
+  if (!isFiiDiiFresh(fiiDii)) {
+    return `🌍 *FII / DII Activity*\n\n⏳ Awaiting latest figures (last data: ${fiiDii.date})`;
+  }
   const fiiNet = fiiDii.fii_net;
   const diiNet = fiiDii.dii_net;
   const fiiUp  = fiiNet >= 0;
   const diiUp  = diiNet >= 0;
   const fmt    = v => `₹${Math.abs(v).toLocaleString("en-IN", { maximumFractionDigits: 0 })} Cr`;
   return [
-    "🌍 *FII / DII Activity*",
+    `🌍 *FII / DII Activity* · ${fiiDii.date}`,
     "",
     `${fiiUp ? "🟢" : "🔴"} FII: ${fiiUp ? "+" : "-"}${fmt(fiiNet)} net ${fiiUp ? "buying" : "selling"}`,
     `${diiUp ? "🟢" : "🔴"} DII: ${diiUp ? "+" : "-"}${fmt(diiNet)} net ${diiUp ? "buying" : "selling"}`,
@@ -83,7 +96,7 @@ function buildDigest(stocks, prefs, fiiDii) {
 
   // FII/DII
   const fiiSection = buildFiiDiiSection(fiiDii);
-  if (fiiSection) { lines.push(fiiSection); lines.push(""); lines.push("─────────────────────"); lines.push(""); }
+  lines.push(fiiSection); lines.push(""); lines.push("─────────────────────"); lines.push("");
 
   // RSI Signals
   const oversold       = stocks.filter(s => s.rsi != null && s.rsi < oversoldThreshold);

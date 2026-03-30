@@ -3,7 +3,8 @@
 //   1. ~7 PM IST via Task Scheduler — provisional NSE data + same-day Screener snapshot
 //   2. Via daily-pipeline.yml (morning engine run) — Screener final data overwrites provisional
 require('dotenv').config({ path: '../.env.local' });
-const { createClient } = require('@supabase/supabase-js');
+const { createClient }   = require('@supabase/supabase-js');
+const { sendToMany }     = require('./telegramAlert');
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -168,7 +169,31 @@ async function main() {
 
   console.log('Fetching NSE FII/DII daily...');
   const nseSession = await getNSESession();
-  await fetchFIIDIIDaily(nseSession);
+  const fiiDiiRow  = await fetchFIIDIIDaily(nseSession);
+
+  // Push FII/DII update to all users who have Telegram connected
+  try {
+    const { data: prefs } = await supabase
+      .from('user_alert_preferences')
+      .select('telegram_chat_id')
+      .not('telegram_chat_id', 'is', null);
+    const chatIds = (prefs ?? []).map(p => p.telegram_chat_id).filter(Boolean);
+    if (chatIds.length && fiiDiiRow) {
+      const fmt    = v => `₹${Math.abs(v).toLocaleString('en-IN', { maximumFractionDigits: 0 })} Cr`;
+      const fiiUp  = fiiDiiRow.fii_net >= 0;
+      const diiUp  = fiiDiiRow.dii_net >= 0;
+      const msg = [
+        `🌍 *FII / DII Update · ${fiiDiiRow.date}*`,
+        '',
+        `${fiiUp ? '🟢' : '🔴'} FII: ${fiiUp ? '+' : '-'}${fmt(fiiDiiRow.fii_net)} net ${fiiUp ? 'buying' : 'selling'}`,
+        `${diiUp ? '🟢' : '🔴'} DII: ${diiUp ? '+' : '-'}${fmt(fiiDiiRow.dii_net)} net ${diiUp ? 'buying' : 'selling'}`,
+      ].join('\n');
+      await sendToMany(chatIds, msg);
+      console.log(`  ✓ FII/DII push sent to ${chatIds.length} user(s)`);
+    }
+  } catch (e) {
+    console.log(`  ⚠ FII/DII push failed: ${e.message}`);
+  }
 
   console.log('\n✅ fiiAgent complete.');
 }

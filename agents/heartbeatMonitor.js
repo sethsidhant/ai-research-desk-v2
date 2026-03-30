@@ -138,7 +138,7 @@ async function main() {
       ? `🔴 *${critFailed.length} critical issue(s) detected*`
       : `🟡 *${anyFailed.length} warning(s)*`;
 
-  const nowIST = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }))
+  const nowISTLabel = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }))
     .toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
   const lines = allResults.map(r => {
@@ -148,7 +148,7 @@ async function main() {
   });
 
   const message = [
-    `💓 *Heartbeat Monitor · ${nowIST} IST*`,
+    `💓 *Heartbeat Monitor · ${nowISTLabel} IST*`,
     '',
     statusLine,
     '',
