@@ -215,13 +215,23 @@ export default function SettingsForm({ prefs, apiKeySet }: { prefs: Prefs; apiKe
       <section>
         <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">Macro Market Alerts</h2>
         <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm space-y-4">
-          <p className="text-xs text-gray-400">Get instant Telegram alerts for macro market-moving events — Trump posts on tariffs/trade/Fed, global macro news, and key policy developments.</p>
-          <Toggle
-            name="trump_alerts"
-            label="🌍 Macro &amp; Trump alerts"
-            description="Real-time alert for market-relevant macro news and Trump Truth Social posts"
-            defaultChecked={prefs.trump_alerts}
-          />
+          <p className="text-xs text-gray-400">
+            Get real-time alerts for macro market-moving events — Trump posts on tariffs/trade/Fed, global macro news, and key policy developments.
+            Delivered via a dedicated Telegram channel, separate from your personal alerts.
+          </p>
+          <a
+            href="https://t.me/noesis.macro.news"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-colors"
+            style={{ background: '#229ED9' }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248-1.97 9.289c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.48 14.013 4.53 13.1c-.657-.204-.67-.657.136-.975l10.862-4.187c.548-.196 1.027.12.848.97l-.814-.66z"/>
+            </svg>
+            Join Noesis Macro News on Telegram
+          </a>
+          <p className="text-[11px] text-gray-400">Tap to join — no approval needed, instant access.</p>
         </div>
       </section>
 
