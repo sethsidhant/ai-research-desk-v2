@@ -205,45 +205,71 @@ async function main() {
       : `✅ ${mcCovered.length}/${equityList.length} equities have analyst data`,
   });
 
-  // ── 9. Screener spot-check — 5 random equities ───────────────────────────
+  // ── 9. Closing price spot-check — 5 random equities ─────────────────────
+  // Compares daily_history.close (Kite OHLCV) vs NSE lastPrice (both = day's close).
+  // Do NOT use stocks.current_price — it is written at engine run time, not at close.
+  const lastMarketDay = lastMarketDays[0]; // most recent market day
+
   const sampleSize = Math.min(5, equityList.length);
   const sample = equityList
-    .filter(s => s.current_price)
     .sort(() => Math.random() - 0.5)
     .slice(0, sampleSize);
 
+  // Fetch today's close from daily_history for sampled stocks
+  const { data: historyRows } = await supabase
+    .from('daily_history')
+    .select('stock_id, close, date')
+    .in('stock_id', sample.map(s => s.id))
+    .eq('date', lastMarketDay);
+
+  const historyByStockId = Object.fromEntries((historyRows ?? []).map(r => [r.stock_id, r]));
+
   const spotCheckResults = [];
   for (const s of sample) {
+    const histRow  = historyByStockId[s.id];
+    const kiteClose = histRow?.close ?? null;
+
+    if (kiteClose == null) {
+      spotCheckResults.push({ ticker: s.ticker, kite: null, nse: null, ok: true, note: `No daily_history for ${lastMarketDay}` });
+      console.log(`[spotCheck] ${s.ticker}: no daily_history row for ${lastMarketDay}`);
+      continue;
+    }
+
     const nsePrice = await fetchNsePrice(s.ticker);
     if (nsePrice == null) {
-      spotCheckResults.push({ ticker: s.ticker, db: s.current_price, live: null, ok: true, note: 'NSE unavailable' });
+      spotCheckResults.push({ ticker: s.ticker, kite: kiteClose, nse: null, ok: true, note: 'NSE unavailable' });
       console.log(`[spotCheck] ${s.ticker}: NSE unavailable`);
       continue;
     }
-    const deviation = Math.abs((s.current_price - nsePrice) / nsePrice) * 100;
-    const ok = deviation <= 5;
+
+    const deviation = Math.abs((kiteClose - nsePrice) / nsePrice) * 100;
+    const ok = deviation <= 1; // Kite close vs NSE close should be within 1%
     spotCheckResults.push({
       ticker:    s.ticker,
-      db:        s.current_price,
-      live:      nsePrice,
+      kite:      kiteClose,
+      nse:       nsePrice,
+      date:      lastMarketDay,
       deviation: parseFloat(deviation.toFixed(2)),
       ok,
     });
-    console.log(`[spotCheck] ${s.ticker}: DB ₹${s.current_price} vs NSE ₹${nsePrice} — ${deviation.toFixed(1)}% ${ok ? '✅' : '⚠️'}`);
+    console.log(`[spotCheck] ${s.ticker}: Kite close ₹${kiteClose} vs NSE ₹${nsePrice} — ${deviation.toFixed(2)}% ${ok ? '✅' : '⚠️'}`);
   }
 
   const spotFailed  = spotCheckResults.filter(r => !r.ok);
-  const spotChecked = spotCheckResults.filter(r => r.live != null);
-  // Build per-stock lines for the report
-  const spotLines = spotChecked.map(r =>
-    `${r.ok ? '✅' : '⚠️'} ${r.ticker}: DB ₹${r.db} vs NSE ₹${r.live} (${r.deviation}%)`
+  const spotChecked = spotCheckResults.filter(r => r.nse != null);
+  const spotLines   = spotChecked.map(r =>
+    `${r.ok ? '✅' : '⚠️'} ${r.ticker}: Kite ₹${r.kite} vs NSE ₹${r.nse} (${r.deviation}%)`
   );
+  const noHistory = spotCheckResults.filter(r => r.note?.startsWith('No daily_history'));
   checks.push({
-    name:   'Price Spot-Check vs NSE',
+    name:   'Price Spot-Check (Kite close vs NSE close)',
     ok:     spotFailed.length === 0,
     detail: spotChecked.length === 0
-      ? 'NSE unavailable for all sampled stocks'
-      : spotLines.join('\n    '),
+      ? `NSE unavailable for all sampled stocks (date: ${lastMarketDay})`
+      : [
+          ...spotLines,
+          noHistory.length > 0 ? `ℹ️ No history row: ${noHistory.map(r => r.ticker).join(', ')}` : null,
+        ].filter(Boolean).join('\n    '),
   });
 
   // ── Build report ──────────────────────────────────────────────────────────

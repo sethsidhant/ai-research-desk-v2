@@ -6,7 +6,7 @@ import MarketIndicesBar from '@/components/MarketIndicesBar'
 import MarketStatusLight from '@/components/MarketStatusLight'
 import AppShell from '@/components/AppShell'
 import { INDUSTRY_TO_FII_SECTOR } from '@/lib/fiiSectorMap'
-import { WatchlistTodayGain, PortfolioTodayGain } from '@/components/DashboardTodayGain'
+import { WatchlistReturnCard, PortfolioReturnCard } from '@/components/DashboardReturnCard'
 import AiBriefButton from '@/components/AiBriefButton'
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -465,98 +465,23 @@ export default async function DashboardPage() {
         {/* ── KPI row ─────────────────────────────────────────────────── */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
 
-          {/* Watchlist Return */}
-          {(() => {
-            const positive = totalPnl >= 0
-            const accentColor = positive ? 'var(--artha-teal)' : 'var(--artha-negative)'
-            const accentBg    = positive ? 'var(--artha-teal-subtle)' : 'var(--artha-negative-bg)'
-            return (
-              <Link href="/watchlist" className="artha-card artha-card-hover block overflow-hidden" style={{ padding: 0 }}>
-                {/* Coloured top accent */}
-                <div className="h-1 w-full" style={{ background: totalInvested > 0 ? accentColor : 'var(--artha-surface-low)' }} />
-                <div className="px-5 py-4">
-                  {/* Header row */}
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="artha-label">Watchlist Return</span>
-                    <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--artha-surface-low)', color: 'var(--artha-text-muted)' }}>
-                      {watchlistCount} stocks
-                    </span>
-                  </div>
-                  {totalInvested > 0 ? (
-                    <>
-                      {/* Main return */}
-                      <div className="flex items-end justify-between gap-3 mb-3">
-                        <div>
-                          <div className="font-display font-bold text-3xl leading-none" style={{ color: accentColor, letterSpacing: '-0.03em' }}>
-                            {positive ? '+' : ''}{totalPnlPct.toFixed(2)}%
-                          </div>
-                          <div className="text-xs mt-1.5 font-mono" style={{ color: 'var(--artha-text-muted)' }}>
-                            {positive ? '+' : '−'}₹{Math.abs(totalPnl).toLocaleString('en-IN', { maximumFractionDigits: 0 })} total P&amp;L
-                          </div>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <div className="text-[11px]" style={{ color: 'var(--artha-text-faint)' }}>Invested</div>
-                          <div className="text-xs font-mono font-semibold" style={{ color: 'var(--artha-text-secondary)' }}>
-                            ₹{totalInvested.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-                          </div>
-                        </div>
-                      </div>
-                      {/* Today's gain row */}
-                      <WatchlistTodayGain rows={portfolioRows
-                        .filter((w: any) => w.invested_amount && w.entry_price && w.stock?.current_price)
-                        .map((w: any) => ({ ticker: w.stock.ticker, invested: w.invested_amount, entryPrice: w.entry_price, currentPrice: w.stock.current_price }))} />
-                    </>
-                  ) : (
-                    <div className="text-sm py-2" style={{ color: 'var(--artha-text-muted)' }}>
-                      {watchlistCount} stocks tracked · set entry prices to see P&amp;L
-                    </div>
-                  )}
-                </div>
-              </Link>
-            )
-          })()}
+          {/* Watchlist Return — live prices via client component */}
+          <WatchlistReturnCard
+            rows={allRows
+              .filter((w: any) => w.invested_amount && w.entry_price)
+              .map((w: any) => ({ ticker: w.stock.ticker, invested: w.invested_amount, entryPrice: w.entry_price }))}
+            watchlistCount={watchlistCount}
+          />
 
-          {/* Portfolio Return */}
-          {(() => {
-            const positive = portPnl >= 0
-            const accentColor = portRows.length > 0 ? (positive ? 'var(--artha-teal)' : 'var(--artha-negative)') : 'var(--artha-text-faint)'
-            return (
-              <Link href="/portfolio" className="artha-card artha-card-hover block overflow-hidden" style={{ padding: 0 }}>
-                <div className="h-1 w-full" style={{ background: portRows.length > 0 ? accentColor : 'var(--artha-surface-low)' }} />
-                <div className="px-5 py-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="artha-label">Portfolio Return</span>
-                    <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--artha-surface-low)', color: 'var(--artha-text-muted)' }}>
-                      {portRows.length} holdings
-                    </span>
-                  </div>
-                  {portRows.length > 0 ? (
-                    <>
-                      <div className="flex items-end justify-between gap-3 mb-3">
-                        <div>
-                          <div className="font-display font-bold text-3xl leading-none" style={{ color: accentColor, letterSpacing: '-0.03em' }}>
-                            {positive ? '+' : ''}{portPnlPct.toFixed(2)}%
-                          </div>
-                          <div className="text-xs mt-1.5 font-mono" style={{ color: 'var(--artha-text-muted)' }}>
-                            {positive ? '+' : '−'}₹{Math.abs(portPnl).toLocaleString('en-IN', { maximumFractionDigits: 0 })} total P&amp;L
-                          </div>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <div className="text-[11px]" style={{ color: 'var(--artha-text-faint)' }}>Invested</div>
-                          <div className="text-xs font-mono font-semibold" style={{ color: 'var(--artha-text-secondary)' }}>
-                            ₹{portInvested.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-                          </div>
-                        </div>
-                      </div>
-                      <PortfolioTodayGain rows={portRows.map((h: any) => ({ ticker: h.stock.ticker, quantity: h.quantity, currentPrice: h.stock.current_price, price5dAgo: price5dMap[h.stock_id] ?? null }))} />
-                    </>
-                  ) : (
-                    <div className="text-sm py-2" style={{ color: 'var(--artha-text-muted)' }}>No holdings yet</div>
-                  )}
-                </div>
-              </Link>
-            )
-          })()}
+          {/* Portfolio Return — live prices via client component */}
+          <PortfolioReturnCard
+            rows={portRowsAll.map((h: any) => ({
+              ticker:     h.stock.ticker,
+              quantity:   h.quantity,
+              avgPrice:   h.avg_price,
+              price5dAgo: price5dMap[h.stock_id] ?? null,
+            }))}
+          />
 
         </div>
 
