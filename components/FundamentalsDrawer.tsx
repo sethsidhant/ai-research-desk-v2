@@ -154,9 +154,9 @@ function ScreenerHistoryTable({ section, sectionKey, qMode }: {
         <table className="w-full border-separate border-spacing-0">
           <thead>
             <tr className="bg-gray-50">
-              <th className="text-left text-gray-500 text-xs font-bold uppercase tracking-wider py-3 px-4 sticky left-0 bg-gray-50 whitespace-nowrap min-w-[180px] z-10 border-b border-gray-200">Metric</th>
+              <th className="text-left text-gray-500 text-xs font-bold uppercase tracking-wider py-2 px-2 sm:py-3 sm:px-4 sticky left-0 bg-gray-50 whitespace-nowrap min-w-[110px] sm:min-w-[180px] z-10 border-b border-gray-200">Metric</th>
               {headers.map((h, i) => (
-                <th key={i} className="text-right text-gray-500 text-xs font-bold uppercase tracking-wider py-3 px-4 whitespace-nowrap border-b border-gray-200">{h}</th>
+                <th key={i} className="text-right text-gray-500 text-xs font-bold uppercase tracking-wider py-2 px-2 sm:py-3 sm:px-4 whitespace-nowrap border-b border-gray-200">{h}</th>
               ))}
             </tr>
           </thead>
@@ -165,12 +165,12 @@ function ScreenerHistoryTable({ section, sectionKey, qMode }: {
               const inverted = isInverted(row.label)
               return (
                 <tr key={ri}>
-                  <td className={`py-2.5 px-4 sticky left-0 font-semibold text-sm text-gray-700 whitespace-nowrap border-r border-b border-gray-100 z-10 ${ri % 2 === 0 ? 'bg-white' : 'bg-gray-50/60'}`}>{row.label}</td>
+                  <td className={`py-1.5 px-2 sm:py-2.5 sm:px-4 sticky left-0 font-semibold text-xs sm:text-sm text-gray-700 whitespace-nowrap border-r border-b border-gray-100 z-10 ${ri % 2 === 0 ? 'bg-white' : 'bg-gray-50/60'}`}>{row.label}</td>
                   {row.values.map((v, vi) => {
                     const ref = row.values[vi + offset] ?? null
                     const bg  = cellBg(v, ref, inverted)
                     return (
-                      <td key={vi} className={`py-2.5 px-4 text-right text-sm font-mono whitespace-nowrap border-b border-gray-100 ${bg} ${v == null ? 'text-gray-300' : 'text-gray-800'}`}>
+                      <td key={vi} className={`py-1.5 px-2 sm:py-2.5 sm:px-4 text-right text-xs sm:text-sm font-mono whitespace-nowrap border-b border-gray-100 ${bg} ${v == null ? 'text-gray-300' : 'text-gray-800'}`}>
                         {fmtHistVal(v)}
                       </td>
                     )
