@@ -220,7 +220,7 @@ export default function SettingsForm({ prefs, apiKeySet }: { prefs: Prefs; apiKe
             Delivered via a dedicated Telegram channel, separate from your personal alerts.
           </p>
           <a
-            href="https://t.me/noesis.macro.news"
+            href="https://t.me/+PnJ3faH-ZME1NTg0"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-colors"
