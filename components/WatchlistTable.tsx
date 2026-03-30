@@ -84,6 +84,19 @@ export type WatchlistRow = {
   target_high: number | null
   target_low: number | null
   mc_earnings_json: { netProfit: EarningsQuarter[]; revenue: EarningsQuarter[] } | null
+  earnings_history: {
+    quarterly:     ScreenerSection | null
+    annual_pl:     ScreenerSection | null
+    balance_sheet: ScreenerSection | null
+    cash_flow:     ScreenerSection | null
+    ratios:        ScreenerSection | null
+    shareholding:  ScreenerSection | null
+  } | null
+}
+
+export type ScreenerSection = {
+  headers: string[]
+  rows: { label: string; values: (number | null)[] }[]
 }
 
 export type EarningsQuarter = {

@@ -21,6 +21,15 @@ function getScreenerFundamentals(ticker) {
   } catch { return null; }
 }
 
+function getScreenerHistory(ticker) {
+  try {
+    const out = execSync(`python3 fetchScreenerHistory.py ${ticker}`, {
+      encoding: "utf8", cwd: __dirname, timeout: 30000,
+    });
+    return JSON.parse(out);
+  } catch { return null; }
+}
+
 async function runFundamentalsRefresh() {
   try {
     const stocks = await getWatchlistedStocks();
@@ -68,7 +77,26 @@ async function runFundamentalsRefresh() {
         fundamentals_updated_at: new Date().toISOString(),
       });
 
-      console.log(`  ✓ ROE: ${f.roe ?? "N/A"}% | ROCE: ${f.roce ?? "N/A"}% | D/E: ${f.debt_to_equity ?? "N/A"} | EPS: ${f.eps ?? "N/A"}\n`);
+      console.log(`  ✓ ROE: ${f.roe ?? "N/A"}% | ROCE: ${f.roce ?? "N/A"}% | D/E: ${f.debt_to_equity ?? "N/A"} | EPS: ${f.eps ?? "N/A"}`);
+
+      // Historical financials (Screener sections)
+      const h = getScreenerHistory(ticker);
+      if (h) {
+        await upsertStock(ticker, {
+          earnings_history: {
+            quarterly:    h.quarterly    ?? null,
+            annual_pl:    h.annual_pl    ?? null,
+            balance_sheet: h.balance_sheet ?? null,
+            cash_flow:    h.cash_flow    ?? null,
+            ratios:       h.ratios       ?? null,
+            shareholding: h.shareholding ?? null,
+          },
+        });
+        console.log(`  ✓ History: ${h.quarterly?.headers?.length ?? 0} qtrs, ${h.annual_pl?.headers?.length ?? 0} annual years\n`);
+      } else {
+        console.log("  ⚠ History: no data\n");
+      }
+
       await sleep(4000); // be gentle with Screener
     }
 

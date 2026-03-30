@@ -63,7 +63,8 @@ export default async function WatchlistPage() {
         analyst_count,
         target_mean,
         target_high,
-        target_low
+        target_low,
+        earnings_history
       )
     `)
     .eq('user_id', user.id)
@@ -150,6 +151,7 @@ export default async function WatchlistPage() {
       target_high:       stock?.target_high ?? null,
       target_low:        stock?.target_low ?? null,
       mc_earnings_json:  null,
+      earnings_history:  stock?.earnings_history ?? null,
     }
   }).sort((a, b) => {
     const ia = a.industry ?? 'zzz'

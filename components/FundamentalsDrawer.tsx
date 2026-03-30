@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect, type ReactNode } from 'react'
-import { type WatchlistRow, type EarningsQuarter } from './WatchlistTable'
-type Tab = 'overview' | 'growth' | 'comparison' | 'analyst'
+import { type WatchlistRow, type EarningsQuarter, type ScreenerSection } from './WatchlistTable'
+type Tab = 'overview' | 'growth' | 'comparison' | 'analyst' | 'history'
+type HistorySection = 'quarterly' | 'annual_pl' | 'balance_sheet' | 'cash_flow' | 'ratios' | 'shareholding'
 
 function fmt(n: number | null, suffix = '', decimals = 1) {
   if (n == null) return '—'
@@ -106,6 +107,45 @@ function EarningsTable({ quarters, revenueQuarters }: { quarters: EarningsQuarte
   )
 }
 
+// ── Screener history table ────────────────────────────────────────────────────
+
+function fmtHistVal(v: number | null): string {
+  if (v == null) return '—'
+  if (Math.abs(v) >= 100000) return `${(v / 100000).toFixed(1)}L`
+  if (Math.abs(v) >= 1000)   return `${(v / 1000).toFixed(1)}K`
+  return v % 1 === 0 ? String(v) : v.toFixed(1)
+}
+
+function ScreenerHistoryTable({ section }: { section: ScreenerSection }) {
+  const { headers, rows } = section
+  if (!rows.length) return <div className="text-xs text-gray-400 py-4">No data available</div>
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs border-separate border-spacing-0">
+        <thead>
+          <tr>
+            <th className="text-left text-gray-400 font-semibold pb-2 pr-4 sticky left-0 bg-white whitespace-nowrap min-w-[140px] z-10">Metric</th>
+            {headers.map((h, i) => (
+              <th key={i} className="text-right text-gray-400 font-semibold pb-2 px-2 whitespace-nowrap">{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, ri) => (
+            <tr key={ri} className={ri % 2 === 0 ? 'bg-white' : 'bg-gray-50/70'}>
+              <td className="py-1 pr-4 sticky left-0 font-medium text-gray-600 whitespace-nowrap border-r border-gray-100 z-10" style={{ background: 'inherit' }}>{row.label}</td>
+              {row.values.map((v, vi) => (
+                <td key={vi} className={`py-1 px-2 text-right font-mono whitespace-nowrap ${v == null ? 'text-gray-300' : 'text-gray-700'}`}>{fmtHistVal(v)}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function returnHighlight(stock: number | null, bench: number | null): 'green' | 'red' | undefined {
   if (stock == null || bench == null) return undefined
   return stock >= bench ? 'green' : 'red'
@@ -127,8 +167,18 @@ function BenchCompare({ label, stockVal, benchVal, benchLabel }: { label: string
   )
 }
 
+const HISTORY_SECTIONS: { id: HistorySection; label: string }[] = [
+  { id: 'quarterly',    label: 'Quarterly' },
+  { id: 'annual_pl',    label: 'P&L' },
+  { id: 'balance_sheet', label: 'Bal. Sheet' },
+  { id: 'cash_flow',    label: 'Cash Flow' },
+  { id: 'ratios',       label: 'Ratios' },
+  { id: 'shareholding', label: 'Holding' },
+]
+
 export default function FundamentalsDrawer({ row, onClose }: { row: WatchlistRow | null; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>('overview')
+  const [historySection, setHistorySection] = useState<HistorySection>('quarterly')
 
   useEffect(() => { if (row) setTab('overview') }, [row?.stock_id])
 
@@ -136,17 +186,19 @@ export default function FundamentalsDrawer({ row, onClose }: { row: WatchlistRow
 
   const r = row as any
   const hasAnalystData = row.industry !== 'ETF' && (row.analyst_rating || row.target_mean)
+  const hasHistory = !!row.earnings_history
   const tabs: { id: Tab; label: string }[] = [
     { id: 'overview',   label: 'Fundamentals' },
     { id: 'growth',     label: 'Growth' },
     { id: 'comparison', label: 'vs Nifty' },
     ...(hasAnalystData ? [{ id: 'analyst' as Tab, label: 'Analyst' }] : []),
+    ...(hasHistory ? [{ id: 'history' as Tab, label: 'History' }] : []),
   ]
 
   return (
     <>
       <div className="fixed inset-0 bg-black/20 z-40" onClick={onClose} />
-      <div className="fixed right-0 top-0 h-full w-full sm:w-96 bg-white shadow-2xl z-50 flex flex-col">
+      <div className={`fixed right-0 top-0 h-full w-full bg-white shadow-2xl z-50 flex flex-col transition-[width] duration-200 ${tab === 'history' ? 'sm:w-[min(92vw,1080px)]' : 'sm:w-96'}`}>
 
         {/* Header */}
         <div className="flex items-start justify-between px-5 py-4 border-b border-gray-200">
@@ -317,6 +369,33 @@ export default function FundamentalsDrawer({ row, onClose }: { row: WatchlistRow
                 </>
               )}
 
+            </div>
+          )}
+
+          {tab === 'history' && row.earnings_history && (
+            <div>
+              {/* Sub-section tabs */}
+              <div className="flex gap-1 flex-wrap mb-4">
+                {HISTORY_SECTIONS.map(s => (
+                  <button
+                    key={s.id}
+                    onClick={() => setHistorySection(s.id)}
+                    className={`px-2.5 py-1 text-[10px] font-semibold rounded-full transition-colors ${
+                      historySection === s.id
+                        ? 'bg-gray-900 text-white'
+                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+
+              {(() => {
+                const section = row.earnings_history![historySection]
+                if (!section) return <div className="text-xs text-gray-400 py-4">No data for this section</div>
+                return <ScreenerHistoryTable section={section} />
+              })()}
             </div>
           )}
 

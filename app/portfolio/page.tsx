@@ -237,6 +237,7 @@ export default async function PortfolioPage() {
       target_high:       stock?.target_high ?? null,
       target_low:        stock?.target_low ?? null,
       mc_earnings_json:  null,
+      earnings_history:  null,
     }
   }
 
