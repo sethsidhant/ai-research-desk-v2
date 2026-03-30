@@ -2,7 +2,7 @@
 require('dotenv').config({ path: '../.env.local' });
 
 const { quoteMultiple } = require('./kiteClient');
-const { sendMacro, sendToMany } = require('./telegramAlert');
+const { sendToMany } = require('./telegramAlert');
 const userCache = require('./userCache');
 
 const INDICES = [
@@ -68,12 +68,10 @@ async function poll() {
       const sign  = dir === 'up' ? '+' : '';
       const msg   = `${arrow} *${idx.label}* ${sign}${changePct.toFixed(2)}% today\n${prevClose.toLocaleString('en-IN')} → ${last.toLocaleString('en-IN')}`;
 
-      // Macro channel gets index alerts; broadcast to linked users too
-      await sendMacro(msg);
-      const macroChatId = process.env.TELEGRAM_MACRO_CHAT_ID;
-      const otherChats  = userCache.getAllChatIds().filter(id => id !== macroChatId);
-      if (otherChats.length) await sendToMany(otherChats, msg);
-      console.log(`[indexWatcher] Alert: ${idx.label} ${sign}${changePct.toFixed(2)}% → admin + ${otherChats.length} user(s)`);
+      // Send to all end users via personal DM only
+      const chatIds = userCache.getAllChatIds();
+      if (chatIds.length) await sendToMany(chatIds, msg);
+      console.log(`[indexWatcher] Alert: ${idx.label} ${sign}${changePct.toFixed(2)}% → ${chatIds.length} user(s)`);
     }
     if (!initialized) {
       initialized = true;
