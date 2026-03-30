@@ -7,6 +7,7 @@ import {
   Star,
   Briefcase,
   BarChart2,
+  Globe,
   Settings,
   ShieldCheck,
   LogOut,
@@ -26,8 +27,9 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/',             label: 'Overview',     icon: LayoutDashboard },
   { href: '/watchlist',    label: 'Watchlist',    icon: Star },
   { href: '/portfolio',    label: 'Portfolio',    icon: Briefcase },
-  { href: '/market-pulse', label: 'Market Pulse', icon: BarChart2 },
-  { href: '/settings',     label: 'Settings',     icon: Settings },
+  { href: '/market-pulse',    label: 'Market Pulse',    icon: BarChart2 },
+  { href: '/global-indices',  label: 'Global Markets',  icon: Globe },
+  { href: '/settings',        label: 'Settings',        icon: Settings },
   { href: '/admin',        label: 'Admin',        icon: ShieldCheck, adminOnly: true },
 ]
 
