@@ -12,7 +12,7 @@ require('dotenv').config({ path: '../.env.local' });
 const Anthropic        = require('@anthropic-ai/sdk');
 const { createClient } = require('@supabase/supabase-js');
 const RSSParser        = require('rss-parser');
-const { sendAlert }    = require('./telegramAlert');
+const { sendMacro }    = require('./telegramAlert');
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -262,7 +262,7 @@ async function processSource(source) {
           // Only notify for items published within the last 2 hours
           const ageMs = item.pubDate ? Date.now() - new Date(item.pubDate).getTime() : 0;
           if (ageMs < 2 * 60 * 60 * 1000) {
-            await sendAlert(`${emoji} *Macro · ${label}*\n${summary}`);
+            await sendMacro(`${emoji} *Macro · ${label}*\n${summary}`);
           } else {
             console.log(`[macroWatcher] ${label}: stored silently (item is ${Math.round(ageMs / 60000)}m old)`);
           }
