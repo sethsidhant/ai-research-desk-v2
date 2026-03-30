@@ -44,7 +44,8 @@ News: ${summary}`,
     }),
   });
   const json = await res.json();
-  const text = (json.content?.[0]?.text ?? '').trim();
+  const raw  = (json.content?.[0]?.text ?? '').trim();
+  const text = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/, '').trim();
   try {
     const arr = JSON.parse(text);
     return Array.isArray(arr) ? arr.filter(s => FII_SECTORS.includes(s)) : [];
@@ -54,10 +55,12 @@ News: ${summary}`,
 }
 
 async function main() {
+  const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const { data: rows, error } = await supabase
     .from('macro_alerts')
     .select('id, summary, affected_sectors')
     .eq('important', true)
+    .gte('created_at', cutoff24h)
     .order('created_at', { ascending: false });
 
   if (error) { console.error('Fetch error:', error.message); process.exit(1); }
