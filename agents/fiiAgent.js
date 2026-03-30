@@ -167,29 +167,43 @@ async function main() {
   console.log('Fetching FII sector data...');
   await fetchFIISectors(screenerSession);
 
+  // Check existing latest date before fetching — to detect if NSE has new data
+  const { data: existingRow } = await supabase
+    .from('fii_dii_daily')
+    .select('date')
+    .order('date', { ascending: false })
+    .limit(1)
+    .single();
+  const existingDate = existingRow?.date ?? null;
+
   console.log('Fetching NSE FII/DII daily...');
   const nseSession = await getNSESession();
   const fiiDiiRow  = await fetchFIIDIIDaily(nseSession);
 
-  // Push FII/DII update to all users who have Telegram connected
+  // Push FII/DII update only if NSE returned a newer date than what was already in DB
   try {
-    const { data: prefs } = await supabase
-      .from('user_alert_preferences')
-      .select('telegram_chat_id')
-      .not('telegram_chat_id', 'is', null);
-    const chatIds = (prefs ?? []).map(p => p.telegram_chat_id).filter(Boolean);
-    if (chatIds.length && fiiDiiRow) {
-      const fmt    = v => `₹${Math.abs(v).toLocaleString('en-IN', { maximumFractionDigits: 0 })} Cr`;
-      const fiiUp  = fiiDiiRow.fii_net >= 0;
-      const diiUp  = fiiDiiRow.dii_net >= 0;
-      const msg = [
-        `🌍 *FII / DII Update · ${fiiDiiRow.date}*`,
-        '',
-        `${fiiUp ? '🟢' : '🔴'} FII: ${fiiUp ? '+' : '-'}${fmt(fiiDiiRow.fii_net)} net ${fiiUp ? 'buying' : 'selling'}`,
-        `${diiUp ? '🟢' : '🔴'} DII: ${diiUp ? '+' : '-'}${fmt(fiiDiiRow.dii_net)} net ${diiUp ? 'buying' : 'selling'}`,
-      ].join('\n');
-      await sendToMany(chatIds, msg);
-      console.log(`  ✓ FII/DII push sent to ${chatIds.length} user(s)`);
+    const isNewData = fiiDiiRow && fiiDiiRow.date !== existingDate;
+    if (!isNewData) {
+      console.log(`  ℹ FII/DII date unchanged (${fiiDiiRow?.date}) — skipping push`);
+    } else {
+      const { data: prefs } = await supabase
+        .from('user_alert_preferences')
+        .select('telegram_chat_id')
+        .not('telegram_chat_id', 'is', null);
+      const chatIds = (prefs ?? []).map(p => p.telegram_chat_id).filter(Boolean);
+      if (chatIds.length) {
+        const fmt   = v => `₹${Math.abs(v).toLocaleString('en-IN', { maximumFractionDigits: 0 })} Cr`;
+        const fiiUp = fiiDiiRow.fii_net >= 0;
+        const diiUp = fiiDiiRow.dii_net >= 0;
+        const msg = [
+          `🌍 *FII / DII Update · ${fiiDiiRow.date}*`,
+          '',
+          `${fiiUp ? '🟢' : '🔴'} FII: ${fiiUp ? '+' : '-'}${fmt(fiiDiiRow.fii_net)} net ${fiiUp ? 'buying' : 'selling'}`,
+          `${diiUp ? '🟢' : '🔴'} DII: ${diiUp ? '+' : '-'}${fmt(fiiDiiRow.dii_net)} net ${diiUp ? 'buying' : 'selling'}`,
+        ].join('\n');
+        await sendToMany(chatIds, msg);
+        console.log(`  ✓ FII/DII push sent to ${chatIds.length} user(s) (new date: ${fiiDiiRow.date})`);
+      }
     }
   } catch (e) {
     console.log(`  ⚠ FII/DII push failed: ${e.message}`);
