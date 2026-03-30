@@ -125,13 +125,14 @@ const REFUSAL_PHRASES = [
   "what was posted",
 ];
 
+// Returns { summary: string, important: boolean } or null if should be skipped.
 async function filterAndSummarize(text, label) {
   // Pre-filter: skip bare URLs — nothing to summarize
   if (isJustUrl(text)) return null;
 
   const msg = await anthropic.messages.create({
     model:      'claude-haiku-4-5-20251001',
-    max_tokens: 200,
+    max_tokens: 220,
     messages: [{
       role:    'user',
       content: `You are a market intelligence filter for Indian equity investors.
@@ -140,7 +141,13 @@ Evaluate if this ${label} post is relevant to any of: tariffs, trade policy, san
 
 If NOT relevant (e.g. personal attacks, sports, entertainment, domestic US politics with no market angle, general opinions, or if the post contains only a URL with no text): reply with exactly: SKIP
 
-If relevant: reply with a 1-2 sentence summary IN ENGLISH. Be direct and factual. Start with the key fact, not "Trump says" or "The post says". If the post is in another language, translate and summarize in English.
+If relevant: reply with JSON only (no other text):
+{"summary": "1-2 sentence summary in English, direct and factual, start with the key fact", "important": true or false}
+
+Set important=true ONLY for high-impact events: major tariff/trade action, central bank rate decision (Fed/RBI), war escalation, market circuit breaker, INR crisis, oil price shock above 5%, or any event likely to move Nifty 1%+.
+Set important=false for routine macro data, analyst views, or moderate updates.
+
+If the post is in another language, translate and summarize in English.
 
 Post:
 ${text.slice(0, 1500)}`,
@@ -149,14 +156,24 @@ ${text.slice(0, 1500)}`,
   let result = msg.content[0].text.trim();
   if (result === 'SKIP' || result.startsWith('SKIP')) return null;
 
-  // Post-filter: detect AI refusals (URL-only posts sometimes slip through pre-filter)
+  // Post-filter: detect AI refusals
   const lower = result.toLowerCase();
   if (REFUSAL_PHRASES.some(p => lower.includes(p))) return null;
 
-  // Strip relevance prefix the AI sometimes adds ("Relevant.", "RELEVANT", "**RELEVANT**\n")
-  result = result.replace(/^\*{0,2}RELEVANT\*{0,2}[\s.:]*\n*/i, '').trim();
-
-  return result || null;
+  // Parse JSON response
+  try {
+    // Strip markdown code fences if present
+    const cleaned = result.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
+    const parsed  = JSON.parse(cleaned);
+    if (!parsed.summary) return null;
+    // Strip relevance prefix the AI sometimes adds
+    const summary = parsed.summary.replace(/^\*{0,2}RELEVANT\*{0,2}[\s.:]*\n*/i, '').trim();
+    return { summary: summary || null, important: parsed.important === true };
+  } catch {
+    // Fallback: AI returned plain text instead of JSON — treat as non-important summary
+    result = result.replace(/^\*{0,2}RELEVANT\*{0,2}[\s.:]*\n*/i, '').trim();
+    return result ? { summary: result, important: false } : null;
+  }
 }
 
 // ── Per-source processing ─────────────────────────────────────────────────────
@@ -207,14 +224,16 @@ async function processSource(source) {
       continue;
     }
     try {
-      const summary = await filterAndSummarize(item.text, label);
+      const result = await filterAndSummarize(item.text, label);
 
-      if (!summary) {
+      if (!result) {
         console.log(`[macroWatcher] ${label}: skipped (not market-relevant) — ${item.text.slice(0, 60)}`);
       } else {
+        const { summary, important } = result;
         const { error } = await supabase.from('macro_alerts').insert({
           channel:      id,
           summary,
+          important,
           original_len: item.text.length,
           post_id:      item.guid,
           created_at:   new Date().toISOString(),
@@ -225,7 +244,7 @@ async function processSource(source) {
             console.error(`[macroWatcher] DB insert error: ${error.message}`);
           }
         } else {
-          console.log(`[macroWatcher] ${label}: ${summary.slice(0, 90)}…`);
+          console.log(`[macroWatcher] ${label}${important ? ' 🚨' : ''}: ${summary.slice(0, 90)}…`);
           // Only notify for items published within the last 2 hours
           const ageMs = item.pubDate ? Date.now() - new Date(item.pubDate).getTime() : 0;
           if (ageMs < 2 * 60 * 60 * 1000) {

@@ -7,7 +7,7 @@ import MarketStatusLight from '@/components/MarketStatusLight'
 import AppShell from '@/components/AppShell'
 import { INDUSTRY_TO_FII_SECTOR } from '@/lib/fiiSectorMap'
 import { WatchlistReturnCard, PortfolioReturnCard } from '@/components/DashboardReturnCard'
-import AiBriefButton from '@/components/AiBriefButton'
+import MacroNewsCard from '@/components/MacroNewsCard'
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -389,17 +389,17 @@ export default async function DashboardPage() {
       .order('date', { ascending: false })
       .limit(2),
     admin.from('macro_alerts')
-      .select('channel, summary, created_at')
+      .select('channel, summary, created_at, important')
       .in('channel', ['trump_ts_posts', 'trumptruthposts'])
       .gte('created_at', cutoff24h)
       .order('created_at', { ascending: false })
-      .limit(20),
+      .limit(100),
     admin.from('macro_alerts')
-      .select('channel, summary, created_at')
+      .select('channel, summary, created_at, important')
       .eq('channel', 'et_markets')
       .gte('created_at', cutoff24h)
       .order('created_at', { ascending: false })
-      .limit(20),
+      .limit(100),
   ])
 
   const mfRow  = mfRows?.[0] ?? null
@@ -596,55 +596,20 @@ export default async function DashboardPage() {
 
             {/* Macro alerts: Trump + Markets */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              <div className="artha-card px-5 py-5">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="artha-label">🇺🇸 Trump Watch</div>
-                  {(trumpAlertRows ?? []).length > 0 && (
-                    <AiBriefButton items={trumpAlertRows ?? []} type="trump" title="Trump Watch" />
-                  )}
-                </div>
-                {(trumpAlertRows ?? []).length === 0 ? (
-                  <p className="text-sm" style={{ color: 'var(--artha-text-muted)' }}>No market-relevant posts this week.</p>
-                ) : (
-                  <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
-                    {(trumpAlertRows ?? []).map((alert, i) => {
-                      const mins = Math.round((Date.now() - new Date(alert.created_at).getTime()) / 60000)
-                      const ago  = mins < 60 ? `${mins}m ago` : mins < 1440 ? `${Math.floor(mins / 60)}h ago` : `${Math.floor(mins / 1440)}d ago`
-                      return (
-                        <div key={i}>
-                          <div className="text-xs mb-0.5" style={{ color: 'var(--artha-text-faint)' }}>{ago}</div>
-                          <p className="text-sm leading-snug" style={{ color: 'var(--artha-text-secondary)' }}>{alert.summary}</p>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-
-              <div className="artha-card px-5 py-5">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="artha-label">📰 Macro News</div>
-                  {(marketAlertRows ?? []).length > 0 && (
-                    <AiBriefButton items={marketAlertRows ?? []} type="macro" title="Macro News" />
-                  )}
-                </div>
-                {(marketAlertRows ?? []).length === 0 ? (
-                  <p className="text-sm" style={{ color: 'var(--artha-text-muted)' }}>No macro news this week.</p>
-                ) : (
-                  <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
-                    {(marketAlertRows ?? []).map((alert, i) => {
-                      const mins = Math.round((Date.now() - new Date(alert.created_at).getTime()) / 60000)
-                      const ago  = mins < 60 ? `${mins}m ago` : mins < 1440 ? `${Math.floor(mins / 60)}h ago` : `${Math.floor(mins / 1440)}d ago`
-                      return (
-                        <div key={i}>
-                          <div className="text-xs mb-0.5" style={{ color: 'var(--artha-text-faint)' }}>{ago}</div>
-                          <p className="text-sm leading-snug" style={{ color: 'var(--artha-text-secondary)' }}>{alert.summary}</p>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
+              <MacroNewsCard
+                allItems={trumpAlertRows ?? []}
+                label="🇺🇸 Trump Watch"
+                emptyText="No market-relevant posts this week."
+                briefType="trump"
+                briefTitle="Trump Watch"
+              />
+              <MacroNewsCard
+                allItems={marketAlertRows ?? []}
+                label="📰 Macro News"
+                emptyText="No macro news this week."
+                briefType="macro"
+                briefTitle="Macro News"
+              />
             </div>
           </div>
 
