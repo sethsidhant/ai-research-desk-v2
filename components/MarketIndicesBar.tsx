@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
+import type { GlobalQuote } from '@/app/api/global-markets/route'
 
 type IndexQuote = {
   name:      string
@@ -168,6 +169,130 @@ function SectorPill({ idx, flash }: { idx: IndexQuote; flash: 'up' | 'down' | nu
   )
 }
 
+function fmtGlobal(price: number, currency: string, symbol: string): string {
+  if (symbol === 'USDINR=X') return `₹${price.toFixed(2)}`
+  if (currency === 'INR')    return `₹${price.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
+  if (symbol === 'DX-Y.NYB') return price.toFixed(2)
+  if (['GC=F', 'SI=F'].includes(symbol)) return `$${price.toLocaleString('en-US', { maximumFractionDigits: 2 })}`
+  if (['CL=F', 'BZ=F'].includes(symbol)) return `$${price.toFixed(2)}`
+  if (price > 10000) return price.toLocaleString('en-US', { maximumFractionDigits: 0 })
+  if (price > 1000)  return price.toLocaleString('en-US', { maximumFractionDigits: 2 })
+  return price.toFixed(2)
+}
+
+function GlobalMarketsModal({ onClose }: { onClose: () => void }) {
+  const [quotes, setQuotes] = useState<GlobalQuote[]>([])
+  const [loading, setLoading] = useState(true)
+  const [lastTs, setLastTs] = useState<number | null>(null)
+
+  const fetchData = useCallback(async () => {
+    try {
+      const res  = await fetch('/api/global-markets')
+      if (!res.ok) return
+      const json = await res.json()
+      setQuotes(json.quotes ?? [])
+      setLastTs(json.ts ?? Date.now())
+    } catch { /* silent */ } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchData()
+    const id = setInterval(fetchData, 60000)
+    return () => clearInterval(id)
+  }, [fetchData])
+
+  const currency    = quotes.filter(q => q.group === 'currency')
+  const indices     = quotes.filter(q => q.group === 'indices')
+  const commodities = quotes.filter(q => q.group === 'commodities')
+
+  function GlobalQuoteRow({ q }: { q: GlobalQuote }) {
+    const up   = q.changePct >= 0
+    const zero = q.change === 0
+    const color = zero ? '#9ca3af' : up ? 'var(--artha-teal)' : 'var(--artha-negative)'
+    return (
+      <div className="flex items-center justify-between py-2 border-b last:border-0" style={{ borderColor: 'rgba(11,28,48,0.06)' }}>
+        <div className="flex items-center gap-2 min-w-0">
+          {q.flag && <span className="text-sm leading-none shrink-0">{q.flag}</span>}
+          <span className="text-xs font-medium truncate" style={{ color: 'var(--artha-text)' }}>{q.name}</span>
+        </div>
+        <div className="flex items-center gap-3 shrink-0 ml-2">
+          <span className="text-xs font-bold font-mono" style={{ color: 'var(--artha-text)' }}>
+            {fmtGlobal(q.price, q.currency, q.symbol)}
+          </span>
+          <span className="text-[11px] font-bold font-mono w-14 text-right" style={{ color }}>
+            {zero ? '—' : `${up ? '+' : ''}${q.changePct.toFixed(2)}%`}
+          </span>
+        </div>
+      </div>
+    )
+  }
+
+  function SectionGroup({ title, icon, items }: { title: string; icon: string; items: GlobalQuote[] }) {
+    if (!items.length) return null
+    return (
+      <div>
+        <div className="text-[10px] font-bold uppercase tracking-widest mb-1 flex items-center gap-1.5" style={{ color: 'var(--artha-text-faint)' }}>
+          <span>{icon}</span>{title}
+        </div>
+        {items.map(q => <GlobalQuoteRow key={q.symbol} q={q} />)}
+      </div>
+    )
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-end p-4 pt-16" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" />
+      <div
+        className="relative rounded-2xl shadow-2xl border overflow-hidden"
+        style={{
+          width: 320,
+          maxHeight: 'calc(100vh - 80px)',
+          background: 'var(--artha-card)',
+          borderColor: 'rgba(11,28,48,0.1)',
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'rgba(11,28,48,0.08)' }}>
+          <div>
+            <div className="text-sm font-bold" style={{ color: 'var(--artha-text)' }}>Global Markets</div>
+            {lastTs && (
+              <div className="text-[10px] mt-0.5 flex items-center gap-1" style={{ color: 'var(--artha-text-faint)' }}>
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                Refreshes every 60s
+              </div>
+            )}
+          </div>
+          <button
+            onClick={onClose}
+            className="w-7 h-7 rounded-full flex items-center justify-center text-sm transition-colors hover:bg-gray-100"
+            style={{ color: 'var(--artha-text-muted)' }}
+          >✕</button>
+        </div>
+
+        {/* Body */}
+        <div className="overflow-y-auto px-4 py-3 space-y-4" style={{ maxHeight: 'calc(100vh - 160px)' }}>
+          {loading ? (
+            <div className="space-y-2">
+              {[...Array(8)].map((_, i) => (
+                <div key={i} className="h-8 rounded animate-pulse" style={{ background: 'var(--artha-surface-low)' }} />
+              ))}
+            </div>
+          ) : (
+            <>
+              <SectionGroup title="Currency & FX"  icon="💱" items={currency} />
+              <SectionGroup title="Global Indices"  icon="🌐" items={indices} />
+              <SectionGroup title="Commodities"     icon="⚡" items={commodities} />
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function MarketIndicesBar() {
   const [indices, setIndices]         = useState<IndexQuote[]>([])
   const [breadth, setBreadth]         = useState<Breadth | null>(null)
@@ -175,7 +300,7 @@ export default function MarketIndicesBar() {
   const [bankBreadth, setBankBreadth] = useState<Breadth | null>(null)
   const [bankTiles, setBankTiles]     = useState<StockTile[]>([])
   const [stale, setStale]             = useState(false)
-  const [openModal, setOpenModal]     = useState<'nifty50' | 'banknifty' | null>(null)
+  const [openModal, setOpenModal]     = useState<'nifty50' | 'banknifty' | 'global' | null>(null)
   const [loading, setLoading]         = useState(true)
   const prevRef                       = useRef<Record<string, number>>({})
   const [flashes, setFlashes]         = useState<Record<string, 'up' | 'down' | null>>({})
@@ -284,6 +409,22 @@ export default function MarketIndicesBar() {
               Closed
             </span>
           )}
+
+          {/* Globe button — global markets modal */}
+          <button
+            onClick={() => setOpenModal(o => o === 'global' ? null : 'global')}
+            className="self-center shrink-0 flex flex-col items-center justify-center rounded-xl border transition-colors px-2 py-2 hover:bg-gray-50"
+            title="Global Markets"
+            style={{
+              borderColor: openModal === 'global' ? 'rgba(99,102,241,0.4)' : 'rgba(11,28,48,0.08)',
+              background: openModal === 'global' ? 'rgba(99,102,241,0.06)' : 'var(--artha-card)',
+              minWidth: 40, height: 40,
+              color: openModal === 'global' ? 'rgba(99,102,241,0.8)' : 'var(--artha-text-faint)',
+            }}
+          >
+            <span className="text-base leading-none">🌐</span>
+            <span className="text-[8px] font-bold uppercase tracking-wider mt-0.5" style={{ color: 'inherit' }}>Global</span>
+          </button>
         </div>
 
         {/* Row 2: sector pills — 2 rows via flex-wrap */}
@@ -301,6 +442,9 @@ export default function MarketIndicesBar() {
       )}
       {openModal === 'banknifty' && bankTiles.length > 0 && (
         <HeatmapModal title="Bank Nifty" tiles={bankTiles} cols={6} stale={stale} onClose={() => setOpenModal(null)} />
+      )}
+      {openModal === 'global' && (
+        <GlobalMarketsModal onClose={() => setOpenModal(null)} />
       )}
     </>
   )
