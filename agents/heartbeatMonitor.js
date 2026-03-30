@@ -73,7 +73,8 @@ async function main() {
     { key: 'cron_token_last_run',        label: 'Token Refresh',    staleAfterSecs: 26 * 3600,  critical: true,  weekdayOnly: false },
     { key: 'cron_pipeline_last_run',     label: 'Daily Pipeline',   staleAfterSecs: 26 * 3600,  critical: true,  weekdayOnly: true  },
     { key: 'cron_digest_last_run',       label: 'Evening Digest',   staleAfterSecs: 26 * 3600,  critical: false, weekdayOnly: true  },
-    { key: 'cron_fundamentals_last_run', label: 'Fundamentals',     staleAfterSecs: 168 * 3600, critical: false, weekdayOnly: false },
+    { key: 'cron_fundamentals_last_run',     label: 'Fundamentals',      staleAfterSecs: 168 * 3600,  critical: false, weekdayOnly: false },
+    { key: 'cron_history_refresh_last_run', label: 'History Refresh',   staleAfterSecs: 100 * 24 * 3600, critical: false, weekdayOnly: false },
   ];
 
   const cronResults = CRON_JOBS.map(j => {

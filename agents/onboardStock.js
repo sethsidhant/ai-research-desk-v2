@@ -191,6 +191,34 @@ async function runFundamentals(stock) {
   return true;
 }
 
+// ── Step 1.5: Screener History ────────────────────────────────────────────────
+
+async function runHistory(stock) {
+  if (stock.earnings_history) {
+    console.log(`\n[1.5/3] History already populated — skipping`);
+    return;
+  }
+  console.log(`\n[1.5/3] Fetching Screener history for ${ticker}...`);
+  try {
+    const h = JSON.parse(execSync(`python3 fetchScreenerHistory.py ${ticker}`, {
+      encoding: 'utf8', cwd: __dirname, timeout: 30000,
+    }));
+    await upsertStock(ticker, {
+      earnings_history: {
+        quarterly:     h.quarterly     ?? null,
+        annual_pl:     h.annual_pl     ?? null,
+        balance_sheet: h.balance_sheet ?? null,
+        cash_flow:     h.cash_flow     ?? null,
+        ratios:        h.ratios        ?? null,
+        shareholding:  h.shareholding  ?? null,
+      },
+    });
+    console.log(`  ✓ History saved: ${h.quarterly?.headers?.length ?? 0} qtrs | ${h.annual_pl?.headers?.length ?? 0} annual years`);
+  } catch (e) {
+    console.log(`  ⚠ History fetch failed: ${e.message} — continuing`);
+  }
+}
+
 // ── Step 2: News ──────────────────────────────────────────────────────────────
 
 async function fetchBSECode(t) {
@@ -459,6 +487,9 @@ async function main() {
       console.log(`\n[1/3] Fundamentals already done today — skipping`);
     }
     if (scored) {
+      // Re-fetch stock to get latest earnings_history state before checking
+      const { data: refreshed } = await supabase.from('stocks').select('earnings_history').eq('id', stock.id).single();
+      await runHistory({ ...stock, earnings_history: refreshed?.earnings_history ?? null });
       if (!newsDone) await runNews(stock);
       else console.log(`\n[2/3] News already fetched — skipping`);
       if (!summaryDone) await runSummary(stock);

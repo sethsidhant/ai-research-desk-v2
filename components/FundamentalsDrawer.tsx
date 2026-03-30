@@ -111,37 +111,38 @@ function EarningsTable({ quarters, revenueQuarters }: { quarters: EarningsQuarte
 
 function fmtHistVal(v: number | null): string {
   if (v == null) return '—'
-  if (Math.abs(v) >= 100000) return `${(v / 100000).toFixed(1)}L`
-  if (Math.abs(v) >= 1000)   return `${(v / 1000).toFixed(1)}K`
-  return v % 1 === 0 ? String(v) : v.toFixed(1)
+  return v.toLocaleString('en-IN', { maximumFractionDigits: 2 })
 }
 
 function ScreenerHistoryTable({ section }: { section: ScreenerSection }) {
   const { headers, rows } = section
-  if (!rows.length) return <div className="text-xs text-gray-400 py-4">No data available</div>
+  if (!rows.length) return <div className="text-base text-gray-400 py-6">No data available</div>
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-xs border-separate border-spacing-0">
-        <thead>
-          <tr>
-            <th className="text-left text-gray-400 font-semibold pb-2 pr-4 sticky left-0 bg-white whitespace-nowrap min-w-[140px] z-10">Metric</th>
-            {headers.map((h, i) => (
-              <th key={i} className="text-right text-gray-400 font-semibold pb-2 px-2 whitespace-nowrap">{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, ri) => (
-            <tr key={ri} className={ri % 2 === 0 ? 'bg-white' : 'bg-gray-50/70'}>
-              <td className="py-1 pr-4 sticky left-0 font-medium text-gray-600 whitespace-nowrap border-r border-gray-100 z-10" style={{ background: 'inherit' }}>{row.label}</td>
-              {row.values.map((v, vi) => (
-                <td key={vi} className={`py-1 px-2 text-right font-mono whitespace-nowrap ${v == null ? 'text-gray-300' : 'text-gray-700'}`}>{fmtHistVal(v)}</td>
+    <div>
+      <div className="text-xs font-medium text-gray-400 tracking-wide mb-4">Consolidated Figures in Rs. Crores</div>
+      <div className="overflow-x-auto">
+        <table className="w-full border-separate border-spacing-0">
+          <thead>
+            <tr className="bg-gray-50">
+              <th className="text-left text-gray-500 text-xs font-bold uppercase tracking-wider py-3 px-4 sticky left-0 bg-gray-50 whitespace-nowrap min-w-[180px] z-10 border-b border-gray-200">Metric</th>
+              {headers.map((h, i) => (
+                <th key={i} className="text-right text-gray-500 text-xs font-bold uppercase tracking-wider py-3 px-4 whitespace-nowrap border-b border-gray-200">{h}</th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {rows.map((row, ri) => (
+              <tr key={ri} className={`hover:bg-blue-50/40 transition-colors ${ri % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                <td className="py-2.5 px-4 sticky left-0 font-semibold text-sm text-gray-700 whitespace-nowrap border-r border-b border-gray-100 z-10" style={{ background: 'inherit' }}>{row.label}</td>
+                {row.values.map((v, vi) => (
+                  <td key={vi} className={`py-2.5 px-4 text-right text-sm font-mono whitespace-nowrap border-b border-gray-100 ${v == null ? 'text-gray-300' : 'text-gray-800'}`}>{fmtHistVal(v)}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
@@ -198,7 +199,7 @@ export default function FundamentalsDrawer({ row, onClose }: { row: WatchlistRow
   return (
     <>
       <div className="fixed inset-0 bg-black/20 z-40" onClick={onClose} />
-      <div className={`fixed right-0 top-0 h-full w-full bg-white shadow-2xl z-50 flex flex-col transition-[width] duration-200 ${tab === 'history' ? 'sm:w-[min(92vw,1080px)]' : 'sm:w-96'}`}>
+      <div className={`fixed right-0 top-0 h-full w-full bg-white shadow-2xl z-50 flex flex-col transition-[width] duration-200 ${tab === 'history' ? 'sm:w-[min(96vw,1400px)]' : 'sm:w-[420px]'}`}>
 
         {/* Header */}
         <div className="flex items-start justify-between px-5 py-4 border-b border-gray-200">
@@ -375,12 +376,12 @@ export default function FundamentalsDrawer({ row, onClose }: { row: WatchlistRow
           {tab === 'history' && row.earnings_history && (
             <div>
               {/* Sub-section tabs */}
-              <div className="flex gap-1 flex-wrap mb-4">
+              <div className="flex gap-2 flex-wrap mb-5">
                 {HISTORY_SECTIONS.map(s => (
                   <button
                     key={s.id}
                     onClick={() => setHistorySection(s.id)}
-                    className={`px-2.5 py-1 text-[10px] font-semibold rounded-full transition-colors ${
+                    className={`px-4 py-1.5 text-xs font-semibold rounded-full transition-colors ${
                       historySection === s.id
                         ? 'bg-gray-900 text-white'
                         : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
