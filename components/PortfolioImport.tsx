@@ -166,9 +166,29 @@ export default function PortfolioImport({ defaultOpen = false }: { defaultOpen?:
             {uploading ? 'Uploading…' : 'Upload CSV'}
           </button>
           <input ref={fileRef} type="file" accept=".csv,.txt" className="hidden" onChange={handleCSVUpload} />
-          <p className="text-[9px] text-gray-300">Format: Ticker,Qty,AvgPrice,Broker</p>
           {uploadResult && <p className="text-[10px] text-emerald-600 max-w-[180px]">{uploadResult}</p>}
           {uploadError  && <p className="text-[10px] text-red-500 max-w-[180px]">{uploadError}</p>}
+        </div>
+
+        {/* Download template */}
+        <div className="flex flex-col gap-1">
+          <button
+            onClick={() => {
+              const csv = 'Ticker,Quantity,AvgPrice,Broker\nRELIANCE,10,2500.50,Zerodha\nINFY,25,1800.00,Groww\n'
+              const blob = new Blob([csv], { type: 'text/csv' })
+              const url  = URL.createObjectURL(blob)
+              const a    = document.createElement('a')
+              a.href = url; a.download = 'noesis_portfolio_template.csv'; a.click()
+              URL.revokeObjectURL(url)
+            }}
+            className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-lg transition-colors border border-gray-200"
+          >
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+              <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Download Template
+          </button>
+          <p className="text-[9px] text-gray-300">Fill &amp; upload: Ticker, Qty, Price, Broker</p>
         </div>
 
         {/* Manual add toggle */}
