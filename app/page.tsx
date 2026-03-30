@@ -393,13 +393,13 @@ export default async function DashboardPage() {
       .in('channel', ['trump_ts_posts', 'trumptruthposts'])
       .gte('created_at', cutoff24h)
       .order('created_at', { ascending: false })
-      .limit(4),
+      .limit(20),
     admin.from('macro_alerts')
       .select('channel, summary, created_at')
       .eq('channel', 'et_markets')
       .gte('created_at', cutoff24h)
       .order('created_at', { ascending: false })
-      .limit(4),
+      .limit(20),
   ])
 
   const mfRow  = mfRows?.[0] ?? null
@@ -606,7 +606,7 @@ export default async function DashboardPage() {
                 {(trumpAlertRows ?? []).length === 0 ? (
                   <p className="text-sm" style={{ color: 'var(--artha-text-muted)' }}>No market-relevant posts this week.</p>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
                     {(trumpAlertRows ?? []).map((alert, i) => {
                       const mins = Math.round((Date.now() - new Date(alert.created_at).getTime()) / 60000)
                       const ago  = mins < 60 ? `${mins}m ago` : mins < 1440 ? `${Math.floor(mins / 60)}h ago` : `${Math.floor(mins / 1440)}d ago`
@@ -631,7 +631,7 @@ export default async function DashboardPage() {
                 {(marketAlertRows ?? []).length === 0 ? (
                   <p className="text-sm" style={{ color: 'var(--artha-text-muted)' }}>No macro news this week.</p>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
                     {(marketAlertRows ?? []).map((alert, i) => {
                       const mins = Math.round((Date.now() - new Date(alert.created_at).getTime()) / 60000)
                       const ago  = mins < 60 ? `${mins}m ago` : mins < 1440 ? `${Math.floor(mins / 60)}h ago` : `${Math.floor(mins / 1440)}d ago`

@@ -114,6 +114,15 @@ const REFUSAL_PHRASES = [
   "i'm not able to access",
   "please paste the",
   "please provide the text",
+  // Triggered when Trump shares/reposts someone else's post with no text body
+  "i don't see the actual content",
+  "i don't see the content",
+  "you've provided the timestamp",
+  "please share the actual content",
+  "the text or substance",
+  "no text or substance",
+  "not the text",
+  "what was posted",
 ];
 
 async function filterAndSummarize(text, label) {

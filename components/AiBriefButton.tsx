@@ -108,40 +108,60 @@ function BriefModal({
 
 const COOLDOWN_MS = 2 * 60 * 60 * 1000 // 2 hours
 
-function cacheKey(type: string) { return `noesis_brief_${type}` }
+type Period = '24h' | '48h'
 
-function loadCache(type: string): { brief: string; ts: number } | null {
+function cacheKey(type: string, period: Period) { return `noesis_brief_${type}_${period}` }
+
+function loadCache(type: string, period: Period): { brief: string; ts: number } | null {
   try {
-    const raw = sessionStorage.getItem(cacheKey(type))
+    const raw = sessionStorage.getItem(cacheKey(type, period))
     if (!raw) return null
     const data = JSON.parse(raw)
-    if (Date.now() - data.ts > COOLDOWN_MS) { sessionStorage.removeItem(cacheKey(type)); return null }
+    if (Date.now() - data.ts > COOLDOWN_MS) { sessionStorage.removeItem(cacheKey(type, period)); return null }
     return data
   } catch { return null }
 }
 
-function saveCache(type: string, brief: string) {
-  try { sessionStorage.setItem(cacheKey(type), JSON.stringify({ brief, ts: Date.now() })) } catch { /* ignore */ }
+function saveCache(type: string, period: Period, brief: string) {
+  try { sessionStorage.setItem(cacheKey(type, period), JSON.stringify({ brief, ts: Date.now() })) } catch { /* ignore */ }
+}
+
+function filterByPeriod(items: Item[], period: Period): Item[] {
+  const cutoffMs = period === '24h' ? 24 * 3600000 : 48 * 3600000
+  return items.filter(it => Date.now() - new Date(it.created_at).getTime() < cutoffMs)
 }
 
 export default function AiBriefButton({ items, type, title }: { items: Item[]; type: 'trump' | 'macro'; title: string }) {
-  const cached = typeof window !== 'undefined' ? loadCache(type) : null
-  const [state, setState] = useState<'idle' | 'loading' | 'done'>(cached ? 'done' : 'idle')
-  const [brief, setBrief] = useState<string | null>(cached?.brief ?? null)
-  const [open, setOpen]   = useState(false)
+  const [period, setPeriod] = useState<Period>('24h')
+  const cached = typeof window !== 'undefined' ? loadCache(type, period) : null
+  const [state, setState]   = useState<'idle' | 'loading' | 'done'>(cached ? 'done' : 'idle')
+  const [brief, setBrief]   = useState<string | null>(cached?.brief ?? null)
+  const [open, setOpen]     = useState(false)
+
+  function switchPeriod(p: Period) {
+    if (p === period) return
+    setPeriod(p)
+    // Load cache for new period if available, else reset to idle
+    const c = loadCache(type, p)
+    if (c) { setBrief(c.brief); setState('done') }
+    else   { setBrief(null);    setState('idle') }
+  }
+
+  const periodItems = filterByPeriod(items, period)
 
   async function generate() {
     if (state === 'done' && brief) { setOpen(true); return }
+    if (periodItems.length === 0) return
     setState('loading')
     try {
       const res  = await fetch('/api/macro-brief', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, items }),
+        body: JSON.stringify({ type, items: periodItems }),
       })
       const json = await res.json()
       const text = json.brief ?? 'Could not generate brief.'
-      saveCache(type, text)
+      saveCache(type, period, text)
       setBrief(text)
       setState('done')
       setOpen(true)
@@ -154,22 +174,40 @@ export default function AiBriefButton({ items, type, title }: { items: Item[]; t
 
   return (
     <>
-      <button
-        onClick={generate}
-        disabled={state === 'loading' || items.length === 0}
-        className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full transition-all disabled:opacity-40"
-        style={{
-          background: 'linear-gradient(135deg, rgba(0,61,155,0.08), rgba(0,106,97,0.08))',
-          border: '1px solid rgba(0,106,97,0.2)',
-          color: 'var(--artha-teal)',
-        }}
-      >
-        <Sparkles size={10} strokeWidth={2.5} />
-        {state === 'loading' ? 'Briefing…' : 'AI Brief'}
-      </button>
+      <div className="flex items-center gap-1.5">
+        {/* Period pills */}
+        {(['24h', '48h'] as Period[]).map(p => (
+          <button
+            key={p}
+            onClick={() => switchPeriod(p)}
+            className="text-[10px] font-semibold px-2 py-0.5 rounded-full transition-all"
+            style={{
+              background: period === p ? 'rgba(0,106,97,0.12)' : 'transparent',
+              border: `1px solid ${period === p ? 'rgba(0,106,97,0.3)' : 'rgba(11,28,48,0.1)'}`,
+              color: period === p ? 'var(--artha-teal)' : 'var(--artha-text-faint)',
+            }}
+          >
+            {p}
+          </button>
+        ))}
+        {/* Brief button */}
+        <button
+          onClick={generate}
+          disabled={state === 'loading' || periodItems.length === 0}
+          className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full transition-all disabled:opacity-40"
+          style={{
+            background: 'linear-gradient(135deg, rgba(0,61,155,0.08), rgba(0,106,97,0.08))',
+            border: '1px solid rgba(0,106,97,0.2)',
+            color: 'var(--artha-teal)',
+          }}
+        >
+          <Sparkles size={10} strokeWidth={2.5} />
+          {state === 'loading' ? 'Briefing…' : 'AI Brief'}
+        </button>
+      </div>
 
       {open && brief && (
-        <BriefModal title={title} brief={brief} onClose={() => setOpen(false)} />
+        <BriefModal title={`${title} · ${period}`} brief={brief} onClose={() => setOpen(false)} />
       )}
     </>
   )
