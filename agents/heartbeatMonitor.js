@@ -33,6 +33,18 @@ function ageLabel(secs) {
   return `${Math.floor(secs / 86400)}d ago`;
 }
 
+// Returns midnight IST of the most recent weekday (Mon–Fri).
+// Used so weekend-only jobs aren't flagged as stale on Sat/Sun/Mon.
+function lastWeekdayMidnightIST() {
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+  const d = new Date(now);
+  d.setHours(0, 0, 0, 0);
+  while (d.getDay() === 0 || d.getDay() === 6) {
+    d.setDate(d.getDate() - 1);
+  }
+  return d;
+}
+
 async function main() {
   console.log('[heartbeatMonitor] Starting...');
 
@@ -52,19 +64,37 @@ async function main() {
   for (const row of settingsRows ?? []) valMap[row.key] = row.value;
 
   // ── 2. Cron job heartbeats ─────────────────────────────────────────────────
+  const nowIST    = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+  const dowIST    = nowIST.getDay(); // 0=Sun, 6=Sat
+  const isWeekend = dowIST === 0 || dowIST === 6;
+  const lastWDMidnight = lastWeekdayMidnightIST();
+
   const CRON_JOBS = [
-    { key: 'cron_token_last_run',        label: 'Token Refresh',    staleAfterSecs: 26 * 3600,  critical: true  },
-    { key: 'cron_pipeline_last_run',     label: 'Daily Pipeline',   staleAfterSecs: 26 * 3600,  critical: true  },
-    { key: 'cron_digest_last_run',       label: 'Evening Digest',   staleAfterSecs: 26 * 3600,  critical: false },
-    { key: 'cron_fundamentals_last_run', label: 'Fundamentals',     staleAfterSecs: 168 * 3600, critical: false },
+    { key: 'cron_token_last_run',        label: 'Token Refresh',    staleAfterSecs: 26 * 3600,  critical: true,  weekdayOnly: false },
+    { key: 'cron_pipeline_last_run',     label: 'Daily Pipeline',   staleAfterSecs: 26 * 3600,  critical: true,  weekdayOnly: true  },
+    { key: 'cron_digest_last_run',       label: 'Evening Digest',   staleAfterSecs: 26 * 3600,  critical: false, weekdayOnly: true  },
+    { key: 'cron_fundamentals_last_run', label: 'Fundamentals',     staleAfterSecs: 168 * 3600, critical: false, weekdayOnly: false },
   ];
 
   const cronResults = CRON_JOBS.map(j => {
     const v       = valMap[j.key];
     const lastRun = v ? new Date(v) : null;
     const ageSecs = lastRun ? Math.floor((nowMs - lastRun.getTime()) / 1000) : null;
-    const ok      = ageSecs != null && ageSecs < j.staleAfterSecs;
-    return { ...j, lastRun, ageSecs, ok };
+
+    let ok, skipped = false;
+    if (j.weekdayOnly && isWeekend) {
+      // On weekends, these jobs don't run — skip staleness check
+      skipped = true;
+      ok = true;
+    } else if (j.weekdayOnly) {
+      // Weekday-only: must have run since midnight of the most recent weekday
+      // (handles Monday correctly — last run was Friday, not "26h ago")
+      ok = lastRun != null && lastRun >= lastWDMidnight;
+    } else {
+      ok = ageSecs != null && ageSecs < j.staleAfterSecs;
+    }
+
+    return { ...j, lastRun, ageSecs, ok, skipped };
   });
 
   // ── 3. Railway listener heartbeat ──────────────────────────────────────────
@@ -124,8 +154,9 @@ async function main() {
     '',
     '📋 *Pipeline Jobs*',
     ...cronResults.map(r => {
-      const icon = r.ok ? '✅' : r.critical ? '🔴' : '🟡';
-      return `${icon} ${r.label}: ${ageLabel(r.ageSecs)}`;
+      const icon   = r.ok ? '✅' : r.critical ? '🔴' : '🟡';
+      const detail = r.skipped ? 'Weekend — skipped' : ageLabel(r.ageSecs);
+      return `${icon} ${r.label}: ${detail}`;
     }),
     '',
     '🛠 *Infrastructure*',
@@ -153,7 +184,7 @@ async function main() {
     status:     overallStatus,
     summary,
     report: {
-      cron_jobs:  cronResults.map(r => ({ label: r.label, ok: r.ok, age_secs: r.ageSecs, last_run: r.lastRun })),
+      cron_jobs:  cronResults.map(r => ({ label: r.label, ok: r.ok, age_secs: r.ageSecs, last_run: r.lastRun, skipped: r.skipped ?? false })),
       railway:    { ok: railwayOk, age_secs: railwayAge, last_heartbeat: railwayLast },
       supabase:   { ok: supabaseOk, latency_ms: sbLatencyMs, error: sbError?.message ?? null },
     },

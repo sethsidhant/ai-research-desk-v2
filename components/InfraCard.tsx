@@ -12,7 +12,7 @@ type DbStats = {
 } | null
 
 type HeartbeatReport = {
-  cron_jobs?: Array<{ label: string; ok: boolean; age_secs: number | null; last_run: string | null }>
+  cron_jobs?: Array<{ label: string; ok: boolean; age_secs: number | null; last_run: string | null; skipped?: boolean }>
   railway?:   { ok: boolean; age_secs: number | null; last_heartbeat: string | null }
   supabase?:  { ok: boolean; latency_ms: number; error: string | null }
 } | null
@@ -249,11 +249,11 @@ export default function InfraCard({
                       {cronJobs.map((j, i) => (
                         <div key={i} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
                           <div className="flex items-center gap-2">
-                            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${j.ok ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${j.skipped ? 'bg-gray-300' : j.ok ? 'bg-emerald-500' : 'bg-red-500'}`} />
                             <span className="text-sm text-gray-700">{j.label}</span>
                           </div>
-                          <span className={`text-xs font-mono ${j.ok ? 'text-gray-400' : 'text-red-600 font-semibold'}`}>
-                            {ageLabel(j.age_secs)}
+                          <span className={`text-xs font-mono ${j.skipped ? 'text-gray-400 italic' : j.ok ? 'text-gray-400' : 'text-red-600 font-semibold'}`}>
+                            {j.skipped ? 'Weekend — skipped' : ageLabel(j.age_secs)}
                           </span>
                         </div>
                       ))}
