@@ -125,14 +125,22 @@ const REFUSAL_PHRASES = [
   "what was posted",
 ];
 
-// Returns { summary: string, important: boolean } or null if should be skipped.
+const FII_SECTORS = [
+  'Financial Services', 'Information Technology', 'Oil, Gas & Consumable Fuels',
+  'Automobile and Auto Components', 'Fast Moving Consumer Goods', 'Capital Goods',
+  'Healthcare', 'Consumer Services', 'Metals & Mining', 'Chemicals',
+  'Telecommunication', 'Power', 'Realty', 'Construction',
+  'Media Entertainment & Publication', 'Textiles', 'Transportation',
+];
+
+// Returns { summary, important, sectors } or null if should be skipped.
 async function filterAndSummarize(text, label) {
   // Pre-filter: skip bare URLs — nothing to summarize
   if (isJustUrl(text)) return null;
 
   const msg = await anthropic.messages.create({
     model:      'claude-haiku-4-5-20251001',
-    max_tokens: 220,
+    max_tokens: 280,
     messages: [{
       role:    'user',
       content: `You are a market intelligence filter for Indian equity investors.
@@ -142,10 +150,13 @@ Evaluate if this ${label} post is relevant to any of: tariffs, trade policy, san
 If NOT relevant (e.g. personal attacks, sports, entertainment, domestic US politics with no market angle, general opinions, or if the post contains only a URL with no text): reply with exactly: SKIP
 
 If relevant: reply with JSON only (no other text):
-{"summary": "1-2 sentence summary in English, direct and factual, start with the key fact", "important": true or false}
+{"summary": "1-2 sentence summary in English, direct and factual, start with the key fact", "important": true or false, "sectors": []}
 
-Set important=true ONLY for high-impact events: major tariff/trade action, central bank rate decision (Fed/RBI), war escalation, market circuit breaker, INR crisis, oil price shock above 5%, or any event likely to move Nifty 1%+.
-Set important=false for routine macro data, analyst views, or moderate updates.
+Rules:
+- important=true ONLY for: central bank rate decision (Fed/RBI), major tariff/trade action, war escalation, market circuit breaker, INR crisis, oil shock 5%+, any event likely to move Nifty 1%+.
+- important=false for routine macro data, analyst views, moderate updates.
+- sectors: pick 1-3 from this exact list that are directly impacted. Empty array [] if broad/unclear.
+  ${FII_SECTORS.join(', ')}
 
 If the post is in another language, translate and summarize in English.
 
@@ -166,13 +177,15 @@ ${text.slice(0, 1500)}`,
     const cleaned = result.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
     const parsed  = JSON.parse(cleaned);
     if (!parsed.summary) return null;
-    // Strip relevance prefix the AI sometimes adds
     const summary = parsed.summary.replace(/^\*{0,2}RELEVANT\*{0,2}[\s.:]*\n*/i, '').trim();
-    return { summary: summary || null, important: parsed.important === true };
+    // Validate sectors against known list
+    const sectors = Array.isArray(parsed.sectors)
+      ? parsed.sectors.filter(s => FII_SECTORS.includes(s))
+      : [];
+    return { summary: summary || null, important: parsed.important === true, sectors };
   } catch {
-    // Fallback: AI returned plain text instead of JSON — treat as non-important summary
     result = result.replace(/^\*{0,2}RELEVANT\*{0,2}[\s.:]*\n*/i, '').trim();
-    return result ? { summary: result, important: false } : null;
+    return result ? { summary: result, important: false, sectors: [] } : null;
   }
 }
 
@@ -229,14 +242,15 @@ async function processSource(source) {
       if (!result) {
         console.log(`[macroWatcher] ${label}: skipped (not market-relevant) — ${item.text.slice(0, 60)}`);
       } else {
-        const { summary, important } = result;
+        const { summary, important, sectors } = result;
         const { error } = await supabase.from('macro_alerts').insert({
-          channel:      id,
+          channel:          id,
           summary,
           important,
-          original_len: item.text.length,
-          post_id:      item.guid,
-          created_at:   new Date().toISOString(),
+          affected_sectors: sectors,
+          original_len:     item.text.length,
+          post_id:          item.guid,
+          created_at:       new Date().toISOString(),
         });
 
         if (error) {

@@ -389,13 +389,13 @@ export default async function DashboardPage() {
       .order('date', { ascending: false })
       .limit(2),
     admin.from('macro_alerts')
-      .select('channel, summary, created_at, important')
+      .select('channel, summary, created_at, important, affected_sectors')
       .in('channel', ['trump_ts_posts', 'trumptruthposts'])
       .gte('created_at', cutoff24h)
       .order('created_at', { ascending: false })
       .limit(100),
     admin.from('macro_alerts')
-      .select('channel, summary, created_at, important')
+      .select('channel, summary, created_at, important, affected_sectors')
       .eq('channel', 'et_markets')
       .gte('created_at', cutoff24h)
       .order('created_at', { ascending: false })
@@ -404,6 +404,16 @@ export default async function DashboardPage() {
 
   const mfRow  = mfRows?.[0] ?? null
   const mfYest = mfRows?.[1] ?? null
+
+  // ── User sector exposure (watchlist + portfolio) ──────────────────────────
+  const userIndustries = new Set<string>([
+    ...allRows.map((w: any) => w.stock?.industry).filter(Boolean),
+    ...portRowsAll.map((h: any) => h.stock?.industry).filter(Boolean),
+  ])
+  const userSectors = [...userIndustries]
+    .map(ind => INDUSTRY_TO_FII_SECTOR[ind as string])
+    .filter(Boolean) as string[]
+  const uniqueUserSectors = [...new Set(userSectors)]
 
   // Skip rows with null fii_net/dii_net (can happen when scraper inserts partial row)
   const fiiDiiRow  = (fiiDiiRows ?? []).find(r => r.fii_net != null && r.dii_net != null) ?? null
@@ -602,6 +612,7 @@ export default async function DashboardPage() {
                 emptyText="No market-relevant posts this week."
                 briefType="trump"
                 briefTitle="Trump Watch"
+                userSectors={uniqueUserSectors}
               />
               <MacroNewsCard
                 allItems={marketAlertRows ?? []}
@@ -609,6 +620,7 @@ export default async function DashboardPage() {
                 emptyText="No macro news this week."
                 briefType="macro"
                 briefTitle="Macro News"
+                userSectors={uniqueUserSectors}
               />
             </div>
           </div>

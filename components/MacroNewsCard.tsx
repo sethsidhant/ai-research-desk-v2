@@ -6,7 +6,7 @@
 import { useState } from 'react'
 import AiBriefButton from './AiBriefButton'
 
-type Alert = { channel: string; summary: string; created_at: string; important?: boolean }
+type Alert = { channel: string; summary: string; created_at: string; important?: boolean; affected_sectors?: string[] }
 type Period = '24h' | '48h'
 
 function agoLabel(created_at: string) {
@@ -27,12 +27,14 @@ export default function MacroNewsCard({
   emptyText,
   briefType,
   briefTitle,
+  userSectors = [],
 }: {
   allItems: Alert[]
   label: string
   emptyText: string
   briefType: 'trump' | 'macro'
   briefTitle: string
+  userSectors?: string[]
 }) {
   const [period, setPeriod] = useState<Period>('24h')
   const visible = filterByPeriod(allItems, period)
@@ -70,29 +72,65 @@ export default function MacroNewsCard({
         </p>
       ) : (
         <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
-          {visible.map((alert, i) => (
-            <div key={i} className="flex gap-2.5 items-start">
-              {/* Important flag */}
-              <div className="shrink-0 mt-0.5 w-4 text-center">
-                {alert.important
-                  ? <span className="text-[11px]" title="High market impact">🚨</span>
-                  : <span className="inline-block w-1.5 h-1.5 rounded-full mt-1.5" style={{ background: 'var(--artha-surface-low)', border: '1px solid rgba(11,28,48,0.12)' }} />
-                }
+          {visible.map((alert, i) => {
+            const hitSectors = (alert.affected_sectors ?? []).filter(s => userSectors.includes(s))
+            const otherSectors = (alert.affected_sectors ?? []).filter(s => !userSectors.includes(s))
+            return (
+              <div key={i} className="flex gap-2.5 items-start">
+                {/* Important flag */}
+                <div className="shrink-0 mt-0.5 w-4 text-center">
+                  {alert.important
+                    ? <span className="text-[11px]" title="High market impact">🚨</span>
+                    : <span className="inline-block w-1.5 h-1.5 rounded-full mt-1.5" style={{ background: 'var(--artha-surface-low)', border: '1px solid rgba(11,28,48,0.12)' }} />
+                  }
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs mb-0.5" style={{ color: 'var(--artha-text-faint)' }}>{agoLabel(alert.created_at)}</div>
+                  <p
+                    className="text-sm leading-snug mb-1.5"
+                    style={{
+                      color: alert.important ? 'var(--artha-text)' : 'var(--artha-text-secondary)',
+                      fontWeight: alert.important ? 600 : 400,
+                    }}
+                  >
+                    {alert.summary}
+                  </p>
+                  {/* Sector chips */}
+                  {(hitSectors.length > 0 || otherSectors.length > 0) && (
+                    <div className="flex flex-wrap gap-1">
+                      {hitSectors.map(s => (
+                        <span
+                          key={s}
+                          className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
+                          style={{
+                            background: 'rgba(220,38,38,0.08)',
+                            border: '1px solid rgba(220,38,38,0.25)',
+                            color: '#dc2626',
+                          }}
+                          title="You hold stocks in this sector"
+                        >
+                          ⚠ {s}
+                        </span>
+                      ))}
+                      {otherSectors.map(s => (
+                        <span
+                          key={s}
+                          className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
+                          style={{
+                            background: 'var(--artha-surface-low)',
+                            border: '1px solid rgba(11,28,48,0.1)',
+                            color: 'var(--artha-text-faint)',
+                          }}
+                        >
+                          {s}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-xs mb-0.5" style={{ color: 'var(--artha-text-faint)' }}>{agoLabel(alert.created_at)}</div>
-                <p
-                  className="text-sm leading-snug"
-                  style={{
-                    color: alert.important ? 'var(--artha-text)' : 'var(--artha-text-secondary)',
-                    fontWeight: alert.important ? 600 : 400,
-                  }}
-                >
-                  {alert.summary}
-                </p>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
