@@ -236,12 +236,19 @@ export default async function WatchlistPage() {
       }
 
       const sortedDates = Object.keys(byDate).sort()
-      const firstIdx = nearestIndex(sortedDates[0])
+
+      // Pre-compute Nifty value at each stock's entry date for money-weighted benchmark
+      const niftyAtEntryMap: Record<string, { n50: number; n500: number } | undefined> = {}
+      for (const r of portfolioRowsWithHistory) {
+        const addedAt = addedAtMap[r.stock_id] ?? '2000-01-01'
+        niftyAtEntryMap[r.stock_id] = nearestIndex(addedAt)
+      }
 
       chartData = sortedDates
         .map((date) => {
           const prices = byDate[date]
           let currentVal = 0, investedOnDay = 0
+          let niftyWeightedVal50 = 0, niftyWeightedVal500 = 0
           const idxNow = nearestIndex(date)
 
           for (const r of portfolioRowsWithHistory) {
@@ -251,12 +258,17 @@ export default async function WatchlistPage() {
             if (!price) continue
             currentVal    += (price / r.entry_price!) * r.invested_amount!
             investedOnDay += r.invested_amount!
+            const niftyEntry = niftyAtEntryMap[r.stock_id]
+            if (niftyEntry && idxNow) {
+              niftyWeightedVal50  += (idxNow.n50  / niftyEntry.n50)  * r.invested_amount!
+              niftyWeightedVal500 += (idxNow.n500 / niftyEntry.n500) * r.invested_amount!
+            }
           }
           if (investedOnDay === 0) return null
 
           const returnPct   = ((currentVal - investedOnDay) / investedOnDay) * 100
-          const nifty50Pct  = (firstIdx && idxNow) ? parseFloat(((idxNow.n50  / firstIdx.n50  - 1) * 100).toFixed(2)) : undefined
-          const nifty500Pct = (firstIdx && idxNow) ? parseFloat(((idxNow.n500 / firstIdx.n500 - 1) * 100).toFixed(2)) : undefined
+          const nifty50Pct  = investedOnDay > 0 ? parseFloat(((niftyWeightedVal50  / investedOnDay - 1) * 100).toFixed(2)) : undefined
+          const nifty500Pct = investedOnDay > 0 ? parseFloat(((niftyWeightedVal500 / investedOnDay - 1) * 100).toFixed(2)) : undefined
 
           const d = new Date(date)
           const label = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
