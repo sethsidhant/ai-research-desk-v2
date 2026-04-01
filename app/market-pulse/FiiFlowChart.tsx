@@ -65,7 +65,7 @@ export default function FiiFlowChart({ data, dailyNet = [] }: { data: Point[]; d
       )
       return { ...p, dayFlow, weekFlow }
     })
-  }, [data, period])
+  }, [data, period, dailyNetMap])
 
   const first  = filtered[0]?.value ?? 0
   const latest = filtered[filtered.length - 1]?.value ?? 0

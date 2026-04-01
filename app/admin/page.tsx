@@ -346,7 +346,7 @@ export default async function AdminPage() {
                   </tr>
                 ))}
                 {topStocks.length === 0 && (
-                  <tr><td colSpan={5} className="px-5 py-6 text-center text-gray-400 text-sm">No data yet</td></tr>
+                  <tr><td colSpan={6} className="px-5 py-6 text-center text-gray-400 text-sm">No data yet</td></tr>
                 )}
               </tbody>
             </table>

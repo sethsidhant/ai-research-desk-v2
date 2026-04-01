@@ -7,7 +7,7 @@ export async function POST() {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const adminEmail = process.env.ADMIN_EMAIL
-  if (adminEmail && user.email !== adminEmail) {
+  if (!adminEmail || user.email !== adminEmail) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

@@ -127,6 +127,7 @@ export default async function DashboardPage() {
         .select('stock_id, rsi, above_200_dma, above_50_dma')
         .in('stock_id', allStockIds)
         .order('date', { ascending: false })
+        .limit(allStockIds.length * 10)
     : { data: [] }
 
   const latestScore: Record<string, any> = {}

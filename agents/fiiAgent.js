@@ -59,10 +59,10 @@ async function fetchFIIFlow(session, days = 365) {
   const headers = { 'User-Agent': 'Mozilla/5.0', 'Cookie': session, 'X-Requested-With': 'XMLHttpRequest' };
   const data = await fetch(`https://www.screener.in/api/fii/?days=${days}`, { headers }).then(r => r.json());
 
-  const rows = data.labels.map((date, i) => ({
-    date,
-    cumulative_net: parseFloat(data.values[i]) || null,
-  }));
+  const rows = data.labels.map((date, i) => {
+    const v = parseFloat(data.values[i]);
+    return { date, cumulative_net: isNaN(v) ? null : v };
+  });
 
   const { error } = await supabase
     .from('fii_flow')
@@ -93,10 +93,10 @@ async function fetchFIISectors(session) {
     if (!sectorName) continue;
     rows.push({
       sector:           sectorName,
-      aum:              parseFloat(aum) || null,
+      aum:              (() => { const v = parseFloat(aum); return isNaN(v) ? null : v })(),
       aum_pct:          aumPct ? parseFloat(aumPct) : null,
-      fortnight_flow:   parseFloat(fortnightFlow) || null,
-      oneyear_flow:     parseFloat(oneyearFlow) || null,
+      fortnight_flow:   (() => { const v = parseFloat(fortnightFlow); return isNaN(v) ? null : v })(),
+      oneyear_flow:     (() => { const v = parseFloat(oneyearFlow); return isNaN(v) ? null : v })(),
       sparkline_values: sparkVals,
       sparkline_labels: sparklineLabels,
       updated_at:       new Date().toISOString(),

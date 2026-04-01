@@ -78,6 +78,7 @@ export default async function WatchlistPage() {
         .select('stock_id, pe_deviation, rsi, rsi_signal, dma_50, dma_200, above_50_dma, above_200_dma, composite_score, classification, suggested_action, stock_6m, stock_1y, nifty50_6m, nifty50_1y, nifty500_6m, nifty500_1y, date')
         .in('stock_id', stockIds)
         .order('date', { ascending: false })
+        .limit(stockIds.length * 10)
     : { data: [] }
 
   const latestScore: Record<string, any> = {}

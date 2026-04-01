@@ -67,7 +67,7 @@ export async function POST(request: Request) {
   if (score) {
     const dmaStatus   = score.above_200_dma ? 'above 200DMA' : 'below 200DMA'
     const dmaStatus50 = score.above_50_dma  ? 'above 50DMA'  : 'below 50DMA'
-    ctx.push(`Technicals: RSI ${score.rsi?.toFixed(0) ?? '—'} (${score.rsi_signal ?? 'Neutral'}), PE deviation ${score.pe_deviation != null ? (score.pe_deviation > 0 ? '+' : '') + score.pe_deviation.toFixed(0) + '%' : '—'} vs industry, ${dmaStatus}, ${dmaStatus50}, Score: ${score.composite_score?.toFixed(0) ?? '—'}/100 (${score.classification ?? '—'})`)
+    ctx.push(`Technicals: RSI ${score.rsi?.toFixed(0) ?? '—'} (${score.rsi_signal ?? 'Neutral'}), PE deviation ${score.pe_deviation != null ? (score.pe_deviation > 0 ? '+' : '') + score.pe_deviation.toFixed(0) + '%' : '—'} vs industry, ${dmaStatus}, ${dmaStatus50}, Score: ${score.composite_score?.toFixed(1) ?? '—'}/10 (${score.classification ?? '—'})`)
   }
 
   const fundParts: string[] = []

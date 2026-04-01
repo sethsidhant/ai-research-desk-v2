@@ -18,6 +18,7 @@ const ticker = process.argv[2];
 if (!ticker) { console.error("Usage: node onboardStock.js TICKER"); process.exit(1); }
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+let kiteAccessToken = process.env.KITE_ACCESS_TOKEN ?? '';
 const supabase   = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY,
@@ -57,7 +58,7 @@ async function getKiteOHLC(token) {
   if (!token) return null;
   try {
     const res  = await fetch(`https://api.kite.trade/quote?i=${token}`, {
-      headers: { "X-Kite-Version": "3", "Authorization": `token ${process.env.KITE_API_KEY}:${process.env.KITE_ACCESS_TOKEN}` },
+      headers: { "X-Kite-Version": "3", "Authorization": `token ${process.env.KITE_API_KEY}:${kiteAccessToken}` },
     });
     const json = await res.json();
     const data = Object.values(json.data ?? {})[0];
@@ -459,6 +460,7 @@ async function main() {
     .eq("key", "kite_access_token")
     .single();
   if (tokenRow?.value) {
+    kiteAccessToken = tokenRow.value;
     setKiteToken(tokenRow.value);
   }
 

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { AreaChart, Area, ResponsiveContainer } from 'recharts'
+import { INDUSTRY_TO_FII_SECTOR } from '@/lib/fiiSectorMap'
 
 type Sector = {
   sector: string
@@ -14,40 +15,6 @@ type Sector = {
 }
 
 type UserStock = { ticker: string; stock_name: string; industry: string | null }
-
-// Maps screener stock industry → FII sector name (best-effort)
-const INDUSTRY_TO_FII_SECTOR: Record<string, string> = {
-  'Private Sector Bank':                    'Financial Services',
-  'Other Bank':                             'Financial Services',
-  'Non Banking Financial Company (NBFC)':   'Financial Services',
-  'Life Insurance':                         'Financial Services',
-  'Financial Institution':                  'Financial Services',
-  'Investment Company':                     'Financial Services',
-  'Computers - Software & Consulting':      'Information Technology',
-  'IT Enabled Services':                    'Information Technology',
-  'Computer Hardware':                      'Information Technology',
-  'Oil Exploration & Production':           'Oil, Gas & Consumable Fuels',
-  'Refineries & Marketing':                 'Oil, Gas & Consumable Fuels',
-  'Power Generation':                       'Power',
-  'Residential, Commercial Projects':       'Realty',
-  'Civil Construction':                     'Construction',
-  'Passenger Cars & Utility Vehicles':      'Automobile and Auto Components',
-  'Auto Components & Equipments':           'Automobile and Auto Components',
-  'Tractors':                               'Automobile and Auto Components',
-  'Heavy Electrical Equipment':             'Capital Goods',
-  'Compressors, Pumps & Diesel Engines':    'Capital Goods',
-  'Aerospace & Defense':                    'Capital Goods',
-  'Hotels & Resorts':                       'Consumer Services',
-  'E-Retail/ E-Commerce':                   'Consumer Services',
-  'Dairy Products':                         'Fast Moving Consumer Goods',
-  'Personal Care':                          'Fast Moving Consumer Goods',
-  'Plastic Products - Industrial':          'Chemicals',
-  'Telecom':                                'Telecommunication',
-  'Industrial Minerals':                    'Metals & Mining',
-  'Iron & Steel/Interm.Products':           'Metals & Mining',
-  'Mining & Mineral products':              'Metals & Mining',
-  'Non Ferrous Metals':                     'Metals & Mining',
-}
 
 // Sectors from DB may have HTML-encoded ampersands (e.g. "Oil, Gas &amp; Consumable Fuels")
 function decodeSector(s: string) { return s.replace(/&amp;/g, '&') }

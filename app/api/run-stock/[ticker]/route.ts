@@ -33,7 +33,7 @@ export async function POST(
   // Fire and forget — respond immediately, run in background
   const agentsDir = path.join(process.cwd(), 'agents')
   exec(
-    `node runOneStock.js ${safeTicker}`,
+    `node runOneStock.js "${safeTicker}"`,
     { cwd: agentsDir, timeout: 120000 },
     (err, stdout, stderr) => {
       if (err) console.error(`[run-stock] ${safeTicker} failed:`, err.message)

@@ -2,11 +2,13 @@ import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   const { searchParams } = new URL(request.url)
   const tickers = searchParams.get('tickers')?.split(',').filter(Boolean) ?? []
   if (!tickers.length) return NextResponse.json({ ready: true })
-
-  const supabase = await createClient()
 
   // Look up stock IDs for the tickers
   const { data: stocks } = await supabase

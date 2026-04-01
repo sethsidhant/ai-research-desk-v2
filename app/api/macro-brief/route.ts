@@ -1,3 +1,4 @@
+import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 
 const PROMPTS: Record<string, string> = {
@@ -21,6 +22,10 @@ Be specific and direct. No fluff. Use ▲ for positive, ▼ for negative, → fo
 }
 
 export async function POST(req: NextRequest) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   try {
     const { type, items } = await req.json()
     const systemPrompt = PROMPTS[type]

@@ -210,22 +210,22 @@ async function flushLiveData() {
     else console.log(`[stockWatcher] Volume flushed for ${volRows.length} stocks`);
   }
 
-  // RSI → daily_scores
-  const rsiRows = tickers
-    .filter(t => watchlist[t]?.stockId && latestRsi[t] != null)
-    .map(t => ({
-      stock_id:   watchlist[t].stockId,
-      date:       today,
-      rsi:        latestRsi[t],
-      rsi_signal: latestRsi[t] <= 30 ? 'oversold' : latestRsi[t] >= 70 ? 'overbought' : null,
+  // RSI → daily_scores (UPDATE only — never overwrite composite_score / classification)
+  const rsiTickers = tickers.filter(t => watchlist[t]?.stockId && latestRsi[t] != null);
+  if (rsiTickers.length) {
+    let flushed = 0;
+    await Promise.all(rsiTickers.map(async t => {
+      const rsi    = latestRsi[t];
+      const signal = rsi <= 30 ? 'Oversold' : rsi >= 70 ? 'Overbought' : null;
+      const { error } = await supabase
+        .from('daily_scores')
+        .update({ rsi, rsi_signal: signal })
+        .eq('stock_id', watchlist[t].stockId)
+        .eq('date', today);
+      if (error) console.error(`[stockWatcher] RSI flush error (${t}):`, error.message);
+      else flushed++;
     }));
-
-  if (rsiRows.length) {
-    const { error } = await supabase
-      .from('daily_scores')
-      .upsert(rsiRows, { onConflict: 'stock_id,date', ignoreDuplicates: false });
-    if (error) console.error('[stockWatcher] RSI flush error:', error.message);
-    else console.log(`[stockWatcher] RSI flushed for ${rsiRows.length} stocks`);
+    console.log(`[stockWatcher] RSI flushed for ${flushed} stocks`);
   }
 }
 
