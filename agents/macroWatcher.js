@@ -31,22 +31,16 @@ const rssParser  = new RSSParser({ timeout: 15000, headers: { 'User-Agent': 'Moz
 
 const SOURCES = [
   {
-    id:     'trump_ts_posts',
+    id:     'trump',
     label:  'Trump',
     emoji:  '🇺🇸',
-    // Posts Truth Social links (mostly image URLs, some Russian text reposts)
+    // Official Telegram first (fastest), then English repost channel, then Truth Social mirror as last resort
     rssUrls: [
+      'https://rsshub.ktachibana.party/telegram/channel/real_DonaldJTrump',
+      'https://rsshub.app/telegram/channel/real_DonaldJTrump',
+      'https://rsshub.ktachibana.party/telegram/channel/trumptruthposts',
       'https://rsshub.ktachibana.party/telegram/channel/trump_ts_posts',
       'https://rsshub.app/telegram/channel/trump_ts_posts',
-    ],
-  },
-  {
-    id:     'trumptruthposts',
-    label:  'Trump',
-    emoji:  '🇺🇸',
-    // English text reposts of Trump's Truth Social posts — full content in RSS
-    rssUrls: [
-      'https://rsshub.ktachibana.party/telegram/channel/trumptruthposts',
     ],
   },
   {
