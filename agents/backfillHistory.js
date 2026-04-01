@@ -57,14 +57,19 @@ async function main() {
   ]);
 
   const addedAtMap = {};
+  // Always fetch at least 35 calendar days back so volume breakout has enough history (needs 21 trading days)
+  const minFrom = new Date(Date.now() - 35 * 86400000).toISOString().slice(0, 10);
+
   for (const us of watchlistRes.data ?? []) {
     const d = us.added_at?.slice(0, 10) ?? "2024-01-01";
-    if (!addedAtMap[us.stock_id] || d < addedAtMap[us.stock_id]) addedAtMap[us.stock_id] = d;
+    const from = d < minFrom ? d : minFrom;
+    if (!addedAtMap[us.stock_id] || from < addedAtMap[us.stock_id]) addedAtMap[us.stock_id] = from;
   }
   for (const ph of portfolioRes.data ?? []) {
     // Use investment_date (actual purchase date) as the backfill start — more accurate for portfolio chart
     const d = ph.investment_date?.slice(0, 10) ?? ph.added_at?.slice(0, 10) ?? "2024-01-01";
-    if (!addedAtMap[ph.stock_id] || d < addedAtMap[ph.stock_id]) addedAtMap[ph.stock_id] = d;
+    const from = d < minFrom ? d : minFrom;
+    if (!addedAtMap[ph.stock_id] || from < addedAtMap[ph.stock_id]) addedAtMap[ph.stock_id] = from;
   }
 
   const stockIds = Object.keys(addedAtMap);
