@@ -473,11 +473,20 @@ export default function HoldingsTable({
                       <div className="text-[10px] font-mono text-gray-400 mt-0.5">@{fmt(row.avg_price, 2)}</div>
                     </td>
 
-                    {/* Current Price */}
+                    {/* Current Price + Day Change */}
                     <td className="px-3 py-3 text-right">
                       <span className={`text-xs font-mono font-semibold ${row.current_price != null ? 'text-gray-900' : 'text-gray-400'}`}>
                         {row.current_price != null ? fmt(row.current_price, 2) : '—'}
                       </span>
+                      {dayChanges[row.ticker] != null && (() => {
+                        const { change, changePct } = dayChanges[row.ticker]
+                        const up = changePct >= 0
+                        return (
+                          <div className={`text-[10px] font-mono mt-0.5 ${up ? 'text-emerald-600' : 'text-red-500'}`}>
+                            {up ? '+' : ''}{changePct.toFixed(2)}%
+                          </div>
+                        )
+                      })()}
                     </td>
 
                     {/* Invested */}
