@@ -133,60 +133,66 @@ const FII_SECTORS = [
   'Media Entertainment & Publication', 'Textiles', 'Transportation',
 ];
 
-// Returns { summary, important, sectors } or null if should be skipped.
-async function filterAndSummarize(text, label) {
-  // Pre-filter: skip bare URLs — nothing to summarize
-  if (isJustUrl(text)) return null;
+// Batch filter + summarize: one API call for all items in a source.
+// Returns array of { summary, important, sectors } | null, same order as input texts.
+async function filterAndSummarizeBatch(items, label) {
+  // Pre-filter bare URLs
+  const eligible = items.map(text => isJustUrl(text) ? null : text);
+  const toProcess = eligible.map((text, i) => text ? { i, text } : null).filter(Boolean);
+
+  if (!toProcess.length) return items.map(() => null);
+
+  const postsBlock = toProcess
+    .map(({ i, text }) => `[${i}] ${text.slice(0, 800)}`)
+    .join('\n\n---\n\n');
 
   const msg = await anthropic.messages.create({
     model:      'claude-haiku-4-5-20251001',
-    max_tokens: 280,
+    max_tokens: 100 * toProcess.length,
     messages: [{
       role:    'user',
       content: `You are a market intelligence filter for Indian equity investors.
 
-Evaluate if this ${label} post is relevant to any of: tariffs, trade policy, sanctions, war/geopolitics, oil/energy, interest rates, USD/currency, Fed/RBI, inflation, GDP, jobs data, import/export, China/India/US relations, commodities, crypto regulation, or any other macro topic that moves markets.
+For each numbered ${label} post below, decide if it is relevant to: tariffs, trade policy, sanctions, war/geopolitics, oil/energy, interest rates, USD/currency, Fed/RBI, inflation, GDP, jobs data, import/export, China/India/US relations, commodities, crypto regulation, or any macro topic that moves markets.
 
-If NOT relevant (e.g. personal attacks, sports, entertainment, domestic US politics with no market angle, general opinions, or if the post contains only a URL with no text): reply with exactly: SKIP
-
-If relevant: reply with JSON only (no other text):
-{"summary": "1-2 sentence summary in English, direct and factual, start with the key fact", "important": true or false, "sectors": []}
+Reply with a JSON array only — one entry per post, in the same order:
+- If NOT relevant (personal attacks, sports, entertainment, domestic politics with no market angle, bare URL): {"skip":true}
+- If relevant: {"summary":"1-2 sentence factual summary starting with the key fact","important":true/false,"sectors":[]}
 
 Rules:
-- important=true ONLY for: central bank rate decision (Fed/RBI), major tariff/trade action, war escalation, market circuit breaker, INR crisis, oil shock 5%+, any event likely to move Nifty 1%+.
-- important=false for routine macro data, analyst views, moderate updates.
-- sectors: pick 1-3 from this exact list that are directly impacted. Empty array [] if broad/unclear.
-  ${FII_SECTORS.join(', ')}
+- important=true ONLY for: Fed/RBI rate decision, major tariff/trade action, war escalation, INR crisis, oil shock 5%+, event likely to move Nifty 1%+.
+- sectors: pick 1-3 from: ${FII_SECTORS.join(', ')}. Empty [] if unclear.
+- Translate non-English posts to English.
 
-If the post is in another language, translate and summarize in English.
-
-Post:
-${text.slice(0, 1500)}`,
+Posts:
+${postsBlock}`,
     }],
   });
-  let result = msg.content[0].text.trim();
-  if (result === 'SKIP' || result.startsWith('SKIP')) return null;
 
-  // Post-filter: detect AI refusals
-  const lower = result.toLowerCase();
-  if (REFUSAL_PHRASES.some(p => lower.includes(p))) return null;
+  let raw = msg.content[0].text.trim().replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
 
-  // Parse JSON response
+  let parsed;
   try {
-    // Strip markdown code fences if present
-    const cleaned = result.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
-    const parsed  = JSON.parse(cleaned);
-    if (!parsed.summary) return null;
-    const summary = parsed.summary.replace(/^\*{0,2}RELEVANT\*{0,2}[\s.:]*\n*/i, '').trim();
-    // Validate sectors against known list
-    const sectors = Array.isArray(parsed.sectors)
-      ? parsed.sectors.filter(s => FII_SECTORS.includes(s))
-      : [];
-    return { summary: summary || null, important: parsed.important === true, sectors };
+    parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) throw new Error('not array');
   } catch {
-    result = result.replace(/^\*{0,2}RELEVANT\*{0,2}[\s.:]*\n*/i, '').trim();
-    return result ? { summary: result, important: false, sectors: [] } : null;
+    return items.map(() => null);
   }
+
+  // Map results back to original indices
+  const results = items.map(() => null);
+  toProcess.forEach(({ i }, batchIdx) => {
+    const entry = parsed[batchIdx];
+    if (!entry || entry.skip) return;
+    const lower = (entry.summary || '').toLowerCase();
+    if (REFUSAL_PHRASES.some(p => lower.includes(p))) return;
+    const summary = (entry.summary || '').replace(/^\*{0,2}RELEVANT\*{0,2}[\s.:]*\n*/i, '').trim();
+    if (!summary) return;
+    const sectors = Array.isArray(entry.sectors) ? entry.sectors.filter(s => FII_SECTORS.includes(s)) : [];
+    results[i] = { summary, important: entry.important === true, sectors };
+  });
+
+  return results;
 }
 
 // ── Per-source processing ─────────────────────────────────────────────────────
@@ -231,49 +237,63 @@ async function processSource(source) {
   console.log(`[macroWatcher] ${label}: ${newItems.length} new item(s)`);
 
   // Process oldest-first so watermark advances correctly
-  for (const item of [...newItems].reverse()) {
+  const orderedItems = [...newItems].reverse();
+
+  // Filter out blank items upfront; advance watermark for them immediately
+  const toProcess = [];
+  for (const item of orderedItems) {
     if (!item.text || item.text.length < 10) {
       await setLastGuid(id, item.guid);
-      continue;
+    } else {
+      toProcess.push(item);
     }
-    try {
-      const result = await filterAndSummarize(item.text, label);
+  }
 
-      if (!result) {
-        console.log(`[macroWatcher] ${label}: skipped (not market-relevant) — ${item.text.slice(0, 60)}`);
+  if (!toProcess.length) return;
+
+  // Single API call for all items in this source
+  let results;
+  try {
+    results = await filterAndSummarizeBatch(toProcess.map(i => i.text), label);
+  } catch (e) {
+    console.error(`[macroWatcher] Batch API error: ${e.message}`);
+    return;
+  }
+
+  for (let idx = 0; idx < toProcess.length; idx++) {
+    const item   = toProcess[idx];
+    const result = results[idx];
+
+    if (!result) {
+      console.log(`[macroWatcher] ${label}: skipped — ${item.text.slice(0, 60)}`);
+    } else {
+      const { summary, important, sectors } = result;
+      const { error } = await supabase.from('macro_alerts').insert({
+        channel:          id,
+        summary,
+        important,
+        affected_sectors: sectors,
+        original_len:     item.text.length,
+        post_id:          item.guid,
+        created_at:       new Date().toISOString(),
+      });
+
+      if (error) {
+        if (!error.message.includes('unique') && !error.message.includes('duplicate')) {
+          console.error(`[macroWatcher] DB insert error: ${error.message}`);
+        }
       } else {
-        const { summary, important, sectors } = result;
-        const { error } = await supabase.from('macro_alerts').insert({
-          channel:          id,
-          summary,
-          important,
-          affected_sectors: sectors,
-          original_len:     item.text.length,
-          post_id:          item.guid,
-          created_at:       new Date().toISOString(),
-        });
-
-        if (error) {
-          if (!error.message.includes('unique') && !error.message.includes('duplicate')) {
-            console.error(`[macroWatcher] DB insert error: ${error.message}`);
-          }
+        console.log(`[macroWatcher] ${label}${important ? ' 🚨' : ''}: ${summary.slice(0, 90)}…`);
+        const ageMs = item.pubDate ? Date.now() - new Date(item.pubDate).getTime() : 0;
+        if (ageMs < 2 * 60 * 60 * 1000) {
+          await sendMacro(`${emoji} *Macro · ${label}*\n${summary}`);
         } else {
-          console.log(`[macroWatcher] ${label}${important ? ' 🚨' : ''}: ${summary.slice(0, 90)}…`);
-          // Only notify for items published within the last 2 hours
-          const ageMs = item.pubDate ? Date.now() - new Date(item.pubDate).getTime() : 0;
-          if (ageMs < 2 * 60 * 60 * 1000) {
-            await sendMacro(`${emoji} *Macro · ${label}*\n${summary}`);
-          } else {
-            console.log(`[macroWatcher] ${label}: stored silently (item is ${Math.round(ageMs / 60000)}m old)`);
-          }
+          console.log(`[macroWatcher] ${label}: stored silently (item is ${Math.round(ageMs / 60000)}m old)`);
         }
       }
-
-      await setLastGuid(id, item.guid);
-      await sleep(1200); // Anthropic rate limit
-    } catch (e) {
-      console.error(`[macroWatcher] Error processing item: ${e.message}`);
     }
+
+    await setLastGuid(id, item.guid);
   }
 }
 
