@@ -90,6 +90,7 @@ export const INDUSTRY_TO_FII_SECTOR: Record<string, string> = {
   'Transformers & Switchgears':                   'Capital Goods',
   'Electric Equipment':                           'Capital Goods',
   'Defence':                                      'Capital Goods',
+  'Ship Building & Allied Services':              'Capital Goods',
   'Industrial Products':                          'Capital Goods',
   'Textile Machinery':                            'Capital Goods',
   'Printing & Packaging':                         'Capital Goods',
