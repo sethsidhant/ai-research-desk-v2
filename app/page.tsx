@@ -388,7 +388,7 @@ export default async function DashboardPage() {
     supabase.from('mf_sebi_daily')
       .select('date, eq_net, dbt_net')
       .order('date', { ascending: false })
-      .limit(2),
+      .limit(90),
     admin.from('macro_alerts')
       .select('channel, summary, created_at, important, affected_sectors')
       .in('channel', ['trump_ts_posts', 'trumptruthposts'])
@@ -403,8 +403,19 @@ export default async function DashboardPage() {
       .limit(100),
   ])
 
-  const mfRow  = mfRows?.[0] ?? null
-  const mfYest = mfRows?.[1] ?? null
+  const mfAllRows = mfRows ?? []
+  const mfRow  = mfAllRows[0] ?? null
+  const mfYest = mfAllRows[1] ?? null
+
+  // Month-over-month MF equity comparison
+  const mfMonthStr = (d: string) => d.slice(0, 7)
+  const mfLatestMonth = mfRow ? mfMonthStr(mfRow.date) : null
+  const mfPrevMonthDate = mfLatestMonth ? new Date(mfLatestMonth + '-01') : null
+  if (mfPrevMonthDate) mfPrevMonthDate.setMonth(mfPrevMonthDate.getMonth() - 1)
+  const mfPrevMonth = mfPrevMonthDate ? mfPrevMonthDate.toISOString().slice(0, 7) : null
+  const mfCurrMonthEq = mfAllRows.filter(r => mfMonthStr(r.date) === mfLatestMonth).reduce((s, r) => s + (r.eq_net ?? 0), 0)
+  const mfPrevMonthEq = mfAllRows.filter(r => mfMonthStr(r.date) === mfPrevMonth).reduce((s, r) => s + (r.eq_net ?? 0), 0)
+  const mfMonthLabel = (ym: string | null) => ym ? new Date(ym + '-15').toLocaleDateString('en-IN', { month: 'short' }) : ''
 
   // ── User sector exposure (watchlist + portfolio) ──────────────────────────
   const userIndustries = new Set<string>([
@@ -685,7 +696,9 @@ export default async function DashboardPage() {
                     {new Date(mfRow.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+
+                {/* Latest day: Equity + Debt */}
+                <div className="grid grid-cols-2 gap-2 mb-3">
                   {[
                     { label: 'Equity', val: mfRow.eq_net ?? 0 },
                     { label: 'Debt',   val: mfRow.dbt_net ?? 0 },
@@ -698,6 +711,39 @@ export default async function DashboardPage() {
                     </div>
                   ))}
                 </div>
+
+                {/* Month-over-month equity comparison */}
+                {mfLatestMonth && mfPrevMonth && (
+                  <div className="rounded-xl px-3 py-2.5" style={{ background: 'var(--artha-surface)' }}>
+                    <div className="artha-label mb-2">Equity Net · Month Comparison</div>
+                    <div className="space-y-1.5">
+                      {[
+                        { month: mfLatestMonth, label: mfMonthLabel(mfLatestMonth), val: mfCurrMonthEq, isCurrent: true },
+                        { month: mfPrevMonth,   label: mfMonthLabel(mfPrevMonth),   val: mfPrevMonthEq, isCurrent: false },
+                      ].map(({ label, val, isCurrent }) => (
+                        <div key={label} className="flex items-center justify-between">
+                          <span className="text-xs font-medium" style={{ color: isCurrent ? 'var(--artha-text)' : 'var(--artha-text-muted)' }}>
+                            {label}{isCurrent ? ' (MTD)' : ''}
+                          </span>
+                          <span className="font-mono font-bold text-xs" style={{ color: val >= 0 ? 'var(--artha-teal)' : 'var(--artha-negative)' }}>
+                            {val >= 0 ? '+' : ''}{fmtCr(val)}
+                          </span>
+                        </div>
+                      ))}
+                      {mfPrevMonthEq !== 0 && (
+                        <div className="flex items-center justify-between pt-1 border-t" style={{ borderColor: 'var(--artha-border)' }}>
+                          <span className="text-[10px]" style={{ color: 'var(--artha-text-faint)' }}>MoM</span>
+                          <span className="font-mono font-bold text-xs" style={{
+                            color: mfCurrMonthEq >= mfPrevMonthEq ? 'var(--artha-teal)' : 'var(--artha-negative)'
+                          }}>
+                            {mfCurrMonthEq >= mfPrevMonthEq ? '↑' : '↓'}{' '}
+                            {Math.abs(Math.round((mfCurrMonthEq - mfPrevMonthEq) / Math.abs(mfPrevMonthEq) * 100))}%
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
