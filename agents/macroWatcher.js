@@ -55,7 +55,7 @@ const SOURCES = [
   },
 ];
 
-const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const POLL_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ── Persistence (last-seen item GUID/link) ────────────────────────────────────
@@ -245,17 +245,40 @@ async function processSource(source) {
 
   if (!toProcess.length) return;
 
+  // Dedup: skip items whose post_id already exists in macro_alerts (avoids paying for re-processed items)
+  const guids = toProcess.map(i => i.guid).filter(Boolean);
+  const { data: existing } = guids.length
+    ? await supabase.from('macro_alerts').select('post_id').in('post_id', guids)
+    : { data: [] };
+  const existingSet = new Set((existing ?? []).map(r => r.post_id));
+  const alreadySeen = toProcess.filter(item => existingSet.has(item.guid));
+  const freshItems  = toProcess.filter(item => !existingSet.has(item.guid));
+
+  // Advance watermark for already-seen items without calling Haiku
+  for (const item of alreadySeen) {
+    await setLastGuid(id, item.guid);
+  }
+
+  if (!freshItems.length) {
+    console.log(`[macroWatcher] ${label}: all new items already in DB — skipped Haiku call`);
+    return;
+  }
+
+  if (alreadySeen.length) {
+    console.log(`[macroWatcher] ${label}: deduped ${alreadySeen.length} already-stored item(s)`);
+  }
+
   // Single API call for all items in this source
   let results;
   try {
-    results = await filterAndSummarizeBatch(toProcess.map(i => i.text), label);
+    results = await filterAndSummarizeBatch(freshItems.map(i => i.text), label);
   } catch (e) {
     console.error(`[macroWatcher] Batch API error: ${e.message}`);
     return;
   }
 
-  for (let idx = 0; idx < toProcess.length; idx++) {
-    const item   = toProcess[idx];
+  for (let idx = 0; idx < freshItems.length; idx++) {
+    const item   = freshItems[idx];
     const result = results[idx];
 
     if (!result) {
@@ -301,7 +324,7 @@ async function poll() {
 }
 
 function start() {
-  console.log(`[macroWatcher] Starting — ${SOURCES.length} source(s), poll every ${POLL_INTERVAL_MS / 60000} min`);
+  console.log(`[macroWatcher] Starting — ${SOURCES.length} source(s), poll every ${POLL_INTERVAL_MS / 60000} min, dedup enabled`);
   poll();
   setInterval(poll, POLL_INTERVAL_MS);
 }
