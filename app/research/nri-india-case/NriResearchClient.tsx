@@ -35,7 +35,7 @@ const MARKET_DEF = {
   },
   usa:    {
     name: 'USA',    flag: '🇺🇸', currency: 'USD', symbol: '$',
-    fxDragVsEur: 0.00, taxRepatriate: 0.41, taxLocal: 0.15,
+    fxDragVsEur: 0.00, taxRepatriate: 0.33, taxLocal: 0.15,
     accentColor: '#3b82f6', glowColor: 'rgba(59,130,246,0.22)', bgColor: 'rgba(59,130,246,0.06)',
   },
   europe: {
@@ -622,7 +622,7 @@ export default function NriResearchClient() {
                       <div style={{ color: 'var(--artha-text-faint)' }}>Tax (NRI)</div>
                       <div className="font-mono font-semibold mt-0.5" style={{ color: 'var(--artha-text-secondary)' }}>
                         {repatriate
-                          ? `${(m.taxRepatriate * 100).toFixed(0)}%${key === 'india' ? ' CGT+DTAA' : key === 'usa' ? ' Exit Tax' : ' CGT'}`
+                          ? `${(m.taxRepatriate * 100).toFixed(0)}%${key === 'india' ? ' CGT+DTAA' : ' CGT'}`
                           : `${(m.taxLocal * 100).toFixed(0)}% local`}
                       </div>
                     </div>
@@ -666,7 +666,7 @@ export default function NriResearchClient() {
             {mode === 'sip' ? 'SIP: monthly contributions, monthly compounding. ' : 'Lump sum, annual compounding. '}
             Returns are blended (70% hist → 35% hist at 25yr) from verified factsheets: {STYLE_DEF[style].india.benchmark} {(getBlendedReturn(style, 'india', years) * 100).toFixed(1)}% INR · {STYLE_DEF[style].usa.benchmark} {(getBlendedReturn(style, 'usa', years) * 100).toFixed(1)}% USD · {STYLE_DEF[style].europe.benchmark} {(getBlendedReturn(style, 'europe', years) * 100).toFixed(1)}% EUR ·
             Sources: Motilal Oswal Feb 2026, Invesco RSP Dec 2025, Goldman Sachs Oct 2024 forward est. ·
-            INR→EUR drag 3%/yr · NRI tax: India 20% eff. (CGT+DTAA), USA 41% exit tax (UCITS), Europe 33% CGT ·
+            INR→EUR drag 3%/yr · Tax (Ireland, direct stocks): India 20% eff. (DTAA credit), USA 33% CGT, Europe 33% CGT · Note: S&P 500 via UCITS ETF attracts 41% Irish exit tax instead — direct stock route avoids this ·
             FX: €1 = ₹{fx.EUR_INR.toFixed(1)} = ${fx.EUR_USD.toFixed(3)} (live) · Not financial advice.
           </div>
         </div>
