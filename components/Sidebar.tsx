@@ -13,6 +13,7 @@ import {
   LogOut,
   TrendingUp,
   X,
+  BookOpen,
 } from 'lucide-react'
 import { signOut } from '@/app/actions'
 
@@ -29,6 +30,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/portfolio',    label: 'Portfolio',    icon: Briefcase },
   { href: '/market-pulse',    label: 'Market Pulse',    icon: BarChart2 },
   { href: '/global-indices',  label: 'Global Markets',  icon: Globe },
+  { href: '/research/nri-india-case', label: 'NRI Research', icon: BookOpen },
   { href: '/settings',        label: 'Settings',        icon: Settings },
   { href: '/admin',        label: 'Admin',        icon: ShieldCheck, adminOnly: true },
 ]
