@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -45,36 +45,83 @@ const MARKET_DEF = {
   },
 } as const
 
+// ── Blended return model ──────────────────────────────────────────────────────
+// Historical trailing CAGRs (Motilal Oswal factsheet Feb 28 2026 + Invesco RSP Dec 31 2025)
+const HIST_CAGR: Record<InvestmentStyle, Record<MarketKey, { y3: number; y5: number; y10: number }>> = {
+  conservative: {
+    india:  { y3: 0.146, y5: 0.129, y10: 0.151 }, // Nifty 50 TRI
+    usa:    { y3: 0.125, y5: 0.103, y10: 0.115 }, // S&P 500 Equal Weight (USD) — Invesco RSP
+    europe: { y3: 0.220, y5: 0.122, y10: 0.095 }, // Euro Stoxx 50 (EUR)
+  },
+  balanced: {
+    india:  { y3: 0.160, y5: 0.134, y10: 0.150 }, // Nifty Next 50 TRI (MO factsheet)
+    usa:    { y3: 0.230, y5: 0.144, y10: 0.148 }, // S&P 500 cap-weighted (USD)
+    europe: { y3: 0.100, y5: 0.090, y10: 0.070 }, // MSCI Europe (EUR)
+  },
+  growth: {
+    india:  { y3: 0.241, y5: 0.162, y10: 0.150 }, // Nifty Midcap 150 TRI (MO factsheet)
+    usa:    { y3: 0.078, y5: 0.109, y10: 0.144 }, // Russell Midcap (USD)
+    europe: { y3: 0.100, y5: 0.090, y10: 0.075 }, // MSCI Europe Mid (EUR)
+  },
+  aggressive: {
+    india:  { y3: 0.240, y5: 0.190, y10: 0.175 }, // 50% Mid150 + 30% Small250 + 20% N50
+    usa:    { y3: 0.180, y5: 0.155, y10: 0.160 }, // 60% Nasdaq100 + 40% Russell 2000 (USD)
+    europe: { y3: 0.080, y5: 0.080, y10: 0.070 }, // EU Small Cap (EUR)
+  },
+}
+
+// Forward 10yr analyst consensus estimates (Goldman Sachs Oct 2024, Vanguard VCMM 2025)
+const FWD_10Y: Record<InvestmentStyle, Record<MarketKey, number>> = {
+  conservative: { india: 0.120, usa: 0.050, europe: 0.055 },
+  balanced:     { india: 0.125, usa: 0.055, europe: 0.050 },
+  growth:       { india: 0.130, usa: 0.070, europe: 0.055 },
+  aggressive:   { india: 0.140, usa: 0.080, europe: 0.055 },
+}
+
+// Blends historical CAGR (interpolated for horizon) with forward 10yr estimate.
+// Historical weight: 70% at 3yr → 35% at 25yr. Longer horizons trust forward more.
+function getBlendedReturn(style: InvestmentStyle, key: MarketKey, years: number): number {
+  const h = HIST_CAGR[style][key]
+  const fwd = FWD_10Y[style][key]
+  let histRate: number
+  if (years <= 3)       histRate = h.y3
+  else if (years <= 5)  histRate = h.y3 + (h.y5 - h.y3) * (years - 3) / 2
+  else if (years <= 10) histRate = h.y5 + (h.y10 - h.y5) * (years - 5) / 5
+  else                  histRate = h.y10
+  const histWeight = Math.max(0.35, 0.70 - ((years - 3) / 22) * 0.35)
+  return histWeight * histRate + (1 - histWeight) * fwd
+}
+
 // Each style maps to equivalent-risk indices across all three markets
 const STYLE_DEF: Record<InvestmentStyle, {
   label: string; badge: string; description: string;
-  india:  { grossReturn: number; benchmark: string; alloc: string }
-  usa:    { grossReturn: number; benchmark: string; alloc: string }
-  europe: { grossReturn: number; benchmark: string; alloc: string }
+  india:  { benchmark: string; alloc: string }
+  usa:    { benchmark: string; alloc: string }
+  europe: { benchmark: string; alloc: string }
 }> = {
   conservative: {
     label: 'Conservative', badge: 'Low risk', description: 'Largecap indices — lowest volatility, broad market',
-    india:  { grossReturn: 0.12,  benchmark: 'Nifty 50',            alloc: '100% Nifty 50 largecap' },
-    usa:    { grossReturn: 0.06,  benchmark: 'S&P 500',             alloc: 'S&P 500 index fund' },
-    europe: { grossReturn: 0.05,  benchmark: 'Euro Stoxx 50',       alloc: 'Euro Stoxx 50' },
+    india:  { benchmark: 'Nifty 50',              alloc: '100% Nifty 50 largecap' },
+    usa:    { benchmark: 'S&P 500 Equal Weight',   alloc: 'S&P 500 EW index (Invesco RSP)' },
+    europe: { benchmark: 'Euro Stoxx 50',          alloc: 'Euro Stoxx 50' },
   },
   balanced: {
     label: 'Balanced', badge: 'Medium risk', description: 'Mostly large-cap, some mid — moderate risk',
-    india:  { grossReturn: 0.125, benchmark: 'Nifty 200 blend',     alloc: '80% Nifty 50 + 20% Midcap 150' },
-    usa:    { grossReturn: 0.07,  benchmark: 'S&P 500 + Midcap',    alloc: '70% S&P 500 + 30% Russell Midcap' },
-    europe: { grossReturn: 0.055, benchmark: 'MSCI Europe',         alloc: 'MSCI Europe broad market' },
+    india:  { benchmark: 'Nifty Next 50',          alloc: 'Nifty Next 50 TRI' },
+    usa:    { benchmark: 'S&P 500',                alloc: 'S&P 500 cap-weighted' },
+    europe: { benchmark: 'MSCI Europe',            alloc: 'MSCI Europe broad market' },
   },
   growth: {
     label: 'Growth', badge: 'Med-high risk', description: 'Mid-cap heavy — higher return, higher volatility',
-    india:  { grossReturn: 0.14,  benchmark: 'Nifty Midcap 150',   alloc: 'Nifty Midcap 150' },
-    usa:    { grossReturn: 0.08,  benchmark: 'Russell Midcap',      alloc: '50% S&P 500 + 50% Russell Midcap Growth' },
-    europe: { grossReturn: 0.06,  benchmark: 'MSCI Europe Mid',     alloc: 'MSCI Europe Mid-Cap' },
+    india:  { benchmark: 'Nifty Midcap 150',       alloc: 'Nifty Midcap 150 TRI' },
+    usa:    { benchmark: 'Russell Midcap',          alloc: '50% S&P 500 + 50% Russell Midcap' },
+    europe: { benchmark: 'MSCI Europe Mid',         alloc: 'MSCI Europe Mid-Cap' },
   },
   aggressive: {
     label: 'Aggressive', badge: 'High risk', description: 'Small & mid cap — maximum growth, maximum volatility',
-    india:  { grossReturn: 0.155, benchmark: 'Mid + Small blend',   alloc: '50% Midcap + 30% Smallcap + 20% Nifty 50' },
-    usa:    { grossReturn: 0.09,  benchmark: 'Nasdaq + Russell 2000', alloc: '60% Nasdaq 100 + 40% Russell 2000' },
-    europe: { grossReturn: 0.07,  benchmark: 'EU Small/Mid Cap',    alloc: 'MSCI Europe Small Cap' },
+    india:  { benchmark: 'Mid + Small blend',      alloc: '50% Midcap + 30% Smallcap + 20% Nifty 50' },
+    usa:    { benchmark: 'Nasdaq + Russell 2000',   alloc: '60% Nasdaq 100 + 40% Russell 2000' },
+    europe: { benchmark: 'EU Small/Mid Cap',        alloc: 'MSCI Europe Small Cap' },
   },
 }
 
@@ -115,14 +162,15 @@ function computeResults(
   years: number,
   mode: InvestmentMode,
   style: InvestmentStyle,
+  liveFx: { EUR_INR: number; EUR_USD: number },
 ): Record<MarketKey, MarketResult> {
   const results = {} as Record<MarketKey, MarketResult>
   const n = years * 12
 
   for (const key of ['india', 'usa', 'europe'] as MarketKey[]) {
     const m           = MARKET_DEF[key]
-    const grossReturn = STYLE_DEF[style][key].grossReturn
-    const localRate   = m.currency === 'INR' ? FX.EUR_INR : m.currency === 'USD' ? FX.EUR_USD : 1
+    const grossReturn = getBlendedReturn(style, key, years)
+    const localRate   = m.currency === 'INR' ? liveFx.EUR_INR : m.currency === 'USD' ? liveFx.EUR_USD : 1
     const amountLocal = amountEur * localRate
     const totalInvested = mode === 'sip' ? amountEur * n : amountEur
 
@@ -142,9 +190,9 @@ function computeResults(
     // Repatriate: convert to EUR at future FX
     let corpusEur: number
     if (m.currency === 'INR') {
-      corpusEur = corpusLocal / (FX.EUR_INR * Math.pow(1 + m.fxDragVsEur, years))
+      corpusEur = corpusLocal / (liveFx.EUR_INR * Math.pow(1 + m.fxDragVsEur, years))
     } else if (m.currency === 'USD') {
-      corpusEur = corpusLocal / FX.EUR_USD
+      corpusEur = corpusLocal / liveFx.EUR_USD
     } else {
       corpusEur = corpusLocal
     }
@@ -228,14 +276,34 @@ export default function NriResearchClient() {
   const [style, setStyle]                 = useState<InvestmentStyle>('growth')
   const [activeTab, setActiveTab]         = useState<TabKey>('thesis')
 
+  // ── Live FX rates ──────────────────────────────────────────────────────────
+  const [fx, setFx] = useState({ EUR_INR: FX.EUR_INR, EUR_USD: FX.EUR_USD, loading: true, updatedAt: '' })
+
+  useEffect(() => {
+    fetch('https://api.frankfurter.app/latest?from=EUR&to=INR,USD')
+      .then(r => r.json())
+      .then(data => {
+        const rates = data?.rates ?? {}
+        if (rates.INR && rates.USD) {
+          setFx({
+            EUR_INR: rates.INR,
+            EUR_USD: rates.USD,
+            loading: false,
+            updatedAt: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+          })
+        }
+      })
+      .catch(() => setFx(prev => ({ ...prev, loading: false })))
+  }, [])
+
   const principalEur = useMemo(() => {
     const n = parseFloat(amount.replace(/,/g, '')) || 0
-    if (inputCurrency === 'USD') return n / FX.EUR_USD
-    if (inputCurrency === 'INR') return n / FX.EUR_INR
+    if (inputCurrency === 'USD') return n / fx.EUR_USD
+    if (inputCurrency === 'INR') return n / fx.EUR_INR
     return n
-  }, [amount, inputCurrency])
+  }, [amount, inputCurrency, fx])
 
-  const results  = useMemo(() => computeResults(principalEur, years, mode, style), [principalEur, years, mode, style])
+  const results  = useMemo(() => computeResults(principalEur, years, mode, style, fx), [principalEur, years, mode, style, fx])
   const winnerKey = useMemo(() => {
     return (Object.entries(results) as [MarketKey, MarketResult][])
       .reduce((best, [k, r]) => {
@@ -271,23 +339,39 @@ export default function NriResearchClient() {
       </div>
 
       {/* ── CALCULATOR ───────────────────────────────────────────────────── */}
-      <div className="rounded-2xl overflow-hidden" style={{ background: 'linear-gradient(180deg, #0d1f35 0%, #0b1a2e 100%)', boxShadow: '0 24px 64px rgba(0,0,0,0.3)' }}>
+      <div className="artha-card overflow-hidden">
 
         {/* Header */}
-        <div className="px-6 pt-6 pb-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <div className="text-[10px] tracking-[0.2em] uppercase font-semibold mb-0.5" style={{ color: 'rgba(255,255,255,0.3)' }}>
-            Interactive Calculator
+        <div className="px-6 pt-6 pb-4 flex items-start justify-between" style={{ borderBottom: '1px solid rgba(11,28,48,0.07)' }}>
+          <div>
+            <div className="artha-label mb-0.5">Interactive Calculator</div>
+            <div className="text-lg font-semibold" style={{ color: 'var(--artha-text)', letterSpacing: '-0.02em' }}>
+              Run your own numbers
+            </div>
           </div>
-          <div className="text-lg font-semibold" style={{ color: 'rgba(255,255,255,0.9)', letterSpacing: '-0.02em' }}>
-            Run your own numbers
+          {/* Live FX badge */}
+          <div className="flex items-center gap-2 rounded-lg px-3 py-1.5 shrink-0"
+            style={{ background: 'var(--artha-surface)', border: '1px solid rgba(11,28,48,0.07)' }}>
+            <span className="relative flex h-2 w-2">
+              {!fx.loading && <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-50"
+                style={{ background: 'var(--artha-teal)' }} />}
+              <span className="relative inline-flex rounded-full h-2 w-2"
+                style={{ background: fx.loading ? 'var(--artha-text-faint)' : 'var(--artha-teal)' }} />
+            </span>
+            {fx.loading ? (
+              <span className="text-[10px]" style={{ color: 'var(--artha-text-faint)' }}>Fetching rates…</span>
+            ) : (
+              <span className="text-[10px]" style={{ color: 'var(--artha-text-muted)' }}>
+                Live FX · €1 = ₹{fx.EUR_INR.toFixed(1)} · ${fx.EUR_USD.toFixed(3)}
+                <span className="ml-1.5" style={{ color: 'var(--artha-text-faint)' }}>at {fx.updatedAt}</span>
+              </span>
+            )}
           </div>
         </div>
 
         {/* ── Step 1: Investment Style ──────────────────────────────────── */}
-        <div className="px-6 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <div className="text-[10px] tracking-[0.15em] uppercase font-semibold mb-3" style={{ color: 'rgba(255,255,255,0.3)' }}>
-            1 · Your investment style
-          </div>
+        <div className="px-6 py-4" style={{ borderBottom: '1px solid rgba(11,28,48,0.07)' }}>
+          <div className="artha-label mb-3">1 · Your investment style</div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             {(Object.entries(STYLE_DEF) as [InvestmentStyle, typeof STYLE_DEF.growth][]).map(([key, def]) => {
               const isActive = style === key
@@ -295,17 +379,17 @@ export default function NriResearchClient() {
                 <button key={key} onClick={() => setStyle(key)}
                   className="rounded-xl p-3 text-left transition-all"
                   style={{
-                    background: isActive ? 'rgba(0,196,180,0.12)' : 'rgba(255,255,255,0.03)',
-                    border: `1.5px solid ${isActive ? 'rgba(0,196,180,0.4)' : 'rgba(255,255,255,0.06)'}`,
+                    background: isActive ? 'var(--artha-teal-subtle)' : 'var(--artha-surface)',
+                    border: `1.5px solid ${isActive ? 'rgba(0,106,97,0.25)' : 'rgba(11,28,48,0.07)'}`,
                   }}>
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs font-bold" style={{ color: isActive ? '#4dd9cc' : 'rgba(255,255,255,0.7)' }}>{def.label}</span>
+                    <span className="text-xs font-bold" style={{ color: isActive ? 'var(--artha-teal)' : 'var(--artha-text)' }}>{def.label}</span>
                     <span className="text-[8px] font-semibold px-1.5 py-0.5 rounded-full" style={{
-                      background: isActive ? 'rgba(0,196,180,0.2)' : 'rgba(255,255,255,0.05)',
-                      color: isActive ? '#4dd9cc' : 'rgba(255,255,255,0.3)',
+                      background: isActive ? 'rgba(0,106,97,0.12)' : 'rgba(11,28,48,0.05)',
+                      color: isActive ? 'var(--artha-teal)' : 'var(--artha-text-faint)',
                     }}>{def.badge}</span>
                   </div>
-                  <div className="text-[9px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.3)' }}>{def.description}</div>
+                  <div className="text-[9px] leading-relaxed" style={{ color: 'var(--artha-text-faint)' }}>{def.description}</div>
                 </button>
               )
             })}
@@ -315,10 +399,10 @@ export default function NriResearchClient() {
             {(['india', 'usa', 'europe'] as MarketKey[]).map(k => (
               <div key={k} className="flex items-center gap-1.5">
                 <span className="text-sm">{MARKET_DEF[k].flag}</span>
-                <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                <span className="text-[10px]" style={{ color: 'var(--artha-text-muted)' }}>
                   {STYLE_DEF[style][k].benchmark}
-                  <span className="ml-1 font-mono" style={{ color: 'rgba(255,255,255,0.2)' }}>
-                    ({(STYLE_DEF[style][k].grossReturn * 100).toFixed(1)}% p.a.)
+                  <span className="ml-1 font-mono" style={{ color: 'var(--artha-text-faint)' }}>
+                    ({(getBlendedReturn(style, k, years) * 100).toFixed(1)}% blended)
                   </span>
                 </span>
               </div>
@@ -327,10 +411,8 @@ export default function NriResearchClient() {
         </div>
 
         {/* ── Step 2: Investment Type ───────────────────────────────────── */}
-        <div className="px-6 py-4 flex items-center gap-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <div className="text-[10px] tracking-[0.15em] uppercase font-semibold shrink-0" style={{ color: 'rgba(255,255,255,0.3)' }}>
-            2 · Type
-          </div>
+        <div className="px-6 py-4 flex items-center gap-3" style={{ borderBottom: '1px solid rgba(11,28,48,0.07)' }}>
+          <div className="artha-label shrink-0">2 · Type</div>
           <div className="flex gap-2">
             {([
               { val: 'lump_sum', label: 'Lump Sum',    sub: 'One-time' },
@@ -339,17 +421,17 @@ export default function NriResearchClient() {
               <button key={opt.val} onClick={() => setMode(opt.val)}
                 className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all"
                 style={{
-                  background: mode === opt.val ? 'rgba(0,196,180,0.15)' : 'rgba(255,255,255,0.04)',
-                  color: mode === opt.val ? '#4dd9cc' : 'rgba(255,255,255,0.35)',
-                  border: `1.5px solid ${mode === opt.val ? 'rgba(0,196,180,0.35)' : 'rgba(255,255,255,0.06)'}`,
+                  background: mode === opt.val ? 'var(--artha-teal-subtle)' : 'var(--artha-surface)',
+                  color: mode === opt.val ? 'var(--artha-teal)' : 'var(--artha-text-secondary)',
+                  border: `1.5px solid ${mode === opt.val ? 'rgba(0,106,97,0.25)' : 'rgba(11,28,48,0.07)'}`,
                 }}>
                 <div className="w-3 h-3 rounded-full border-2 flex items-center justify-center shrink-0"
-                  style={{ borderColor: mode === opt.val ? '#4dd9cc' : 'rgba(255,255,255,0.2)' }}>
-                  {mode === opt.val && <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#4dd9cc' }} />}
+                  style={{ borderColor: mode === opt.val ? 'var(--artha-teal)' : 'rgba(11,28,48,0.2)' }}>
+                  {mode === opt.val && <div className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--artha-teal)' }} />}
                 </div>
                 <div>
                   <div>{opt.label}</div>
-                  <div className="text-[9px] font-normal" style={{ color: 'rgba(255,255,255,0.25)' }}>{opt.sub}</div>
+                  <div className="text-[9px] font-normal" style={{ color: 'var(--artha-text-faint)' }}>{opt.sub}</div>
                 </div>
               </button>
             ))}
@@ -357,20 +439,20 @@ export default function NriResearchClient() {
         </div>
 
         {/* ── Step 3: Inputs ───────────────────────────────────────────── */}
-        <div className="px-6 py-5 grid grid-cols-1 md:grid-cols-3 gap-6" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="px-6 py-5 grid grid-cols-1 md:grid-cols-3 gap-6" style={{ borderBottom: '1px solid rgba(11,28,48,0.07)' }}>
 
           {/* Amount + currency */}
           <div>
-            <label className="block text-[10px] tracking-[0.15em] uppercase font-semibold mb-2.5" style={{ color: 'rgba(255,255,255,0.3)' }}>
+            <label className="block artha-label mb-2.5">
               3 · {mode === 'sip' ? 'Monthly Contribution' : 'Amount to Invest'}
             </label>
-            <div className="flex items-center rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
-              <div className="pl-4 pr-2 text-sm font-mono" style={{ color: 'rgba(255,255,255,0.4)' }}>{currencySymbol}</div>
+            <div className="flex items-center rounded-xl overflow-hidden" style={{ background: 'var(--artha-surface)', border: '1px solid rgba(11,28,48,0.1)' }}>
+              <div className="pl-4 pr-2 text-sm font-mono" style={{ color: 'var(--artha-text-muted)' }}>{currencySymbol}</div>
               <input
                 type="text" value={amount}
                 onChange={e => setAmount(e.target.value.replace(/[^0-9.,]/g, ''))}
                 className="flex-1 py-3 pr-3 text-base font-mono font-semibold bg-transparent outline-none"
-                style={{ color: 'rgba(255,255,255,0.9)' }}
+                style={{ color: 'var(--artha-text)' }}
                 placeholder="10,000"
               />
             </div>
@@ -379,45 +461,41 @@ export default function NriResearchClient() {
                 <button key={c} onClick={() => setInputCurrency(c)}
                   className="flex-1 py-1.5 rounded-lg text-[10px] font-semibold tracking-wider uppercase transition-all"
                   style={{
-                    background: inputCurrency === c ? 'rgba(0,196,180,0.15)' : 'rgba(255,255,255,0.04)',
-                    color: inputCurrency === c ? '#4dd9cc' : 'rgba(255,255,255,0.3)',
-                    border: `1px solid ${inputCurrency === c ? 'rgba(0,196,180,0.3)' : 'rgba(255,255,255,0.06)'}`,
+                    background: inputCurrency === c ? 'var(--artha-teal-subtle)' : 'var(--artha-surface)',
+                    color: inputCurrency === c ? 'var(--artha-teal)' : 'var(--artha-text-faint)',
+                    border: `1px solid ${inputCurrency === c ? 'rgba(0,106,97,0.25)' : 'rgba(11,28,48,0.07)'}`,
                   }}>
                   {c === 'EUR' ? '€ EUR' : c === 'USD' ? '$ USD' : '₹ INR'}
                 </button>
               ))}
             </div>
             {inputCurrency !== 'EUR' && principalEur > 0 && (
-              <div className="mt-1.5 text-[10px]" style={{ color: 'rgba(255,255,255,0.2)' }}>
-                ≈ €{Math.round(principalEur).toLocaleString()} at today's rates
+              <div className="mt-1.5 text-[10px]" style={{ color: 'var(--artha-text-faint)' }}>
+                ≈ €{Math.round(principalEur).toLocaleString()} at live rates
               </div>
             )}
           </div>
 
           {/* Time horizon */}
           <div>
-            <label className="block text-[10px] tracking-[0.15em] uppercase font-semibold mb-2.5" style={{ color: 'rgba(255,255,255,0.3)' }}>
-              4 · Investment Horizon
-            </label>
+            <label className="block artha-label mb-2.5">4 · Investment Horizon</label>
             <div className="flex items-baseline gap-2 mb-3">
-              <span className="text-3xl font-display font-bold" style={{ color: '#4dd9cc', letterSpacing: '-0.03em' }}>{years}</span>
-              <span className="text-sm" style={{ color: 'rgba(255,255,255,0.4)' }}>years</span>
+              <span className="text-3xl font-display font-bold" style={{ color: 'var(--artha-teal)', letterSpacing: '-0.03em' }}>{years}</span>
+              <span className="text-sm" style={{ color: 'var(--artha-text-muted)' }}>years</span>
             </div>
             <input type="range" min={3} max={25} step={1} value={years}
               onChange={e => setYears(Number(e.target.value))}
               className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
-              style={{ accentColor: '#4dd9cc', background: `linear-gradient(to right, #4dd9cc ${((years - 3) / 22) * 100}%, rgba(255,255,255,0.1) 0%)` }}
+              style={{ accentColor: 'var(--artha-teal)', background: `linear-gradient(to right, var(--artha-teal) ${((years - 3) / 22) * 100}%, rgba(11,28,48,0.1) 0%)` }}
             />
-            <div className="flex justify-between mt-1.5 text-[9px]" style={{ color: 'rgba(255,255,255,0.2)' }}>
+            <div className="flex justify-between mt-1.5 text-[9px]" style={{ color: 'var(--artha-text-faint)' }}>
               <span>3 yr</span><span>10 yr</span><span>25 yr</span>
             </div>
           </div>
 
           {/* Repatriate to EUR */}
           <div>
-            <label className="block text-[10px] tracking-[0.15em] uppercase font-semibold mb-2.5" style={{ color: 'rgba(255,255,255,0.3)' }}>
-              5 · Bring money back to Europe?
-            </label>
+            <label className="block artha-label mb-2.5">5 · Bring money back to Europe?</label>
             <div className="grid grid-cols-1 gap-2">
               {[
                 { val: true,  label: 'Yes — convert to €', sub: 'Final corpus in EUR, net of NRI tax' },
@@ -426,19 +504,19 @@ export default function NriResearchClient() {
                 <button key={String(opt.val)} onClick={() => setRepatriate(opt.val)}
                   className="rounded-xl px-3 py-2.5 text-left transition-all"
                   style={{
-                    background: repatriate === opt.val ? 'rgba(0,196,180,0.12)' : 'rgba(255,255,255,0.04)',
-                    border: `1.5px solid ${repatriate === opt.val ? 'rgba(0,196,180,0.4)' : 'rgba(255,255,255,0.06)'}`,
+                    background: repatriate === opt.val ? 'var(--artha-teal-subtle)' : 'var(--artha-surface)',
+                    border: `1.5px solid ${repatriate === opt.val ? 'rgba(0,106,97,0.25)' : 'rgba(11,28,48,0.07)'}`,
                   }}>
                   <div className="flex items-center gap-2">
                     <div className="w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center shrink-0"
-                      style={{ borderColor: repatriate === opt.val ? '#4dd9cc' : 'rgba(255,255,255,0.2)' }}>
-                      {repatriate === opt.val && <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#4dd9cc' }} />}
+                      style={{ borderColor: repatriate === opt.val ? 'var(--artha-teal)' : 'rgba(11,28,48,0.2)' }}>
+                      {repatriate === opt.val && <div className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--artha-teal)' }} />}
                     </div>
                     <div>
-                      <div className="text-xs font-semibold" style={{ color: repatriate === opt.val ? '#4dd9cc' : 'rgba(255,255,255,0.5)' }}>
+                      <div className="text-xs font-semibold" style={{ color: repatriate === opt.val ? 'var(--artha-teal)' : 'var(--artha-text-secondary)' }}>
                         {opt.label}
                       </div>
-                      <div className="text-[9px]" style={{ color: 'rgba(255,255,255,0.2)' }}>{opt.sub}</div>
+                      <div className="text-[9px]" style={{ color: 'var(--artha-text-faint)' }}>{opt.sub}</div>
                     </div>
                   </div>
                 </button>
@@ -459,15 +537,15 @@ export default function NriResearchClient() {
               const barPct   = maxCorpus > 0 ? (metric / maxCorpus) * 100 : 0
               const displayAmt = repatriate ? fmtAmount(r.netEur, 'EUR') : fmtAmount(r.netLocal, m.currency)
               const localPrincipal = mode === 'sip'
-                ? principalEur * (m.currency === 'INR' ? FX.EUR_INR : m.currency === 'USD' ? FX.EUR_USD : 1) * years * 12
-                : principalEur * (m.currency === 'INR' ? FX.EUR_INR : m.currency === 'USD' ? FX.EUR_USD : 1)
+                ? principalEur * (m.currency === 'INR' ? fx.EUR_INR : m.currency === 'USD' ? fx.EUR_USD : 1) * years * 12
+                : principalEur * (m.currency === 'INR' ? fx.EUR_INR : m.currency === 'USD' ? fx.EUR_USD : 1)
               const multiplier = localPrincipal > 0 ? metric / (repatriate ? r.totalInvested : localPrincipal) : 0
 
               return (
                 <div key={key} className="rounded-2xl p-5 relative transition-all"
                   style={{
-                    background: isWinner ? m.bgColor : 'rgba(255,255,255,0.03)',
-                    border: `1.5px solid ${isWinner ? m.accentColor + '55' : 'rgba(255,255,255,0.06)'}`,
+                    background: isWinner ? m.bgColor : 'var(--artha-surface)',
+                    border: `1.5px solid ${isWinner ? m.accentColor + '55' : 'rgba(11,28,48,0.07)'}`,
                     boxShadow: isWinner ? `0 8px 32px ${m.glowColor}` : 'none',
                   }}>
 
@@ -483,38 +561,39 @@ export default function NriResearchClient() {
                     <div className="flex items-center gap-2">
                       <span className="text-2xl">{m.flag}</span>
                       <div>
-                        <div className="text-sm font-bold" style={{ color: isWinner ? m.accentColor : 'rgba(255,255,255,0.7)' }}>{m.name}</div>
-                        <div className="text-[9px]" style={{ color: 'rgba(255,255,255,0.25)' }}>{STYLE_DEF[style][key].benchmark}</div>
+                        <div className="text-sm font-bold" style={{ color: isWinner ? m.accentColor : 'var(--artha-text)' }}>{m.name}</div>
+                        <div className="text-[9px]" style={{ color: 'var(--artha-text-faint)' }}>{STYLE_DEF[style][key].benchmark}</div>
                       </div>
                     </div>
                     <div className="text-right">
                       <div className="text-sm font-bold font-mono" style={{ color: m.accentColor }}>{fmtPct(cagr)}/yr</div>
-                      <div className="text-[9px]" style={{ color: 'rgba(255,255,255,0.25)' }}>net CAGR</div>
+                      <div className="text-[9px]" style={{ color: 'var(--artha-text-faint)' }}>net CAGR</div>
                     </div>
                   </div>
 
                   {/* Allocation chip */}
-                  <div className="mb-3 text-[9px] px-2 py-1 rounded-md inline-block" style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.3)' }}>
+                  <div className="mb-3 text-[9px] px-2 py-1 rounded-md inline-block"
+                    style={{ background: 'rgba(11,28,48,0.05)', color: 'var(--artha-text-muted)' }}>
                     {STYLE_DEF[style][key].alloc}
                   </div>
 
                   {/* Corpus */}
                   <div className="mb-1">
-                    <div className="text-[9px] uppercase tracking-widest mb-0.5" style={{ color: 'rgba(255,255,255,0.25)' }}>
+                    <div className="artha-label mb-0.5">
                       {repatriate ? 'Final corpus (€ net of tax)' : `Final corpus (${m.currency} net)`}
                     </div>
-                    <div className="font-display font-bold" style={{ fontSize: '1.75rem', letterSpacing: '-0.03em', color: isWinner ? m.accentColor : 'rgba(255,255,255,0.8)', lineHeight: 1.1 }}>
+                    <div className="font-display font-bold" style={{ fontSize: '1.75rem', letterSpacing: '-0.03em', color: isWinner ? m.accentColor : 'var(--artha-text)', lineHeight: 1.1 }}>
                       {displayAmt}
                     </div>
                   </div>
 
                   {/* Invested + multiplier */}
                   <div className="flex items-center justify-between mb-3">
-                    <div className="text-[10px]" style={{ color: 'rgba(255,255,255,0.25)' }}>
+                    <div className="text-[10px]" style={{ color: 'var(--artha-text-faint)' }}>
                       {mode === 'sip' ? `${fmtAmount(r.totalInvested, 'EUR')} total in` : `${fmtAmount(principalEur, 'EUR')} invested`}
                     </div>
                     {multiplier > 0 && (
-                      <div className="text-[10px] font-mono font-semibold" style={{ color: isWinner ? m.accentColor : 'rgba(255,255,255,0.3)' }}>
+                      <div className="text-[10px] font-mono font-semibold" style={{ color: isWinner ? m.accentColor : 'var(--artha-text-muted)' }}>
                         {multiplier.toFixed(1)}× your money
                       </div>
                     )}
@@ -522,33 +601,36 @@ export default function NriResearchClient() {
 
                   {/* Bar */}
                   <div className="mb-3">
-                    <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                    <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(11,28,48,0.08)' }}>
                       <div className="h-full rounded-full transition-all duration-500"
-                        style={{ width: `${barPct}%`, background: isWinner ? m.accentColor : 'rgba(255,255,255,0.15)' }} />
+                        style={{ width: `${barPct}%`, background: isWinner ? m.accentColor : 'rgba(11,28,48,0.15)' }} />
                     </div>
                   </div>
 
                   {/* Stats */}
                   <div className="grid grid-cols-2 gap-2 text-[10px]">
-                    <div className="rounded-lg px-2.5 py-2" style={{ background: 'rgba(255,255,255,0.04)' }}>
-                      <div style={{ color: 'rgba(255,255,255,0.25)' }}>Gross return</div>
-                      <div className="font-mono font-semibold mt-0.5" style={{ color: 'rgba(255,255,255,0.6)' }}>
-                        {(STYLE_DEF[style][key].grossReturn * 100).toFixed(1)}% p.a. {m.currency}
+                    <div className="rounded-lg px-2.5 py-2" style={{ background: 'var(--artha-card)', border: '1px solid rgba(11,28,48,0.06)' }}>
+                      <div style={{ color: 'var(--artha-text-faint)' }}>Blended return</div>
+                      <div className="font-mono font-semibold mt-0.5" style={{ color: 'var(--artha-text-secondary)' }}>
+                        {(getBlendedReturn(style, key, years) * 100).toFixed(1)}% p.a. {m.currency}
+                      </div>
+                      <div className="mt-0.5" style={{ color: 'var(--artha-text-faint)', fontSize: '8px' }}>
+                        hist·{(HIST_CAGR[style][key].y10 * 100).toFixed(0)}% fwd·{(FWD_10Y[style][key] * 100).toFixed(0)}%
                       </div>
                     </div>
-                    <div className="rounded-lg px-2.5 py-2" style={{ background: 'rgba(255,255,255,0.04)' }}>
-                      <div style={{ color: 'rgba(255,255,255,0.25)' }}>Tax (NRI)</div>
-                      <div className="font-mono font-semibold mt-0.5" style={{ color: 'rgba(255,255,255,0.6)' }}>
+                    <div className="rounded-lg px-2.5 py-2" style={{ background: 'var(--artha-card)', border: '1px solid rgba(11,28,48,0.06)' }}>
+                      <div style={{ color: 'var(--artha-text-faint)' }}>Tax (NRI)</div>
+                      <div className="font-mono font-semibold mt-0.5" style={{ color: 'var(--artha-text-secondary)' }}>
                         {repatriate
                           ? `${(m.taxRepatriate * 100).toFixed(0)}%${key === 'india' ? ' CGT+DTAA' : key === 'usa' ? ' Exit Tax' : ' CGT'}`
                           : `${(m.taxLocal * 100).toFixed(0)}% local`}
                       </div>
                     </div>
                     {repatriate && key === 'india' && (
-                      <div className="col-span-2 rounded-lg px-2.5 py-2" style={{ background: 'rgba(255,255,255,0.04)' }}>
-                        <div style={{ color: 'rgba(255,255,255,0.25)' }}>FX drag INR→EUR</div>
-                        <div className="font-mono font-semibold mt-0.5" style={{ color: '#f87171' }}>
-                          −3%/yr · EUR/INR ₹{Math.round(FX.EUR_INR * Math.pow(1.03, years))} at exit
+                      <div className="col-span-2 rounded-lg px-2.5 py-2" style={{ background: 'var(--artha-negative-bg)', border: '1px solid rgba(192,57,43,0.1)' }}>
+                        <div style={{ color: 'var(--artha-text-faint)' }}>FX drag INR→EUR</div>
+                        <div className="font-mono font-semibold mt-0.5" style={{ color: 'var(--artha-negative)' }}>
+                          −3%/yr · EUR/INR ₹{Math.round(fx.EUR_INR * Math.pow(1.03, years))} at exit
                         </div>
                       </div>
                     )}
@@ -560,12 +642,13 @@ export default function NriResearchClient() {
 
           {/* Winner summary */}
           {principalEur > 0 && (
-            <div className="rounded-xl px-4 py-3 flex items-center gap-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+            <div className="rounded-xl px-4 py-3 flex items-center gap-3"
+              style={{ background: 'var(--artha-teal-subtle)', border: '1px solid rgba(0,106,97,0.12)' }}>
               <span className="text-lg">{MARKET_DEF[winnerKey].flag}</span>
-              <div className="text-sm" style={{ color: 'rgba(255,255,255,0.45)' }}>
+              <div className="text-sm" style={{ color: 'var(--artha-text-secondary)' }}>
                 <span style={{ color: MARKET_DEF[winnerKey].accentColor, fontWeight: 600 }}>{MARKET_DEF[winnerKey].name}</span>
                 {' '}wins on your parameters — {' '}
-                <span style={{ color: 'rgba(255,255,255,0.7)' }}>
+                <span style={{ color: 'var(--artha-text)', fontWeight: 600 }}>
                   {fmtAmount(repatriate ? results[winnerKey].netEur : results[winnerKey].netLocal, repatriate ? 'EUR' : MARKET_DEF[winnerKey].currency)}
                 </span>
                 {' '}vs{' '}
@@ -579,11 +662,12 @@ export default function NriResearchClient() {
           )}
 
           {/* Footnote */}
-          <div className="mt-3 text-[9px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.18)' }}>
+          <div className="mt-3 text-[9px] leading-relaxed" style={{ color: 'var(--artha-text-faint)' }}>
             {mode === 'sip' ? 'SIP: monthly contributions, monthly compounding. ' : 'Lump sum, annual compounding. '}
-            Returns: {STYLE_DEF[style].india.benchmark} {(STYLE_DEF[style].india.grossReturn * 100).toFixed(1)}% INR · {STYLE_DEF[style].usa.benchmark} {(STYLE_DEF[style].usa.grossReturn * 100).toFixed(1)}% USD · {STYLE_DEF[style].europe.benchmark} {(STYLE_DEF[style].europe.grossReturn * 100).toFixed(1)}% EUR ·
-            INR→EUR drag 3%/yr (forward est.) · USD/EUR flat · NRI tax: India 20% eff. (CGT+DTAA), USA 41% exit tax (UCITS), Europe 33% CGT ·
-            FX: €1 = ₹{FX.EUR_INR} = ${FX.EUR_USD} · Not financial advice.
+            Returns are blended (70% hist → 35% hist at 25yr) from verified factsheets: {STYLE_DEF[style].india.benchmark} {(getBlendedReturn(style, 'india', years) * 100).toFixed(1)}% INR · {STYLE_DEF[style].usa.benchmark} {(getBlendedReturn(style, 'usa', years) * 100).toFixed(1)}% USD · {STYLE_DEF[style].europe.benchmark} {(getBlendedReturn(style, 'europe', years) * 100).toFixed(1)}% EUR ·
+            Sources: Motilal Oswal Feb 2026, Invesco RSP Dec 2025, Goldman Sachs Oct 2024 forward est. ·
+            INR→EUR drag 3%/yr · NRI tax: India 20% eff. (CGT+DTAA), USA 41% exit tax (UCITS), Europe 33% CGT ·
+            FX: €1 = ₹{fx.EUR_INR.toFixed(1)} = ${fx.EUR_USD.toFixed(3)} (live) · Not financial advice.
           </div>
         </div>
       </div>
