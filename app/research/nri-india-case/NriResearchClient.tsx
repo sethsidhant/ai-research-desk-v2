@@ -46,27 +46,30 @@ const MARKET_DEF = {
 } as const
 
 // ── Blended return model ──────────────────────────────────────────────────────
-// Historical trailing CAGRs (Motilal Oswal factsheet Feb 28 2026 + Invesco RSP Dec 31 2025)
+// Historical trailing CAGRs — all from official ETF factsheets (verified April 2026)
+// India: Motilal Oswal passive factsheet Feb 28 2026 (TRI, INR)
+// Europe: iShares Feb 2026 (EUR) + SPDR Feb 2026 (EUR). 10y for EMID = since-inception proxy (fund launched 2017)
+// USA: Invesco RSP Dec 2025 / iShares IJH+IWM Dec 2025 / Invesco QQQ Dec 2025 (all USD)
 const HIST_CAGR: Record<InvestmentStyle, Record<MarketKey, { y3: number; y5: number; y10: number }>> = {
   conservative: {
-    india:  { y3: 0.146, y5: 0.129, y10: 0.151 }, // Nifty 50 TRI
-    usa:    { y3: 0.125, y5: 0.103, y10: 0.115 }, // S&P 500 Equal Weight (USD) — Invesco RSP
-    europe: { y3: 0.220, y5: 0.122, y10: 0.095 }, // Euro Stoxx 50 (EUR)
+    india:  { y3: 0.146, y5: 0.129, y10: 0.151 }, // Nifty 50 TRI — MO Feb 2026
+    usa:    { y3: 0.125, y5: 0.103, y10: 0.115 }, // S&P 500 Equal Weight (RSP) — Invesco Dec 2025
+    europe: { y3: 0.165, y5: 0.142, y10: 0.091 }, // Euro Stoxx 50 (CSX5) — iShares Feb 2026
   },
   balanced: {
-    india:  { y3: 0.160, y5: 0.134, y10: 0.150 }, // Nifty Next 50 TRI (MO factsheet)
-    usa:    { y3: 0.230, y5: 0.144, y10: 0.148 }, // S&P 500 cap-weighted (USD)
-    europe: { y3: 0.100, y5: 0.090, y10: 0.070 }, // MSCI Europe (EUR)
+    india:  { y3: 0.160, y5: 0.134, y10: 0.150 }, // Nifty Next 50 TRI — MO Feb 2026
+    usa:    { y3: 0.230, y5: 0.144, y10: 0.148 }, // S&P 500 cap-weighted — MO Feb 2026
+    europe: { y3: 0.143, y5: 0.127, y10: 0.079 }, // MSCI Europe broad (SMEA) — iShares Feb 2026
   },
   growth: {
-    india:  { y3: 0.241, y5: 0.162, y10: 0.150 }, // Nifty Midcap 150 TRI (MO factsheet)
-    usa:    { y3: 0.078, y5: 0.109, y10: 0.144 }, // Russell Midcap (USD)
-    europe: { y3: 0.100, y5: 0.090, y10: 0.075 }, // MSCI Europe Mid (EUR)
+    india:  { y3: 0.241, y5: 0.162, y10: 0.150 }, // Nifty Midcap 150 TRI — MO Feb 2026
+    usa:    { y3: 0.125, y5: 0.091, y10: 0.107 }, // S&P MidCap 400 (IJH) — iShares Dec 2025
+    europe: { y3: 0.145, y5: 0.100, y10: 0.080 }, // MSCI Europe Mid Cap (EMID) — iShares Feb 2026
   },
   aggressive: {
-    india:  { y3: 0.240, y5: 0.190, y10: 0.175 }, // 50% Mid150 + 30% Small250 + 20% N50
-    usa:    { y3: 0.180, y5: 0.155, y10: 0.160 }, // 60% Nasdaq100 + 40% Russell 2000 (USD)
-    europe: { y3: 0.080, y5: 0.080, y10: 0.070 }, // EU Small Cap (EUR)
+    india:  { y3: 0.195, y5: 0.156, y10: 0.144 }, // 50% Mid150 + 30% Small250 + 20% N50 — MO/NSE factsheets
+    usa:    { y3: 0.252, y5: 0.114, y10: 0.155 }, // 60% QQQ + 40% IWM — Invesco/iShares Dec 2025
+    europe: { y3: 0.100, y5: 0.062, y10: 0.079 }, // MSCI Europe Small Cap (SMC) — SPDR Feb 2026
   },
 }
 
@@ -114,7 +117,7 @@ const STYLE_DEF: Record<InvestmentStyle, {
   growth: {
     label: 'Growth', badge: 'Med-high risk', description: 'Mid-cap heavy — higher return, higher volatility',
     india:  { benchmark: 'Nifty Midcap 150',       alloc: 'Nifty Midcap 150 TRI' },
-    usa:    { benchmark: 'Russell Midcap',          alloc: '50% S&P 500 + 50% Russell Midcap' },
+    usa:    { benchmark: 'S&P MidCap 400',          alloc: 'S&P MidCap 400 (iShares IJH)' },
     europe: { benchmark: 'MSCI Europe Mid',         alloc: 'MSCI Europe Mid-Cap' },
   },
   aggressive: {
