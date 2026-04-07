@@ -35,7 +35,7 @@ const MARKET_DEF = {
   },
   usa:    {
     name: 'USA',    flag: '🇺🇸', currency: 'USD', symbol: '$',
-    fxDragVsEur: 0.00, taxRepatriate: 0.33, taxLocal: 0.15,
+    fxDragVsEur: 0.005, taxRepatriate: 0.33, taxLocal: 0.15,
     accentColor: '#3b82f6', glowColor: 'rgba(59,130,246,0.22)', bgColor: 'rgba(59,130,246,0.06)',
   },
   europe: {
@@ -192,7 +192,7 @@ function computeResults(
     if (m.currency === 'INR') {
       corpusEur = corpusLocal / (liveFx.EUR_INR * Math.pow(1 + m.fxDragVsEur, years))
     } else if (m.currency === 'USD') {
-      corpusEur = corpusLocal / liveFx.EUR_USD
+      corpusEur = corpusLocal / (liveFx.EUR_USD * Math.pow(1 + m.fxDragVsEur, years))
     } else {
       corpusEur = corpusLocal
     }
@@ -631,6 +631,14 @@ export default function NriResearchClient() {
                         <div style={{ color: 'var(--artha-text-faint)' }}>FX drag INR→EUR</div>
                         <div className="font-mono font-semibold mt-0.5" style={{ color: 'var(--artha-negative)' }}>
                           −3%/yr · EUR/INR ₹{Math.round(fx.EUR_INR * Math.pow(1.03, years))} at exit
+                        </div>
+                      </div>
+                    )}
+                    {repatriate && key === 'usa' && (
+                      <div className="col-span-2 rounded-lg px-2.5 py-2" style={{ background: 'rgba(59,130,246,0.05)', border: '1px solid rgba(59,130,246,0.1)' }}>
+                        <div style={{ color: 'var(--artha-text-faint)' }}>FX drag USD→EUR</div>
+                        <div className="font-mono font-semibold mt-0.5" style={{ color: 'var(--artha-text-secondary)' }}>
+                          −0.5%/yr · EUR/USD ${(fx.EUR_USD * Math.pow(1.005, years)).toFixed(3)} at exit
                         </div>
                       </div>
                     )}
