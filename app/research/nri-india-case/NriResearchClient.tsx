@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from 'react'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type CurrencyInput   = 'EUR' | 'USD' | 'INR'
+type CurrencyInput   = 'EUR' | 'INR'
 type MarketKey       = 'india' | 'usa' | 'europe'
 type TabKey          = 'thesis' | 'us_problem' | 'india_case' | 'currency' | 'nri_edge' | 'verdict'
 type InvestmentMode  = 'lump_sum' | 'sip'
@@ -280,14 +280,13 @@ export default function NriResearchClient() {
   const [fx, setFx] = useState({ EUR_INR: FX.EUR_INR, EUR_USD: FX.EUR_USD, loading: true, updatedAt: '' })
 
   useEffect(() => {
-    fetch('https://api.frankfurter.app/latest?from=EUR&to=INR,USD')
+    fetch('/api/fx-rates')
       .then(r => r.json())
       .then(data => {
-        const rates = data?.rates ?? {}
-        if (rates.INR && rates.USD) {
+        if (data.EUR_INR && data.EUR_USD) {
           setFx({
-            EUR_INR: rates.INR,
-            EUR_USD: rates.USD,
+            EUR_INR: data.EUR_INR,
+            EUR_USD: data.EUR_USD,
             loading: false,
             updatedAt: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
           })
@@ -298,7 +297,6 @@ export default function NriResearchClient() {
 
   const principalEur = useMemo(() => {
     const n = parseFloat(amount.replace(/,/g, '')) || 0
-    if (inputCurrency === 'USD') return n / fx.EUR_USD
     if (inputCurrency === 'INR') return n / fx.EUR_INR
     return n
   }, [amount, inputCurrency, fx])
@@ -317,7 +315,7 @@ export default function NriResearchClient() {
     Math.max(...Object.values(results).map(r => repatriate ? r.netEur : r.netLocal)),
   [results, repatriate])
 
-  const currencySymbol = inputCurrency === 'INR' ? '₹' : inputCurrency === 'USD' ? '$' : '€'
+  const currencySymbol = inputCurrency === 'INR' ? '₹' : '€'
 
   return (
     <div className="px-6 py-5 max-w-screen-xl mx-auto space-y-6">
@@ -363,7 +361,7 @@ export default function NriResearchClient() {
             ) : (
               <span className="text-[10px]" style={{ color: 'var(--artha-text-muted)' }}>
                 Live FX · €1 = ₹{fx.EUR_INR.toFixed(1)} · ${fx.EUR_USD.toFixed(3)}
-                <span className="ml-1.5" style={{ color: 'var(--artha-text-faint)' }}>at {fx.updatedAt}</span>
+                {' '}<span style={{ color: 'var(--artha-text-faint)' }}>at {fx.updatedAt}</span>
               </span>
             )}
           </div>
@@ -457,7 +455,7 @@ export default function NriResearchClient() {
               />
             </div>
             <div className="flex gap-1.5 mt-2">
-              {(['EUR', 'USD', 'INR'] as CurrencyInput[]).map(c => (
+              {(['EUR', 'INR'] as CurrencyInput[]).map(c => (
                 <button key={c} onClick={() => setInputCurrency(c)}
                   className="flex-1 py-1.5 rounded-lg text-[10px] font-semibold tracking-wider uppercase transition-all"
                   style={{
@@ -465,13 +463,15 @@ export default function NriResearchClient() {
                     color: inputCurrency === c ? 'var(--artha-teal)' : 'var(--artha-text-faint)',
                     border: `1px solid ${inputCurrency === c ? 'rgba(0,106,97,0.25)' : 'rgba(11,28,48,0.07)'}`,
                   }}>
-                  {c === 'EUR' ? '€ EUR' : c === 'USD' ? '$ USD' : '₹ INR'}
+                  {c === 'EUR' ? '€ EUR' : '₹ INR'}
                 </button>
               ))}
             </div>
-            {inputCurrency !== 'EUR' && principalEur > 0 && (
+            {principalEur > 0 && (
               <div className="mt-1.5 text-[10px]" style={{ color: 'var(--artha-text-faint)' }}>
-                ≈ €{Math.round(principalEur).toLocaleString()} at live rates
+                {inputCurrency === 'INR'
+                  ? `≈ €${Math.round(principalEur).toLocaleString()} · $${Math.round(principalEur * fx.EUR_USD).toLocaleString()} at live rates`
+                  : `≈ ₹${Math.round(principalEur * fx.EUR_INR).toLocaleString()} · $${Math.round(principalEur * fx.EUR_USD).toLocaleString()} at live rates`}
               </div>
             )}
           </div>
