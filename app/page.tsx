@@ -7,9 +7,8 @@ import MarketStatusLight from '@/components/MarketStatusLight'
 import AppShell from '@/components/AppShell'
 import { INDUSTRY_TO_FII_SECTOR } from '@/lib/fiiSectorMap'
 import { WatchlistReturnCard, PortfolioReturnCard } from '@/components/DashboardReturnCard'
-import MarketBreadthCard from '@/components/MarketBreadthCard'
+import MarketBreadthCard, { type SignalGroup, type VolumeRow } from '@/components/MarketBreadthCard'
 import MacroNewsCard from '@/components/MacroNewsCard'
-import FiiDiiMiniChart from '@/components/FiiDiiMiniChart'
 import PortfolioMovers, { type TurningPoint } from '@/components/PortfolioMovers'
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -330,6 +329,18 @@ export default async function DashboardPage() {
   const breadthOversold  = actOversold.length
   const breadthOverbought = actOverbought.length
 
+  // Signals for MarketBreadthCard
+  const breadthSignals: SignalGroup[] = (
+    [
+      { shortLabel: 'RSI <30',  type: 'oversold'   as const, tickers: actOversold },
+      { shortLabel: 'RSI >70',  type: 'overbought' as const, tickers: actOverbought },
+      { shortLabel: '< 200D',   type: 'below200'   as const, tickers: actBelow200 },
+      { shortLabel: '< 50D',    type: 'below50'    as const, tickers: below50Tickers },
+      { shortLabel: '52W High', type: 'high52w'    as const, tickers: near52wHighTickers },
+      { shortLabel: '52W Low',  type: 'low52w'     as const, tickers: near52wLowTickers },
+    ] satisfies SignalGroup[]
+  ).filter(s => s.tickers.length > 0)
+
   // Activity board — portfolio movers
   const portMovers = portRows
     .map((h: any) => ({
@@ -574,6 +585,12 @@ export default async function DashboardPage() {
             totalStocks={allStockIds.length}
             oversold={breadthOversold}
             overbought={breadthOverbought}
+            signals={breadthSignals}
+            volumeBreakouts={volumeAlerts.slice(0, 6).map((v: any) => ({
+              ticker: v.ticker,
+              ratio: v.ratio,
+              isPortfolio: v.isPortfolio,
+            }))}
           />
 
         </div>
@@ -628,65 +645,6 @@ export default async function DashboardPage() {
               )}
             </div>
 
-            {/* Activity: signals + volume alerts */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-
-              {/* Technical signals */}
-              <div className="artha-card px-5 py-5">
-                <div className="artha-label mb-4">Technical Signals</div>
-                {(actOversold.length + actOverbought.length + actBelow200.length + below50Tickers.length + near52wHighTickers.length + near52wLowTickers.length) === 0 ? (
-                  <p className="text-sm" style={{ color: 'var(--artha-text-muted)' }}>No signals right now.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {actOversold.length > 0 && <SignalChip label="Oversold (RSI<30)" tickers={actOversold} color="blue" />}
-                    {actOverbought.length > 0 && <SignalChip label="Overbought (RSI>70)" tickers={actOverbought} color="orange" />}
-                    {actBelow200.length > 0 && <SignalChip label="Below 200 DMA" tickers={actBelow200} color="red" />}
-                    {below50Tickers.length > 0 && <SignalChip label="Below 50 DMA" tickers={below50Tickers} color="orange" />}
-                    {near52wHighTickers.length > 0 && <SignalChip label="Near 52W High (≤5%)" tickers={near52wHighTickers} color="teal" />}
-                    {near52wLowTickers.length > 0 && <SignalChip label="Near 52W Low (≥40% off)" tickers={near52wLowTickers} color="red" />}
-                  </div>
-                )}
-              </div>
-
-              {/* Volume alerts */}
-              <div className="artha-card px-5 py-5">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="artha-label">Volume Breakouts</div>
-                  <div className="text-xs" style={{ color: 'var(--artha-text-faint)' }}>vs 20d avg</div>
-                </div>
-                {volumeAlerts.length === 0 ? (
-                  <p className="text-sm" style={{ color: 'var(--artha-text-muted)' }}>No unusual volume yesterday.</p>
-                ) : (
-                  <div className="space-y-2.5">
-                    {volumeAlerts.slice(0, 6).map(v => (
-                      <div key={v.ticker} className="flex items-center justify-between">
-                        <span
-                          className="font-mono font-bold text-xs px-2 py-0.5 rounded"
-                          style={{
-                            background: v.isPortfolio ? 'var(--artha-surface-low)' : 'var(--artha-surface)',
-                            color: v.isPortfolio ? 'var(--artha-primary)' : 'var(--artha-text)',
-                          }}
-                        >
-                          {v.ticker}
-                        </span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs" style={{ color: 'var(--artha-text-muted)' }}>
-                            {v.vol >= 1000000 ? `${(v.vol / 1000000).toFixed(1)}M` : `${(v.vol / 1000).toFixed(0)}K`}
-                          </span>
-                          <span
-                            className="font-mono font-bold text-xs"
-                            style={{ color: v.ratio >= 3 ? 'var(--artha-negative)' : v.ratio >= 2 ? '#ea580c' : '#d97706' }}
-                          >
-                            {v.ratio.toFixed(1)}×
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
             {/* Macro alerts: Trump + Markets */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               <MacroNewsCard
@@ -708,7 +666,11 @@ export default async function DashboardPage() {
             </div>
 
             {/* Portfolio turning points */}
-            <PortfolioMovers turningPoints={turningPoints} userSectors={uniqueUserSectors} />
+            <PortfolioMovers
+              turningPoints={turningPoints}
+              userSectors={uniqueUserSectors}
+              latestIndexDate={idxRows.length > 0 ? idxRows[idxRows.length - 1].date : null}
+            />
           </div>
 
           {/* ── Right: Data sidebar (1/3 width) ───────────────────────── */}
@@ -776,12 +738,6 @@ export default async function DashboardPage() {
                   </div>
                 )}
 
-                {/* 7-day mini chart */}
-                {(fiiDiiRows ?? []).length > 1 && (
-                  <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--artha-surface-low)' }}>
-                    <FiiDiiMiniChart data={fiiDiiRows ?? []} />
-                  </div>
-                )}
               </div>
             )}
 
@@ -951,49 +907,6 @@ export default async function DashboardPage() {
 }
 
 // ─── helper components ───────────────────────────────────────────────────────
-
-function SignalChip({ label, tickers, color }: {
-  label:   string
-  tickers: string[]
-  color:   'amber' | 'blue' | 'orange' | 'red' | 'teal'
-}) {
-  const styles = {
-    amber:  { bg: '#fef3c7', text: '#92400e' },
-    blue:   { bg: 'var(--artha-surface-low)', text: 'var(--artha-primary)' },
-    orange: { bg: '#fff7ed', text: '#9a3412' },
-    red:    { bg: 'var(--artha-negative-bg)', text: 'var(--artha-negative)' },
-    teal:   { bg: 'var(--artha-teal-subtle)', text: 'var(--artha-teal)' },
-  }
-  const s = styles[color]
-  return (
-    <div>
-      <div className="text-xs font-semibold mb-1.5" style={{ color: s.text }}>{label}</div>
-      <div className="flex flex-wrap gap-1">
-        {tickers.slice(0, 6).map(t => (
-          <span
-            key={t}
-            className="font-mono font-bold text-xs px-2 py-0.5 rounded-md"
-            style={{ background: s.bg, color: s.text }}
-          >
-            {t}
-          </span>
-        ))}
-        {tickers.length > 6 && (
-          <span className="text-xs self-center" style={{ color: 'var(--artha-text-muted)' }}>+{tickers.length - 6}</span>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// Legacy — keep for any remaining references
-function SignalRow({ label, tickers, color }: {
-  label:   string
-  tickers: string[]
-  color:   'amber' | 'blue' | 'orange' | 'red'
-}) {
-  return <SignalChip label={label} tickers={tickers} color={color} />
-}
 
 function TugOfWarBar({ fiiNet, diiNet }: { fiiNet: number; diiNet: number }) {
   const fiiAbs = Math.abs(fiiNet)

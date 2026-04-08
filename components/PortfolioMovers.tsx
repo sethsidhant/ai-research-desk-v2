@@ -42,14 +42,30 @@ const SHORT_SECTOR: Record<string, string> = {
 export default function PortfolioMovers({
   turningPoints,
   userSectors,
+  latestIndexDate,
 }: {
   turningPoints: TurningPoint[]
   userSectors: string[]
+  latestIndexDate: string | null
 }) {
+  // Warn if index_history hasn't been updated in > 2 days
+  const staleWarning = (() => {
+    if (!latestIndexDate) return 'No index data found — run backfillHistory.js'
+    const ageDays = Math.floor((Date.now() - new Date(latestIndexDate + 'T00:00:00').getTime()) / 86400000)
+    if (ageDays > 2) return `Index data last updated ${ageDays}d ago (${latestIndexDate}) — run backfillHistory.js`
+    return null
+  })()
+
   if (turningPoints.length === 0) {
     return (
       <div className="artha-card px-5 py-4">
         <div className="artha-label mb-2">Market Turning Points</div>
+        {staleWarning && (
+          <div className="text-xs px-3 py-2 rounded-lg mb-3"
+            style={{ background: 'var(--artha-warning-bg)', color: 'var(--artha-warning)' }}>
+            ⚠️ {staleWarning}
+          </div>
+        )}
         <p className="text-sm" style={{ color: 'var(--artha-text-muted)' }}>
           No major Nifty moves (≥1.5%) in the last 30 days — market has been stable.
         </p>
