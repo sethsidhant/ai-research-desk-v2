@@ -84,6 +84,9 @@ export default function PortfolioMovers({
           <div className="artha-label">Market Turning Points</div>
           <div className="text-[11px] mt-0.5" style={{ color: 'var(--artha-text-muted)' }}>
             Nifty moves ≥1.5% · linked to macro news
+            {latestIndexDate && (
+              <span style={{ color: 'var(--artha-text-faint)' }}> · data to {fmtDate(latestIndexDate)}</span>
+            )}
           </div>
         </div>
         <Link
