@@ -9,6 +9,8 @@ import { INDUSTRY_TO_FII_SECTOR } from '@/lib/fiiSectorMap'
 import { WatchlistReturnCard, PortfolioReturnCard } from '@/components/DashboardReturnCard'
 import MarketBreadthCard from '@/components/MarketBreadthCard'
 import MacroNewsCard from '@/components/MacroNewsCard'
+import FiiDiiMiniChart from '@/components/FiiDiiMiniChart'
+import PortfolioMovers, { type TurningPoint } from '@/components/PortfolioMovers'
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -411,6 +413,57 @@ export default async function DashboardPage() {
       .limit(100),
   ])
 
+  // ── Nifty turning points (last 30 days, moves ≥ 1.5%) ───────────────────
+  const cutoff30d = new Date(Date.now() - 35 * 86400000).toISOString().slice(0, 10)
+  const { data: indexHistory } = await supabase
+    .from('index_history')
+    .select('date, nifty50_close')
+    .gte('date', cutoff30d)
+    .order('date', { ascending: true })
+
+  const rawTurning: { date: string; pct: number; close: number }[] = []
+  const idxRows = indexHistory ?? []
+  for (let i = 1; i < idxRows.length; i++) {
+    const prev = idxRows[i - 1]
+    const curr = idxRows[i]
+    if (!prev.nifty50_close || !curr.nifty50_close) continue
+    const pct = ((curr.nifty50_close - prev.nifty50_close) / prev.nifty50_close) * 100
+    if (Math.abs(pct) >= 1.5) rawTurning.push({ date: curr.date, pct, close: curr.nifty50_close })
+  }
+  // Most recent 5, newest first
+  rawTurning.sort((a, b) => b.date.localeCompare(a.date))
+  const topTurning = rawTurning.slice(0, 5)
+
+  // Fetch macro news covering the turning point date window
+  let turningPoints: TurningPoint[] = topTurning.map(tp => ({ ...tp, news: [] }))
+  if (topTurning.length > 0) {
+    const tpMinDate = topTurning[topTurning.length - 1].date
+    const tpMaxDate = topTurning[0].date
+    const { data: tpNews } = await admin
+      .from('macro_alerts')
+      .select('channel, summary, created_at, affected_sectors')
+      .eq('important', true)
+      .gte('created_at', tpMinDate + 'T00:00:00')
+      .lte('created_at', tpMaxDate + 'T23:59:59')
+      .order('created_at', { ascending: false })
+      .limit(60)
+
+    // Group news by nearest turning point (±1 day)
+    const newsMap: Record<string, typeof turningPoints[0]['news']> = {}
+    for (const tp of topTurning) newsMap[tp.date] = []
+    for (const n of tpNews ?? []) {
+      const alertDate = n.created_at.slice(0, 10)
+      let bestDate = ''
+      let bestDiff = Infinity
+      for (const tp of topTurning) {
+        const diff = Math.abs(new Date(alertDate).getTime() - new Date(tp.date).getTime())
+        if (diff < bestDiff && diff <= 86400000 * 1.5) { bestDiff = diff; bestDate = tp.date }
+      }
+      if (bestDate) newsMap[bestDate].push({ summary: n.summary, channel: n.channel, affected_sectors: n.affected_sectors })
+    }
+    turningPoints = topTurning.map(tp => ({ ...tp, news: newsMap[tp.date] ?? [] }))
+  }
+
   const mfAllRows = mfRows ?? []
   const mfRow  = mfAllRows[0] ?? null
   const mfYest = mfAllRows[1] ?? null
@@ -653,6 +706,9 @@ export default async function DashboardPage() {
                 userSectors={uniqueUserSectors}
               />
             </div>
+
+            {/* Portfolio turning points */}
+            <PortfolioMovers turningPoints={turningPoints} userSectors={uniqueUserSectors} />
           </div>
 
           {/* ── Right: Data sidebar (1/3 width) ───────────────────────── */}
@@ -667,39 +723,63 @@ export default async function DashboardPage() {
                     {new Date(fiiDiiRow.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
                   </div>
                 </div>
+
+                {/* Today's net boxes */}
                 <div className="grid grid-cols-2 gap-2 mb-3">
                   {[
-                    { label: 'FII Net', val: fiiDiiRow.fii_net, prev: fiiDiiYest?.fii_net, rolling: fii5d },
-                    { label: 'DII Net', val: fiiDiiRow.dii_net, prev: fiiDiiYest?.dii_net, rolling: dii5d },
-                  ].map(({ label, val, prev, rolling }) => (
-                    <div
-                      key={label}
-                      className="rounded-xl px-3 py-2.5"
-                      style={{ background: val >= 0 ? 'var(--artha-teal-subtle)' : 'var(--artha-negative-bg)' }}
-                    >
+                    { label: 'FII Net', val: fiiDiiRow.fii_net, rolling: fii5d },
+                    { label: 'DII Net', val: fiiDiiRow.dii_net, rolling: dii5d },
+                  ].map(({ label, val, rolling }) => (
+                    <div key={label} className="rounded-xl px-3 py-2.5"
+                      style={{ background: val >= 0 ? 'var(--artha-teal-subtle)' : 'var(--artha-negative-bg)' }}>
                       <div className="artha-label mb-1">{label}</div>
-                      <div className="font-display font-bold text-sm" style={{ color: val >= 0 ? 'var(--artha-teal)' : 'var(--artha-negative)' }}>
+                      <div className="font-display font-bold text-sm"
+                        style={{ color: val >= 0 ? 'var(--artha-teal)' : 'var(--artha-negative)' }}>
                         {val >= 0 ? '+' : ''}{fmtCr(val)}
                       </div>
-                      {prev != null && (
-                        <div className="text-xs mt-0.5" style={{ color: 'var(--artha-text-muted)' }}>
-                          5d: <span style={{ color: rolling >= 0 ? 'var(--artha-teal)' : 'var(--artha-negative)' }}>
-                            {rolling >= 0 ? '+' : ''}{fmtCr(rolling)}
-                          </span>
-                        </div>
-                      )}
+                      <div className="text-xs mt-0.5" style={{ color: 'var(--artha-text-muted)' }}>
+                        5d: <span style={{ color: rolling >= 0 ? 'var(--artha-teal)' : 'var(--artha-negative)' }}>
+                          {rolling >= 0 ? '+' : ''}{fmtCr(rolling)}
+                        </span>
+                      </div>
                     </div>
                   ))}
                 </div>
+
+                {/* Tug-of-war bar */}
+                <TugOfWarBar fiiNet={fiiDiiRow.fii_net} diiNet={fiiDiiRow.dii_net} />
+
+                {/* Net Institutional */}
+                {(() => {
+                  const netInst = (fiiDiiRow.fii_net ?? 0) + (fiiDiiRow.dii_net ?? 0)
+                  const up = netInst >= 0
+                  return (
+                    <div className="flex items-center justify-between mt-3 px-3 py-2 rounded-lg"
+                      style={{ background: 'var(--artha-surface)' }}>
+                      <span className="text-xs" style={{ color: 'var(--artha-text-muted)' }}>Net Institutional</span>
+                      <span className="font-display font-bold text-sm"
+                        style={{ color: up ? 'var(--artha-teal)' : 'var(--artha-negative)' }}>
+                        {up ? '+' : ''}{fmtCr(netInst)}
+                      </span>
+                    </div>
+                  )
+                })()}
+
+                {/* Streak */}
                 {fiiStreakDir && fiiStreak >= 2 && (
-                  <div
-                    className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+                  <div className="text-xs font-semibold px-3 py-1.5 rounded-lg mt-2"
                     style={{
                       background: fiiStreakDir === 'buying' ? 'var(--artha-teal-subtle)' : 'var(--artha-negative-bg)',
                       color: fiiStreakDir === 'buying' ? 'var(--artha-teal)' : 'var(--artha-negative)',
-                    }}
-                  >
+                    }}>
                     FII {fiiStreakDir} for {fiiStreak} consecutive days
+                  </div>
+                )}
+
+                {/* 7-day mini chart */}
+                {(fiiDiiRows ?? []).length > 1 && (
+                  <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--artha-surface-low)' }}>
+                    <FiiDiiMiniChart data={fiiDiiRows ?? []} />
                   </div>
                 )}
               </div>
@@ -913,6 +993,50 @@ function SignalRow({ label, tickers, color }: {
   color:   'amber' | 'blue' | 'orange' | 'red'
 }) {
   return <SignalChip label={label} tickers={tickers} color={color} />
+}
+
+function TugOfWarBar({ fiiNet, diiNet }: { fiiNet: number; diiNet: number }) {
+  const fiiAbs = Math.abs(fiiNet)
+  const diiAbs = Math.abs(diiNet)
+  const total  = fiiAbs + diiAbs
+  if (total === 0) return null
+  const fiiPct = Math.round((fiiAbs / total) * 100)
+  const diiPct = 100 - fiiPct
+  const fiiColor = fiiNet >= 0 ? '#006a61' : '#c0392b'
+  const diiColor = diiNet >= 0 ? '#003d9b' : '#9a3412'
+
+  return (
+    <div>
+      <div className="flex items-center justify-between text-[9px] mb-1.5">
+        <span className="font-semibold" style={{ color: fiiColor }}>
+          {fiiNet >= 0 ? '▲' : '▼'} FII {fiiPct}%
+        </span>
+        <span className="uppercase tracking-wider" style={{ color: 'var(--artha-text-faint)' }}>flow weight</span>
+        <span className="font-semibold" style={{ color: diiColor }}>
+          DII {diiPct}% {diiNet >= 0 ? '▲' : '▼'}
+        </span>
+      </div>
+      <div className="flex h-3 rounded-full overflow-hidden gap-px">
+        <div style={{ width: `${fiiPct}%`, background: fiiColor, opacity: 0.85 }} />
+        <div style={{ width: '2px', background: 'white', flexShrink: 0 }} />
+        <div style={{ width: `${diiPct}%`, background: diiColor, opacity: 0.85 }} />
+      </div>
+      <div className="flex items-center justify-between text-[9px] mt-1">
+        <span style={{ color: 'var(--artha-text-faint)' }}>
+          {fiiNet >= 0 ? 'Buying' : 'Selling'}
+        </span>
+        {fiiNet >= 0 !== diiNet >= 0 && (
+          <span className="font-semibold" style={{ color: 'var(--artha-warning)' }}>↔ Diverging</span>
+        )}
+        {fiiNet >= 0 === diiNet >= 0 && (
+          <span className="font-semibold" style={{ color: fiiColor }}>↕ Aligned</span>
+        )}
+        <span style={{ color: 'var(--artha-text-faint)' }}>
+          {diiNet >= 0 ? 'Buying' : 'Selling'}
+        </span>
+      </div>
+    </div>
+  )
 }
 
 function SectorFlowBars({ sectors, userSectors, formatCr, shortSector }: {
