@@ -81,7 +81,7 @@ export default function MarketBreadthCard({ above200, below200, totalScored, tot
               <svg width="80" height="44" viewBox="4 5 72 38" style={{ flexShrink: 0 }}>
                 {/* Track */}
                 <path d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 0 ${cx + r} ${cy}`}
-                  fill="none" stroke="rgba(11,28,48,0.1)" strokeWidth="6" strokeLinecap="round" />
+                  fill="none" stroke="#dde3ed" strokeWidth="6" strokeLinecap="round" />
                 {/* Fill */}
                 <path d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 0 ${cx + r} ${cy}`}
                   fill="none" stroke={healthColor} strokeWidth="6" strokeLinecap="round"

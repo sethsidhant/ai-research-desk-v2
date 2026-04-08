@@ -38,10 +38,10 @@ function ArcGauge({ pct }: { pct: number }) {
 
   return (
     <svg width="92" height="48" viewBox="4 6 84 44" style={{ flexShrink: 0 }}>
-      {/* Track — neutral gray so it's always visible regardless of P&L sign */}
+      {/* Track */}
       <path
         d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 0 ${cx + r} ${cy}`}
-        fill="none" stroke="rgba(11,28,48,0.1)" strokeWidth="7" strokeLinecap="round"
+        fill="none" stroke="#dde3ed" strokeWidth="7" strokeLinecap="round"
       />
       {/* Filled portion */}
       <path
