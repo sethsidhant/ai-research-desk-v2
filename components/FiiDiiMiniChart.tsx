@@ -57,8 +57,8 @@ export default function FiiDiiMiniChart({ data }: { data: Row[] }) {
               fontSize: '10px',
               color: '#e5e7eb',
             }}
-            formatter={(val: number, name: string) => [
-              fmtCr(val),
+            formatter={(val, name) => [
+              fmtCr(Number(val)),
               name === 'fii' ? 'FII Net' : 'DII Net',
             ]}
             labelStyle={{ color: '#9ca3af', marginBottom: '2px' }}
