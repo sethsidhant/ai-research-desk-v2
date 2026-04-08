@@ -75,8 +75,8 @@ function Sparkline({ values, labels, sector }: { values: string; labels?: string
             color: '#e5e7eb',
           }}
           itemStyle={{ color }}
-          formatter={(val: number) => [`₹ ${val.toLocaleString('en-IN')} Cr`, 'Net flow']}
-          labelFormatter={(i: number) => pts[i]?.label ?? ''}
+          formatter={(val) => [`₹ ${Number(val).toLocaleString('en-IN')} Cr`, 'Net flow']}
+          labelFormatter={(i) => pts[i as number]?.label ?? ''}
           cursor={{ stroke: 'rgba(255,255,255,0.15)', strokeWidth: 1 }}
         />
         <Area
