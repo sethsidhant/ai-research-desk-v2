@@ -3,8 +3,9 @@
 // stores AI summaries in macro_alerts table.
 //
 // Sources:
-//   trump_ts_posts — Trump posts via RSSHub (Telegram channel → RSS)
-//   moneycontrolcom — MoneyControl markets news via direct RSS
+//   trump          — Trump posts via RSSHub (official Telegram → RSS, fallback to repost channels)
+//   moneycontrol   — MoneyControl Telegram channel via RSSHub (faster than ET RSS)
+//   et_markets     — ET Markets RSS (fallback)
 //
 // No Telegram API credentials needed.
 
@@ -44,11 +45,20 @@ const SOURCES = [
     ],
   },
   {
+    id:     'moneycontrol',
+    label:  'MoneyControl',
+    emoji:  '📊',
+    // Telegram channel → RSSHub. Faster than ET Markets RSS.
+    rssUrls: [
+      'https://rsshub.ktachibana.party/telegram/channel/moneycontrolcom',
+      'https://rsshub.app/telegram/channel/moneycontrolcom',
+    ],
+  },
+  {
     id:     'et_markets',
     label:  'Markets News',
     emoji:  '📰',
-    // MoneyControl RSS is malformed XML — ET Markets RSS is proven working alternative
-    // Filtered to macro-relevant items only via AI
+    // Fallback: ET Markets RSS (MoneyControl Telegram preferred above)
     rssUrls: [
       'https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms',
     ],

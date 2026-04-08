@@ -412,13 +412,13 @@ export default async function DashboardPage() {
       .limit(90),
     admin.from('macro_alerts')
       .select('channel, summary, created_at, important, affected_sectors')
-      .in('channel', ['trump_ts_posts', 'trumptruthposts'])
+      .in('channel', ['trump', 'trump_ts_posts', 'trumptruthposts'])
       .gte('created_at', cutoff24h)
       .order('created_at', { ascending: false })
       .limit(100),
     admin.from('macro_alerts')
       .select('channel, summary, created_at, important, affected_sectors')
-      .eq('channel', 'et_markets')
+      .in('channel', ['moneycontrol', 'et_markets'])
       .gte('created_at', cutoff24h)
       .order('created_at', { ascending: false })
       .limit(100),

@@ -18,9 +18,11 @@ function fmtDate(dateStr: string) {
 }
 
 const CHANNEL_LABEL: Record<string, string> = {
+  trump:            '🇺🇸 Trump',
   trump_ts_posts:   '🇺🇸 Trump',
   trumptruthposts:  '🇺🇸 Trump',
-  et_markets:       '📰 Macro',
+  moneycontrol:     '📊 MoneyControl',
+  et_markets:       '📰 ET Markets',
 }
 
 const SHORT_SECTOR: Record<string, string> = {
