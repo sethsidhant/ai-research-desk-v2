@@ -9,6 +9,34 @@ type MarketKey       = 'india' | 'usa' | 'europe'
 type TabKey          = 'thesis' | 'us_problem' | 'india_case' | 'currency' | 'nri_edge' | 'verdict'
 type InvestmentMode  = 'lump_sum' | 'sip'
 type InvestmentStyle = 'conservative' | 'balanced' | 'growth' | 'aggressive'
+type EuCountry       = 'ireland' | 'germany' | 'france' | 'italy' | 'spain' | 'netherlands' | 'portugal' | 'austria' | 'belgium' | 'denmark' | 'sweden' | 'finland' | 'luxembourg'
+
+// CGT rates on equity capital gains. India LTCG = 12.5%; DTAA credit reduces home-country top-up.
+// Effective India rate = max(homeCGT − 0.125, 0.125). USA/Europe = homeCGT (no treaty credit).
+const EU_TAX: Record<EuCountry, { label: string; flag: string; cgt: number }> = {
+  ireland:     { label: 'Ireland',     flag: '🇮🇪', cgt: 0.330 },
+  germany:     { label: 'Germany',     flag: '🇩🇪', cgt: 0.264 },
+  france:      { label: 'France',      flag: '🇫🇷', cgt: 0.300 },
+  italy:       { label: 'Italy',       flag: '🇮🇹', cgt: 0.260 },
+  spain:       { label: 'Spain',       flag: '🇪🇸', cgt: 0.190 },
+  netherlands: { label: 'Netherlands', flag: '🇳🇱', cgt: 0.310 },
+  portugal:    { label: 'Portugal',    flag: '🇵🇹', cgt: 0.280 },
+  austria:     { label: 'Austria',     flag: '🇦🇹', cgt: 0.275 },
+  belgium:     { label: 'Belgium',     flag: '🇧🇪', cgt: 0.000 }, // 0% CGT; India 12.5% still applies
+  denmark:     { label: 'Denmark',     flag: '🇩🇰', cgt: 0.420 },
+  sweden:      { label: 'Sweden',      flag: '🇸🇪', cgt: 0.300 },
+  finland:     { label: 'Finland',     flag: '🇫🇮', cgt: 0.300 },
+  luxembourg:  { label: 'Luxembourg',  flag: '🇱🇺', cgt: 0.000 }, // 0% CGT on long-term equity gains
+}
+
+function getCountryTax(country: EuCountry): Record<MarketKey, { repatriate: number; local: number }> {
+  const { cgt } = EU_TAX[country]
+  return {
+    india:  { repatriate: Math.max(cgt - 0.125, 0.125), local: 0.125 }, // DTAA: credit Indian 12.5% LTCG
+    usa:    { repatriate: cgt,                           local: 0.150 }, // home CGT on US gains
+    europe: { repatriate: cgt,                           local: cgt   }, // home CGT on EU gains
+  }
+}
 
 interface MarketResult {
   key:           MarketKey
@@ -166,6 +194,7 @@ function computeResults(
   mode: InvestmentMode,
   style: InvestmentStyle,
   liveFx: { EUR_INR: number; EUR_USD: number },
+  taxes: Record<MarketKey, { repatriate: number; local: number }>,
 ): Record<MarketKey, MarketResult> {
   const results = {} as Record<MarketKey, MarketResult>
   const n = years * 12
@@ -190,7 +219,6 @@ function computeResults(
 
     const principalEur = mode === 'sip' ? amountEur * n : amountEur
 
-    // Repatriate: convert to EUR at future FX
     let corpusEur: number
     if (m.currency === 'INR') {
       corpusEur = corpusLocal / (liveFx.EUR_INR * Math.pow(1 + m.fxDragVsEur, years))
@@ -201,12 +229,12 @@ function computeResults(
     }
 
     const gainEur     = Math.max(0, corpusEur - principalEur)
-    const taxEur      = gainEur * m.taxRepatriate
+    const taxEur      = gainEur * taxes[key].repatriate
     const netEur      = corpusEur - taxEur
     const netCagrEur  = principalEur > 0 ? Math.pow(netEur / principalEur, 1 / years) - 1 : 0
 
     const gainLocal    = Math.max(0, corpusLocal - principalLocal)
-    const netLocal     = corpusLocal - gainLocal * m.taxLocal
+    const netLocal     = corpusLocal - gainLocal * taxes[key].local
     const netCagrLocal = principalLocal > 0 ? Math.pow(netLocal / principalLocal, 1 / years) - 1 : 0
 
     results[key] = { key, corpusLocal, corpusEur, netEur, netLocal, netCagrEur, netCagrLocal, totalInvested, gainEur, taxEur }
@@ -277,7 +305,10 @@ export default function NriResearchClient() {
   const [repatriate, setRepatriate]       = useState(true)
   const [mode, setMode]                   = useState<InvestmentMode>('lump_sum')
   const [style, setStyle]                 = useState<InvestmentStyle>('growth')
+  const [country, setCountry]             = useState<EuCountry>('ireland')
   const [activeTab, setActiveTab]         = useState<TabKey>('thesis')
+
+  const taxes = useMemo(() => getCountryTax(country), [country])
 
   // ── Live FX rates ──────────────────────────────────────────────────────────
   const [fx, setFx] = useState({ EUR_INR: FX.EUR_INR, EUR_USD: FX.EUR_USD, loading: true, updatedAt: '' })
@@ -304,7 +335,7 @@ export default function NriResearchClient() {
     return n
   }, [amount, inputCurrency, fx])
 
-  const results  = useMemo(() => computeResults(principalEur, years, mode, style, fx), [principalEur, years, mode, style, fx])
+  const results  = useMemo(() => computeResults(principalEur, years, mode, style, fx, taxes), [principalEur, years, mode, style, fx, taxes])
   const winnerKey = useMemo(() => {
     return (Object.entries(results) as [MarketKey, MarketResult][])
       .reduce((best, [k, r]) => {
@@ -367,6 +398,31 @@ export default function NriResearchClient() {
                 {' '}<span style={{ color: 'var(--artha-text-faint)' }}>at {fx.updatedAt}</span>
               </span>
             )}
+          </div>
+        </div>
+
+        {/* ── Country selector ─────────────────────────────────────────── */}
+        <div className="px-6 py-4" style={{ borderBottom: '1px solid rgba(11,28,48,0.07)' }}>
+          <div className="artha-label mb-2.5">Your EU country of residence</div>
+          <div className="flex flex-wrap gap-1.5">
+            {(Object.entries(EU_TAX) as [EuCountry, typeof EU_TAX.ireland][]).map(([code, def]) => (
+              <button key={code} onClick={() => setCountry(code)}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold transition-all"
+                style={{
+                  background: country === code ? 'var(--artha-teal-subtle)' : 'var(--artha-surface)',
+                  border: `1px solid ${country === code ? 'rgba(0,106,97,0.25)' : 'rgba(11,28,48,0.07)'}`,
+                  color: country === code ? 'var(--artha-teal)' : 'var(--artha-text-faint)',
+                }}>
+                <span>{def.flag}</span>
+                <span>{def.label}</span>
+              </button>
+            ))}
+          </div>
+          <div className="mt-2 text-[9px]" style={{ color: 'var(--artha-text-faint)' }}>
+            CGT: {(EU_TAX[country].cgt * 100).toFixed(1)}% ·
+            India effective: {(taxes.india.repatriate * 100).toFixed(1)}% (DTAA credit) ·
+            USA: {(taxes.usa.repatriate * 100).toFixed(1)}% ·
+            Europe: {(taxes.europe.repatriate * 100).toFixed(1)}%
           </div>
         </div>
 
@@ -625,8 +681,8 @@ export default function NriResearchClient() {
                       <div style={{ color: 'var(--artha-text-faint)' }}>Tax (NRI)</div>
                       <div className="font-mono font-semibold mt-0.5" style={{ color: 'var(--artha-text-secondary)' }}>
                         {repatriate
-                          ? `${(m.taxRepatriate * 100).toFixed(0)}%${key === 'india' ? ' CGT+DTAA' : ' CGT'}`
-                          : `${(m.taxLocal * 100).toFixed(0)}% local`}
+                          ? `${(taxes[key].repatriate * 100).toFixed(1)}%${key === 'india' ? ' DTAA net' : ' CGT'}`
+                          : `${(taxes[key].local * 100).toFixed(1)}% local`}
                       </div>
                     </div>
                     {repatriate && key === 'india' && (
@@ -677,7 +733,7 @@ export default function NriResearchClient() {
             {mode === 'sip' ? 'SIP: monthly contributions, monthly compounding. ' : 'Lump sum, annual compounding. '}
             Returns are blended (70% hist → 35% hist at 25yr) from verified factsheets: {STYLE_DEF[style].india.benchmark} {(getBlendedReturn(style, 'india', years) * 100).toFixed(1)}% INR · {STYLE_DEF[style].usa.benchmark} {(getBlendedReturn(style, 'usa', years) * 100).toFixed(1)}% USD · {STYLE_DEF[style].europe.benchmark} {(getBlendedReturn(style, 'europe', years) * 100).toFixed(1)}% EUR ·
             Sources: Motilal Oswal Feb 2026, Invesco RSP Dec 2025, Goldman Sachs Oct 2024 forward est. ·
-            INR→EUR drag 3%/yr · Tax (Ireland, direct stocks): India 20% eff. (DTAA credit), USA 33% CGT, Europe 33% CGT · Note: S&P 500 via UCITS ETF attracts 41% Irish exit tax instead — direct stock route avoids this ·
+            INR→EUR drag 3%/yr · Tax ({EU_TAX[country].label}): India {(taxes.india.repatriate * 100).toFixed(1)}% eff. (DTAA nets 12.5% Indian LTCG), USA {(taxes.usa.repatriate * 100).toFixed(1)}% CGT, Europe {(taxes.europe.repatriate * 100).toFixed(1)}% CGT · Direct stocks assumed (UCITS ETFs attract higher exit tax in some countries) ·
             FX: €1 = ₹{fx.EUR_INR.toFixed(1)} = ${fx.EUR_USD.toFixed(3)} (live) · Not financial advice.
           </div>
         </div>
