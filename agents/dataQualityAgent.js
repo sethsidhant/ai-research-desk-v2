@@ -38,15 +38,47 @@ function getLastMarketDays(n) {
   return days;
 }
 
+// NSE requires a cookie handshake — first visit the homepage to get session cookies,
+// then use those cookies in the API call.
+let _nseCookies = null;
+let _nseCookieTs = 0;
+
+async function getNseCookies() {
+  // Reuse cookies for up to 5 minutes
+  if (_nseCookies && Date.now() - _nseCookieTs < 5 * 60 * 1000) return _nseCookies;
+  try {
+    const res = await axios.get('https://www.nseindia.com/', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept':     'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+      },
+      timeout: 10000,
+    });
+    const setCookie = res.headers['set-cookie'];
+    if (!setCookie || setCookie.length === 0) return null;
+    _nseCookies = setCookie.map(c => c.split(';')[0]).join('; ');
+    _nseCookieTs = Date.now();
+    return _nseCookies;
+  } catch {
+    return null;
+  }
+}
+
 // Fetch current price from NSE for spot-check
 async function fetchNsePrice(ticker) {
   try {
+    const cookies = await getNseCookies();
+    if (!cookies) return null;
+
     const url = `https://www.nseindia.com/api/quote-equity?symbol=${encodeURIComponent(ticker)}`;
     const res = await axios.get(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0',
-        'Accept':     'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept':     'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.5',
         'Referer':    'https://www.nseindia.com/',
+        'Cookie':     cookies,
       },
       timeout: 8000,
     });
@@ -223,6 +255,10 @@ async function main() {
     .eq('date', lastMarketDay);
 
   const historyByStockId = Object.fromEntries((historyRows ?? []).map(r => [r.stock_id, r]));
+
+  // Warm up NSE session once before looping
+  const nseCookies = await getNseCookies();
+  console.log(`[spotCheck] NSE cookie handshake: ${nseCookies ? 'ok' : 'FAILED — NSE unreachable'}`);
 
   const spotCheckResults = [];
   for (const s of sample) {
