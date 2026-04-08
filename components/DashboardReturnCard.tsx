@@ -12,69 +12,53 @@ type PortRow  = { ticker: string; quantity: number; avgPrice: number; price5dAgo
 type LivePrices = Record<string, { change: number; last: number }>
 
 // Semi-circle arc gauge. Range: -30% to +30% P&L.
-// Left = negative (red), center = 0%, right = positive (teal).
+// sweep=0 draws the top arch (counterclockwise in SVG = visually upward from left to right).
 function ArcGauge({ pct }: { pct: number }) {
-  const cx = 40, cy = 44, r = 32
-  const totalLen = Math.PI * r  // ≈ 100.5 — half circumference
+  // Layout: cx=46, cy=46, r=36. Top of arc at y=10. Sides at x=10 and x=82.
+  // viewBox "4 6 84 44" shows x:4→88, y:6→50 — 6px clearance on all sides.
+  const cx = 46, cy = 46, r = 36
+  const totalLen = Math.PI * r
   const minPct = -30, maxPct = 30
   const t = Math.max(0, Math.min(1, (pct - minPct) / (maxPct - minPct)))
-  const filled = t * totalLen
+  const filled  = t * totalLen
   const color   = pct >= 0 ? '#006a61' : '#c0392b'
-  const trackCl = pct >= 0 ? 'rgba(0,106,97,0.12)' : 'rgba(192,57,43,0.12)'
 
-  // Needle tip (slightly shorter than arc radius so it sits inside)
+  // Needle
   const angle = (1 - t) * Math.PI
-  const nr = r - 7
+  const nr = r - 9
   const nx = cx + nr * Math.cos(angle)
   const ny = cy - nr * Math.sin(angle)
 
-  // Tick marks at -30%, 0%, +30%
-  const ticks = [0, 0.5, 1].map(tv => {
-    const ta  = (1 - tv) * Math.PI
-    const ir  = r + 3
-    const or  = r + 8
-    return {
-      x1: cx + ir * Math.cos(ta),
-      y1: cy - ir * Math.sin(ta),
-      x2: cx + or * Math.cos(ta),
-      y2: cy - or * Math.sin(ta),
-    }
+  // Three small inner tick dots at −, 0, +
+  const tickDots = [0, 0.5, 1].map(tv => {
+    const ta = (1 - tv) * Math.PI
+    const tr = r - 4
+    return { x: cx + tr * Math.cos(ta), y: cy - tr * Math.sin(ta) }
   })
 
   return (
-    <svg width="90" height="54" viewBox="0 4 90 52" style={{ flexShrink: 0 }}>
-      {/* Track */}
+    <svg width="92" height="48" viewBox="4 6 84 44" style={{ flexShrink: 0 }}>
+      {/* Track — neutral gray so it's always visible regardless of P&L sign */}
       <path
         d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 0 ${cx + r} ${cy}`}
-        fill="none"
-        stroke={trackCl}
-        strokeWidth="6"
-        strokeLinecap="round"
+        fill="none" stroke="rgba(11,28,48,0.1)" strokeWidth="7" strokeLinecap="round"
       />
-      {/* Fill */}
+      {/* Filled portion */}
       <path
         d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 0 ${cx + r} ${cy}`}
-        fill="none"
-        stroke={color}
-        strokeWidth="6"
-        strokeLinecap="round"
+        fill="none" stroke={color} strokeWidth="7" strokeLinecap="round"
         strokeDasharray={`${filled} ${totalLen}`}
       />
-      {/* Tick marks */}
-      {ticks.map((tk, i) => (
-        <line key={i} x1={tk.x1} y1={tk.y1} x2={tk.x2} y2={tk.y2}
-          stroke="rgba(11,28,48,0.15)" strokeWidth="1.5" strokeLinecap="round" />
+      {/* Inner tick dots */}
+      {tickDots.map((d, i) => (
+        <circle key={i} cx={d.x} cy={d.y} r="1.5" fill="rgba(11,28,48,0.25)" />
       ))}
-      {/* Zone labels */}
-      <text x={cx - r - 1} y={cy + 12} fontSize="7" fill="rgba(11,28,48,0.35)" textAnchor="middle">−</text>
-      <text x={cx}         y={cy - r - 4} fontSize="7" fill="rgba(11,28,48,0.35)" textAnchor="middle">0</text>
-      <text x={cx + r + 1} y={cy + 12} fontSize="7" fill="rgba(11,28,48,0.35)" textAnchor="middle">+</text>
       {/* Needle */}
       <line x1={cx} y1={cy} x2={nx} y2={ny}
-        stroke={color} strokeWidth="2" strokeLinecap="round" opacity="0.85" />
+        stroke={color} strokeWidth="2" strokeLinecap="round" />
       {/* Pivot */}
-      <circle cx={cx} cy={cy} r="3" fill={color} opacity="0.9" />
-      <circle cx={cx} cy={cy} r="1.2" fill="white" opacity="0.8" />
+      <circle cx={cx} cy={cy} r="3.5" fill={color} />
+      <circle cx={cx} cy={cy} r="1.5" fill="white" opacity="0.9" />
     </svg>
   )
 }

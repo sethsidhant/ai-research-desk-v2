@@ -30,19 +30,21 @@ export default function MarketBreadthCard({ above200, below200, totalScored, tot
   const rsNeutral    = totalScored > 0 ? (neutral   / totalScored) * 100 : 0
   const rsOverbought = totalScored > 0 ? (overbought / totalScored) * 100 : 0
 
-  // Arc gauge for "above 200 DMA %" — uses the same semicircle trick
-  const cx = 40, cy = 44, r = 30
+  // Arc gauge for "above 200 DMA %" — same semicircle math as DashboardReturnCard
+  // cx=40, cy=40, r=30. Top of arc at y=10. Sides at x=10 and x=70.
+  // viewBox "4 5 72 38" shows y:5→43 — 5px clearance top, 3px bottom.
+  const cx = 40, cy = 40, r = 30
   const totalLen = Math.PI * r
   const t = totalScored > 0 ? above200 / totalScored : 0
   const filled  = t * totalLen
   const angle   = (1 - t) * Math.PI
-  const nr      = r - 6
+  const nr      = r - 8
   const nx      = cx + nr * Math.cos(angle)
   const ny      = cy - nr * Math.sin(angle)
-  const ticks   = [0, 0.5, 1].map(tv => {
+  const tickDots = [0, 0.5, 1].map(tv => {
     const ta = (1 - tv) * Math.PI
-    const ir = r + 2, or = r + 7
-    return { x1: cx + ir * Math.cos(ta), y1: cy - ir * Math.sin(ta), x2: cx + or * Math.cos(ta), y2: cy - or * Math.sin(ta) }
+    const tr = r - 4
+    return { x: cx + tr * Math.cos(ta), y: cy - tr * Math.sin(ta) }
   })
 
   return (
@@ -76,24 +78,26 @@ export default function MarketBreadthCard({ above200, below200, totalScored, tot
               </div>
 
               {/* Mini arc gauge */}
-              <svg width="84" height="50" viewBox="0 4 84 50" style={{ flexShrink: 0 }}>
+              <svg width="80" height="44" viewBox="4 5 72 38" style={{ flexShrink: 0 }}>
+                {/* Track */}
                 <path d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 0 ${cx + r} ${cy}`}
-                  fill="none" stroke="rgba(11,28,48,0.08)" strokeWidth="5" strokeLinecap="round" />
+                  fill="none" stroke="rgba(11,28,48,0.1)" strokeWidth="6" strokeLinecap="round" />
+                {/* Fill */}
                 <path d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 0 ${cx + r} ${cy}`}
-                  fill="none" stroke={healthColor} strokeWidth="5" strokeLinecap="round"
+                  fill="none" stroke={healthColor} strokeWidth="6" strokeLinecap="round"
                   strokeDasharray={`${filled} ${totalLen}`} />
-                {ticks.map((tk, i) => (
-                  <line key={i} x1={tk.x1} y1={tk.y1} x2={tk.x2} y2={tk.y2}
-                    stroke="rgba(11,28,48,0.15)" strokeWidth="1.5" strokeLinecap="round" />
+                {/* Inner tick dots */}
+                {tickDots.map((d, i) => (
+                  <circle key={i} cx={d.x} cy={d.y} r="1.5" fill="rgba(11,28,48,0.25)" />
                 ))}
-                <text x={cx - r - 2} y={cy + 11} fontSize="7" fill="rgba(11,28,48,0.3)" textAnchor="middle">0%</text>
-                <text x={cx + r + 2} y={cy + 11} fontSize="7" fill="rgba(11,28,48,0.3)" textAnchor="middle">100%</text>
-                <line x1={cx} y1={cy} x2={nx} y2={ny} stroke={healthColor} strokeWidth="2" strokeLinecap="round" opacity="0.85" />
-                <circle cx={cx} cy={cy} r="2.8" fill={healthColor} opacity="0.9" />
-                <circle cx={cx} cy={cy} r="1.1" fill="white" opacity="0.8" />
-                {/* Percentage label inside arc */}
-                <text x={cx} y={cy + 2} fontSize="9" fontWeight="700" fill={healthColor} textAnchor="middle"
-                  style={{ fontFamily: 'Manrope, sans-serif' }}>{abovePct}%</text>
+                {/* Needle */}
+                <line x1={cx} y1={cy} x2={nx} y2={ny} stroke={healthColor} strokeWidth="2" strokeLinecap="round" />
+                {/* Pivot */}
+                <circle cx={cx} cy={cy} r="3" fill={healthColor} />
+                <circle cx={cx} cy={cy} r="1.2" fill="white" opacity="0.9" />
+                {/* % label at pivot */}
+                <text x={cx} y={cy + 12} fontSize="8" fontWeight="700" fill={healthColor}
+                  textAnchor="middle" style={{ fontFamily: 'Manrope, sans-serif' }}>{abovePct}%</text>
               </svg>
             </div>
 
