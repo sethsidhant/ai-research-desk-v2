@@ -30,20 +30,21 @@ export default function MarketBreadthCard({ above200, below200, totalScored, tot
   const rsNeutral    = totalScored > 0 ? (neutral   / totalScored) * 100 : 0
   const rsOverbought = totalScored > 0 ? (overbought / totalScored) * 100 : 0
 
-  // Arc gauge for "above 200 DMA %" — same semicircle math as DashboardReturnCard
-  // cx=40, cy=40, r=30. Top of arc at y=10. Sides at x=10 and x=70.
-  // viewBox "4 5 72 38" shows y:5→43 — 5px clearance top, 3px bottom.
-  const cx = 40, cy = 40, r = 30
-  const totalLen = Math.PI * r
+  // Arc gauge — two 90° arcs to avoid SVG 180° ambiguity.
+  // cx=40, cy=40, r=32. Left=(8,40) Top=(40,8) Right=(72,40).
+  // viewBox "3 3 74 42" → x:3→77, y:3→45. All strokes ≥3px inside.
+  const cx = 40, cy = 40, r = 32
+  const totalLen = Math.PI * r  // ≈ 100.5
   const t = totalScored > 0 ? above200 / totalScored : 0
   const filled  = t * totalLen
+  const arcPath = `M ${cx - r} ${cy} A ${r} ${r} 0 0 0 ${cx} ${cy - r} A ${r} ${r} 0 0 0 ${cx + r} ${cy}`
   const angle   = (1 - t) * Math.PI
-  const nr      = r - 8
+  const nr      = r - 9
   const nx      = cx + nr * Math.cos(angle)
   const ny      = cy - nr * Math.sin(angle)
   const tickDots = [0, 0.5, 1].map(tv => {
     const ta = (1 - tv) * Math.PI
-    const tr = r - 4
+    const tr = r - 5
     return { x: cx + tr * Math.cos(ta), y: cy - tr * Math.sin(ta) }
   })
 
@@ -78,26 +79,21 @@ export default function MarketBreadthCard({ above200, below200, totalScored, tot
               </div>
 
               {/* Mini arc gauge */}
-              <svg width="80" height="44" viewBox="4 5 72 38" style={{ flexShrink: 0 }}>
+              <svg width="80" height="46" viewBox="3 3 74 42" style={{ flexShrink: 0 }}>
                 {/* Track */}
-                <path d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 0 ${cx + r} ${cy}`}
-                  fill="none" stroke="#dde3ed" strokeWidth="6" strokeLinecap="round" />
+                <path d={arcPath} fill="none" stroke="#9ca3af" strokeWidth="6" strokeLinecap="round" />
                 {/* Fill */}
-                <path d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 0 ${cx + r} ${cy}`}
-                  fill="none" stroke={healthColor} strokeWidth="6" strokeLinecap="round"
+                <path d={arcPath} fill="none" stroke={healthColor} strokeWidth="6" strokeLinecap="round"
                   strokeDasharray={`${filled} ${totalLen}`} />
-                {/* Inner tick dots */}
+                {/* Tick dots */}
                 {tickDots.map((d, i) => (
-                  <circle key={i} cx={d.x} cy={d.y} r="1.5" fill="rgba(11,28,48,0.25)" />
+                  <circle key={i} cx={d.x} cy={d.y} r="1.8" fill="white" opacity="0.85" />
                 ))}
                 {/* Needle */}
                 <line x1={cx} y1={cy} x2={nx} y2={ny} stroke={healthColor} strokeWidth="2" strokeLinecap="round" />
                 {/* Pivot */}
-                <circle cx={cx} cy={cy} r="3" fill={healthColor} />
-                <circle cx={cx} cy={cy} r="1.2" fill="white" opacity="0.9" />
-                {/* % label at pivot */}
-                <text x={cx} y={cy + 12} fontSize="8" fontWeight="700" fill={healthColor}
-                  textAnchor="middle" style={{ fontFamily: 'Manrope, sans-serif' }}>{abovePct}%</text>
+                <circle cx={cx} cy={cy} r="3.5" fill={healthColor} />
+                <circle cx={cx} cy={cy} r="1.4" fill="white" />
               </svg>
             </div>
 

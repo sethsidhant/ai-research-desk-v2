@@ -12,53 +12,49 @@ type PortRow  = { ticker: string; quantity: number; avgPrice: number; price5dAgo
 type LivePrices = Record<string, { change: number; last: number }>
 
 // Semi-circle arc gauge. Range: -30% to +30% P&L.
-// sweep=0 draws the top arch (counterclockwise in SVG = visually upward from left to right).
+// Uses TWO 90° arcs (left quarter + right quarter) to avoid SVG 180° arc ambiguity.
+// cx=52, cy=52, r=42. Left=(10,52) Top=(52,10) Right=(94,52).
 function ArcGauge({ pct }: { pct: number }) {
-  // Layout: cx=46, cy=46, r=36. Top of arc at y=10. Sides at x=10 and x=82.
-  // viewBox "4 6 84 44" shows x:4→88, y:6→50 — 6px clearance on all sides.
-  const cx = 46, cy = 46, r = 36
-  const totalLen = Math.PI * r
+  const cx = 52, cy = 52, r = 42
+  const totalLen = Math.PI * r  // ≈ 131.9
   const minPct = -30, maxPct = 30
   const t = Math.max(0, Math.min(1, (pct - minPct) / (maxPct - minPct)))
-  const filled  = t * totalLen
-  const color   = pct >= 0 ? '#006a61' : '#c0392b'
+  const filled = t * totalLen
+  const color  = pct >= 0 ? '#006a61' : '#c0392b'
+
+  // Two-arc path: left-bottom → top → right-bottom (both sweep=0, 90° each)
+  const arcPath = `M ${cx - r} ${cy} A ${r} ${r} 0 0 0 ${cx} ${cy - r} A ${r} ${r} 0 0 0 ${cx + r} ${cy}`
 
   // Needle
   const angle = (1 - t) * Math.PI
-  const nr = r - 9
+  const nr = r - 12
   const nx = cx + nr * Math.cos(angle)
   const ny = cy - nr * Math.sin(angle)
 
-  // Three small inner tick dots at −, 0, +
+  // Tick dots at inner radius (visible without clipping)
   const tickDots = [0, 0.5, 1].map(tv => {
     const ta = (1 - tv) * Math.PI
-    const tr = r - 4
+    const tr = r - 6
     return { x: cx + tr * Math.cos(ta), y: cy - tr * Math.sin(ta) }
   })
 
+  // viewBox: x 4→100, y 4→60 — all stroke edges have ≥4px clearance
   return (
-    <svg width="92" height="48" viewBox="4 6 84 44" style={{ flexShrink: 0 }}>
-      {/* Track */}
-      <path
-        d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 0 ${cx + r} ${cy}`}
-        fill="none" stroke="#dde3ed" strokeWidth="7" strokeLinecap="round"
-      />
-      {/* Filled portion */}
-      <path
-        d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 0 ${cx + r} ${cy}`}
-        fill="none" stroke={color} strokeWidth="7" strokeLinecap="round"
-        strokeDasharray={`${filled} ${totalLen}`}
-      />
-      {/* Inner tick dots */}
+    <svg width="104" height="60" viewBox="4 4 96 56" style={{ flexShrink: 0 }}>
+      {/* Track — #9ca3af clearly visible on white (#fff), contrast ~2.8:1 */}
+      <path d={arcPath} fill="none" stroke="#9ca3af" strokeWidth="8" strokeLinecap="round" />
+      {/* Fill — draws over track from left, length = t * totalLen */}
+      <path d={arcPath} fill="none" stroke={color} strokeWidth="8" strokeLinecap="round"
+        strokeDasharray={`${filled} ${totalLen}`} />
+      {/* Tick dots */}
       {tickDots.map((d, i) => (
-        <circle key={i} cx={d.x} cy={d.y} r="1.5" fill="rgba(11,28,48,0.25)" />
+        <circle key={i} cx={d.x} cy={d.y} r="2" fill="white" opacity="0.8" />
       ))}
       {/* Needle */}
-      <line x1={cx} y1={cy} x2={nx} y2={ny}
-        stroke={color} strokeWidth="2" strokeLinecap="round" />
+      <line x1={cx} y1={cy} x2={nx} y2={ny} stroke={color} strokeWidth="2.5" strokeLinecap="round" />
       {/* Pivot */}
-      <circle cx={cx} cy={cy} r="3.5" fill={color} />
-      <circle cx={cx} cy={cy} r="1.5" fill="white" opacity="0.9" />
+      <circle cx={cx} cy={cy} r="4" fill={color} />
+      <circle cx={cx} cy={cy} r="1.8" fill="white" />
     </svg>
   )
 }
