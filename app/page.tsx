@@ -7,6 +7,7 @@ import MarketStatusLight from '@/components/MarketStatusLight'
 import AppShell from '@/components/AppShell'
 import { INDUSTRY_TO_FII_SECTOR } from '@/lib/fiiSectorMap'
 import { WatchlistReturnCard, PortfolioReturnCard } from '@/components/DashboardReturnCard'
+import MarketBreadthCard from '@/components/MarketBreadthCard'
 import MacroNewsCard from '@/components/MacroNewsCard'
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -320,6 +321,13 @@ export default async function DashboardPage() {
   const actOverbought= [...new Set([...overboughtTickers, ...portOverbought])]
   const actBelow200  = [...new Set([...below200Tickers,   ...portBelow200])]
 
+  // Market breadth — DMA + RSI distribution across all tracked stocks
+  const stocksWithScores = allStockIds.filter(id => latestScore[id] !== undefined)
+  const breadthAbove200  = stocksWithScores.filter(id => latestScore[id]?.above_200_dma === true).length
+  const breadthBelow200  = actBelow200.length
+  const breadthOversold  = actOversold.length
+  const breadthOverbought = actOverbought.length
+
   // Activity board — portfolio movers
   const portMovers = portRows
     .map((h: any) => ({
@@ -485,7 +493,7 @@ export default async function DashboardPage() {
         </div>
 
         {/* ── KPI row ─────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
 
           {/* Watchlist Return — live prices via client component */}
           <WatchlistReturnCard
@@ -503,6 +511,16 @@ export default async function DashboardPage() {
               avgPrice:   h.avg_price,
               price5dAgo: price5dMap[h.stock_id] ?? null,
             }))}
+          />
+
+          {/* Market Breadth */}
+          <MarketBreadthCard
+            above200={breadthAbove200}
+            below200={breadthBelow200}
+            totalScored={stocksWithScores.length}
+            totalStocks={allStockIds.length}
+            oversold={breadthOversold}
+            overbought={breadthOverbought}
           />
 
         </div>
@@ -830,39 +848,19 @@ export default async function DashboardPage() {
               </div>
             )}
 
-            {/* FII sector top movers */}
-            {(top3.length > 0 || bot3.length > 0) && (
+            {/* FII sector flows — diverging bar chart */}
+            {validSectors.length > 0 && (
               <div className="artha-card px-4 py-4">
                 <div className="flex items-center justify-between mb-3">
                   <div className="artha-label">FII Sector Flows</div>
-                  <div className="text-xs" style={{ color: 'var(--artha-text-faint)' }}>Fortnight</div>
+                  <div className="text-xs" style={{ color: 'var(--artha-text-faint)' }}>Fortnight · {sectorBuyCount}↑ {sectorSellCount}↓</div>
                 </div>
-                {top3.length > 0 && (
-                  <div className="mb-3">
-                    <div className="text-xs font-semibold mb-1.5" style={{ color: 'var(--artha-teal)' }}>Top Buying</div>
-                    <div className="space-y-1.5">
-                      {top3.map(s => (
-                        <div key={s.name} className="flex items-center justify-between gap-2">
-                          <span className="text-xs truncate" style={{ color: 'var(--artha-text-secondary)' }}>{s.name}</span>
-                          <span className="font-mono font-bold text-xs shrink-0" style={{ color: 'var(--artha-teal)' }}>+{fmtCr(s.flow)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {bot3.length > 0 && (
-                  <div>
-                    <div className="text-xs font-semibold mb-1.5" style={{ color: 'var(--artha-negative)' }}>Top Selling</div>
-                    <div className="space-y-1.5">
-                      {bot3.map(s => (
-                        <div key={s.name} className="flex items-center justify-between gap-2">
-                          <span className="text-xs truncate" style={{ color: 'var(--artha-text-secondary)' }}>{s.name}</span>
-                          <span className="font-mono font-bold text-xs shrink-0" style={{ color: 'var(--artha-negative)' }}>{fmtCr(s.flow)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                <SectorFlowBars
+                  sectors={validSectors}
+                  userSectors={uniqueUserSectors}
+                  formatCr={fmtCr}
+                  shortSector={SHORT_SECTOR}
+                />
               </div>
             )}
           </div>
@@ -915,5 +913,78 @@ function SignalRow({ label, tickers, color }: {
   color:   'amber' | 'blue' | 'orange' | 'red'
 }) {
   return <SignalChip label={label} tickers={tickers} color={color} />
+}
+
+function SectorFlowBars({ sectors, userSectors, formatCr, shortSector }: {
+  sectors:     { name: string; flow: number }[]
+  userSectors: string[]
+  formatCr:    (n: number) => string
+  shortSector: Record<string, string>
+}) {
+  // Top 4 buying + top 4 selling, sorted by absolute flow
+  const buying  = sectors.filter(s => s.flow > 0).slice(0, 4)
+  const selling = sectors.filter(s => s.flow < 0).slice(-4).reverse()
+  const maxAbs  = Math.max(...sectors.map(s => Math.abs(s.flow)), 1)
+  const userSet = new Set(userSectors)
+
+  function Row({ s, color, bg }: { s: { name: string; flow: number }; color: string; bg: string }) {
+    const barPct  = Math.round((Math.abs(s.flow) / maxAbs) * 100)
+    const short   = shortSector[s.name] ?? s.name
+    const isMine  = userSet.has(s.name)
+    return (
+      <div className="flex items-center gap-2 py-1">
+        <div className="flex items-center gap-1 shrink-0" style={{ width: '80px' }}>
+          {isMine && (
+            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: '#003d9b' }} />
+          )}
+          <span
+            className="text-[11px] truncate"
+            style={{ color: isMine ? '#003d9b' : 'var(--artha-text-secondary)', fontWeight: isMine ? 600 : 400 }}
+            title={s.name}
+          >
+            {short}
+          </span>
+        </div>
+        <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(11,28,48,0.06)' }}>
+          <div
+            className="h-full rounded-full transition-all"
+            style={{ width: `${barPct}%`, background: color }}
+          />
+        </div>
+        <span className="font-mono font-bold text-[10px] shrink-0 w-16 text-right" style={{ color }}>
+          {s.flow >= 0 ? '+' : ''}{formatCr(s.flow)}
+        </span>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      {buying.length > 0 && (
+        <div className="mb-3">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: '#006a61' }}>Buying</span>
+            <span className="text-[9px]" style={{ color: 'var(--artha-text-faint)' }}>({buying.length} sectors)</span>
+          </div>
+          {buying.map(s => <Row key={s.name} s={s} color="#006a61" bg="rgba(0,106,97,0.15)" />)}
+        </div>
+      )}
+      {selling.length > 0 && (
+        <div>
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: '#c0392b' }}>Selling</span>
+            <span className="text-[9px]" style={{ color: 'var(--artha-text-faint)' }}>({selling.length} sectors)</span>
+          </div>
+          {selling.map(s => <Row key={s.name} s={s} color="#c0392b" bg="rgba(192,57,43,0.12)" />)}
+        </div>
+      )}
+      {userSectors.length > 0 && (
+        <div className="mt-2 pt-2 text-[9px]" style={{ borderTop: '1px solid var(--artha-surface-low)', color: 'var(--artha-text-faint)' }}>
+          <span className="inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle" style={{ background: '#003d9b' }} />
+          = your sectors
+        </div>
+      )}
+    </div>
+  )
 }
 
