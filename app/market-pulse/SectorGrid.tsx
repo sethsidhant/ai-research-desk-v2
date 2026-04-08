@@ -1,7 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { AreaChart, Area, ResponsiveContainer } from 'recharts'
+import {
+  AreaChart, Area, ResponsiveContainer, Tooltip,
+  XAxis, ReferenceLine,
+} from 'recharts'
 import { INDUSTRY_TO_FII_SECTOR } from '@/lib/fiiSectorMap'
 
 type Sector = {
@@ -27,20 +30,65 @@ function formatCr(val: number | null) {
   return `₹ ${val.toLocaleString('en-IN')} Cr`
 }
 
-function Sparkline({ values }: { values: string }) {
-  const pts = values.split(',').map((v, i) => ({ i, v: parseFloat(v) || 0 }))
+function Sparkline({ values, labels, sector }: { values: string; labels?: string | null; sector: string }) {
+  const uid = `sg-${sector.replace(/[^a-z0-9]/gi, '').slice(0, 12)}`
+  const labelArr = labels ? labels.split(',') : []
+  const pts = values.split(',').map((v, i) => ({
+    i,
+    v: parseFloat(v) || 0,
+    label: labelArr[i] ?? '',
+  }))
   const last = pts[pts.length - 1]?.v ?? 0
   const color = last >= 0 ? '#10b981' : '#ef4444'
+  const tickIndices = pts.length <= 6
+    ? pts.map((_, i) => i)
+    : [0, Math.floor((pts.length - 1) / 2), pts.length - 1]
+
   return (
-    <ResponsiveContainer width="100%" height={48}>
-      <AreaChart data={pts} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
+    <ResponsiveContainer width="100%" height={72}>
+      <AreaChart data={pts} margin={{ top: 4, right: 2, left: 2, bottom: 0 }}>
         <defs>
-          <linearGradient id={`sg-${last}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor={color} stopOpacity={0.2} />
+          <linearGradient id={uid} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%"  stopColor={color} stopOpacity={0.25} />
             <stop offset="95%" stopColor={color} stopOpacity={0} />
           </linearGradient>
         </defs>
-        <Area type="monotone" dataKey="v" stroke={color} strokeWidth={1.5} fill={`url(#sg-${last})`} dot={false} isAnimationActive={false} />
+        <XAxis
+          dataKey="i"
+          type="number"
+          domain={[0, pts.length - 1]}
+          ticks={tickIndices}
+          tickFormatter={i => pts[i]?.label ?? ''}
+          tick={{ fontSize: 8, fill: '#9ca3af', fontFamily: 'inherit' }}
+          axisLine={false}
+          tickLine={false}
+          interval={0}
+        />
+        <ReferenceLine y={0} stroke="rgba(156,163,175,0.35)" strokeDasharray="3 2" strokeWidth={1} />
+        <Tooltip
+          contentStyle={{
+            background: '#0f2133',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: '6px',
+            padding: '4px 8px',
+            fontSize: '10px',
+            color: '#e5e7eb',
+          }}
+          itemStyle={{ color }}
+          formatter={(val: number) => [`₹ ${val.toLocaleString('en-IN')} Cr`, 'Net flow']}
+          labelFormatter={(i: number) => pts[i]?.label ?? ''}
+          cursor={{ stroke: 'rgba(255,255,255,0.15)', strokeWidth: 1 }}
+        />
+        <Area
+          type="monotone"
+          dataKey="v"
+          stroke={color}
+          strokeWidth={1.5}
+          fill={`url(#${uid})`}
+          dot={false}
+          isAnimationActive={false}
+          activeDot={{ r: 3, fill: color, stroke: 'white', strokeWidth: 1 }}
+        />
       </AreaChart>
     </ResponsiveContainer>
   )
@@ -66,15 +114,16 @@ export default function SectorGrid({ sectors, userStocks = [] }: { sectors: Sect
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-base font-semibold text-gray-900">Sector-wise FII Net Flow (₹ Cr)</h2>
+        <h2 className="text-base font-semibold" style={{ color: 'var(--artha-text)' }}>Sector-wise FII Net Flow (₹ Cr)</h2>
         <div className="flex gap-1">
           {(['fortnight', 'oneyear', 'aum'] as const).map(opt => (
             <button
               key={opt}
               onClick={() => setSortBy(opt)}
-              className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-                sortBy === opt ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
+              className="px-3 py-1 rounded-lg text-xs font-medium transition-colors"
+              style={sortBy === opt
+                ? { background: '#006a61', color: '#ffffff' }
+                : { background: 'var(--artha-card-border)', color: 'var(--artha-text-muted)' }}
             >
               {opt === 'fortnight' ? 'Fortnight' : opt === 'oneyear' ? '1Y Flow' : 'Total AUM'}
             </button>
@@ -82,7 +131,7 @@ export default function SectorGrid({ sectors, userStocks = [] }: { sectors: Sect
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         {sorted.map(s => {
           const fortnightUp  = (s.fortnight_flow ?? 0) >= 0
           const oneyearUp    = (s.oneyear_flow   ?? 0) >= 0
@@ -91,45 +140,53 @@ export default function SectorGrid({ sectors, userStocks = [] }: { sectors: Sect
           const hasMyStocks  = myStocks.length > 0
           const anchorId     = 'sector-' + sectorName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
           return (
-            <div key={s.sector} id={anchorId} className={`bg-white border rounded-xl p-4 shadow-sm scroll-mt-6 ${hasMyStocks ? 'border-blue-200 ring-1 ring-blue-100' : 'border-gray-200'}`}>
+            <div
+              key={s.sector}
+              id={anchorId}
+              className="artha-card scroll-mt-6"
+              style={hasMyStocks ? {
+                borderColor: 'rgba(0, 196, 180, 0.3)',
+                boxShadow: '0 0 0 1px rgba(0, 196, 180, 0.12)',
+              } : undefined}
+            >
               <div className="flex justify-between items-start gap-2 mb-1">
                 <div>
-                  <div className="text-sm font-semibold text-gray-900 leading-tight">{sectorName}</div>
-                  <div className="text-xs text-gray-400 mt-0.5">{s.aum_pct?.toFixed(1)}% of AUM</div>
+                  <div className="text-sm font-semibold leading-tight" style={{ color: 'var(--artha-text)' }}>{sectorName}</div>
+                  <div className="text-[10px] mt-0.5" style={{ color: 'var(--artha-text-muted)' }}>{s.aum_pct?.toFixed(1)}% of AUM</div>
                 </div>
                 <div className="text-right shrink-0">
-                  <span className={`text-xs font-semibold font-mono ${fortnightUp ? 'text-emerald-600' : 'text-red-600'}`}>
+                  <span className={`text-xs font-semibold font-mono ${fortnightUp ? 'text-emerald-500' : 'text-red-400'}`}>
                     {fortnightUp ? '▲' : '▼'} {Math.abs(s.fortnight_flow ?? 0).toLocaleString('en-IN')} Cr
                   </span>
-                  <div className="text-[10px] text-gray-400 mt-0.5">Last fortnight</div>
+                  <div className="text-[10px] mt-0.5" style={{ color: 'var(--artha-text-muted)' }}>Last fortnight</div>
                 </div>
               </div>
 
-              {s.sparkline_values && <Sparkline values={s.sparkline_values} />}
+              {s.sparkline_values && <Sparkline values={s.sparkline_values} labels={s.sparkline_labels} sector={s.sector} />}
 
               <div className="text-center mt-1">
-                <div className={`text-sm font-semibold font-mono ${oneyearUp ? 'text-emerald-600' : 'text-red-600'}`}>
+                <div className={`text-sm font-semibold font-mono ${oneyearUp ? 'text-emerald-500' : 'text-red-400'}`}>
                   {formatCr(s.oneyear_flow)}
                 </div>
-                <div className="text-[10px] text-gray-400">1Y net flow</div>
+                <div className="text-[10px]" style={{ color: 'var(--artha-text-muted)' }}>1Y net flow</div>
               </div>
 
               {hasMyStocks && (
-                <div className="mt-2.5 pt-2.5 border-t border-blue-100">
-                  <div className="text-[9px] font-semibold uppercase tracking-wide text-blue-400 mb-1.5">Your stocks</div>
+                <div className="mt-2.5 pt-2.5" style={{ borderTop: '1px solid rgba(0, 196, 180, 0.15)' }}>
+                  <div className="text-[9px] font-semibold uppercase tracking-wide mb-1.5" style={{ color: '#4dd9cc' }}>Your stocks</div>
                   <div className="flex flex-wrap gap-1">
                     {myStocks.map(st => (
                       <span key={st.ticker} title={st.stock_name}
-                        className={`text-[10px] font-mono font-medium px-1.5 py-0.5 rounded-md ${
-                          fortnightUp
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                            : 'bg-red-50 text-red-700 border border-red-200'
-                        }`}>
+                        className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded-md"
+                        style={fortnightUp
+                          ? { background: 'rgba(16, 185, 129, 0.1)', color: '#34d399', border: '1px solid rgba(16,185,129,0.2)' }
+                          : { background: 'rgba(239, 68, 68, 0.1)', color: '#f87171', border: '1px solid rgba(239,68,68,0.2)' }
+                        }>
                         {st.ticker}
                       </span>
                     ))}
                   </div>
-                  <div className="text-[9px] text-gray-400 mt-1.5 leading-tight">
+                  <div className="text-[9px] mt-1.5 leading-tight" style={{ color: 'var(--artha-text-muted)' }}>
                     FII {fortnightUp ? 'buying' : 'selling'} this sector — {fortnightUp ? 'tailwind' : 'headwind'} for your holdings
                   </div>
                 </div>
