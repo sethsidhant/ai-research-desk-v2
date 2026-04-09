@@ -445,23 +445,20 @@ export default async function DashboardPage() {
   rawTurning.sort((a, b) => b.date.localeCompare(a.date))
   const topTurning = rawTurning.slice(0, 5)
 
-  // Fetch macro news covering the turning point date window
+  // Fetch macro news for full 35-day window. No important=true filter — macroWatcher
+  // already AI-filters everything; we sort by proximity so same-day news wins.
   let turningPoints: TurningPoint[] = topTurning.map(tp => ({ ...tp, news: [] }))
   if (topTurning.length > 0) {
-    const tpMinDate = topTurning[topTurning.length - 1].date
-    const tpMaxDate = topTurning[0].date
-    // Use the full 35-day window (same as index history) so older turning points
-    // don't get squeezed out by the limit when there's lots of recent news
     const { data: tpNews } = await admin
       .from('macro_alerts')
       .select('channel, summary, created_at, affected_sectors')
-      .eq('important', true)
       .gte('created_at', cutoff30d + 'T00:00:00')
       .order('created_at', { ascending: false })
-      .limit(300)
+      .limit(500)
 
-    // Group news by nearest turning point (±1 day)
-    const newsMap: Record<string, typeof turningPoints[0]['news']> = {}
+    // Group news by nearest turning point (±1.5 days), track diff for proximity sort
+    type NewsWithDiff = { summary: string; channel: string; affected_sectors: string[] | null; diff: number }
+    const newsMap: Record<string, NewsWithDiff[]> = {}
     for (const tp of topTurning) newsMap[tp.date] = []
     for (const n of tpNews ?? []) {
       const alertDate = n.created_at.slice(0, 10)
@@ -471,9 +468,19 @@ export default async function DashboardPage() {
         const diff = Math.abs(new Date(alertDate).getTime() - new Date(tp.date).getTime())
         if (diff < bestDiff && diff <= 86400000 * 1.5) { bestDiff = diff; bestDate = tp.date }
       }
-      if (bestDate) newsMap[bestDate].push({ summary: n.summary, channel: n.channel, affected_sectors: n.affected_sectors })
+      if (bestDate) newsMap[bestDate].push({
+        summary: n.summary, channel: n.channel, affected_sectors: n.affected_sectors,
+        diff: bestDiff,
+      })
     }
-    turningPoints = topTurning.map(tp => ({ ...tp, news: newsMap[tp.date] ?? [] }))
+    // Sort each group by proximity (closest date first), take top 3
+    turningPoints = topTurning.map(tp => ({
+      ...tp,
+      news: (newsMap[tp.date] ?? [])
+        .sort((a, b) => a.diff - b.diff)
+        .slice(0, 3)
+        .map(({ summary, channel, affected_sectors }) => ({ summary, channel, affected_sectors })),
+    }))
   }
 
   const mfAllRows = mfRows ?? []
@@ -671,6 +678,7 @@ export default async function DashboardPage() {
               turningPoints={turningPoints}
               userSectors={uniqueUserSectors}
               latestIndexDate={idxRows.length > 0 ? idxRows[idxRows.length - 1].date : null}
+              allCloses={idxRows.map((r: any) => ({ date: r.date, close: r.nifty50_close }))}
             />
           </div>
 
