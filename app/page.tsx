@@ -450,14 +450,15 @@ export default async function DashboardPage() {
   if (topTurning.length > 0) {
     const tpMinDate = topTurning[topTurning.length - 1].date
     const tpMaxDate = topTurning[0].date
+    // Use the full 35-day window (same as index history) so older turning points
+    // don't get squeezed out by the limit when there's lots of recent news
     const { data: tpNews } = await admin
       .from('macro_alerts')
       .select('channel, summary, created_at, affected_sectors')
       .eq('important', true)
-      .gte('created_at', tpMinDate + 'T00:00:00')
-      .lte('created_at', tpMaxDate + 'T23:59:59')
+      .gte('created_at', cutoff30d + 'T00:00:00')
       .order('created_at', { ascending: false })
-      .limit(60)
+      .limit(300)
 
     // Group news by nearest turning point (±1 day)
     const newsMap: Record<string, typeof turningPoints[0]['news']> = {}
