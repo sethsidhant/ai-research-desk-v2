@@ -405,7 +405,7 @@ export default async function DashboardPage() {
     supabase.from('fii_dii_daily')
       .select('date, fii_net, dii_net')
       .order('date', { ascending: false })
-      .limit(7),
+      .limit(30),
     supabase.from('mf_sebi_daily')
       .select('date, eq_net, dbt_net')
       .order('date', { ascending: false })
