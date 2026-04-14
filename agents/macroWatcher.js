@@ -163,10 +163,12 @@ When in doubt for oil/energy, trade, or geopolitical items — lean toward relev
 
 Reply with a JSON array only — one entry per post, in the same order:
 - If NOT relevant (personal attacks, sports, entertainment, domestic politics with no market angle, bare URL): {"skip":true}
-- If relevant: {"summary":"1-2 sentence factual summary starting with the key fact","important":true/false,"sectors":[]}
+- If relevant: {"summary":"1-2 sentence factual summary starting with the key fact","important":true/false,"sectors":[],"forward_looking":false}
 
 Rules:
 - important=true ONLY for: Fed/RBI rate decision, major tariff/trade action, war escalation, INR crisis, oil shock 5%+, event likely to move Nifty 1%+.
+- forward_looking=true if the post is a preview/outlook/forecast article ("Ahead of Market", "what to watch", "tomorrow's outlook", "market may", "expected to", etc.) — these describe what MIGHT happen, not what has happened. Start the summary with "[Tomorrow] " for these.
+- Never state predictions or previews as facts. If the article says "market may fall", write "Market may open lower tomorrow on X" not "market fell on X".
 - sectors: pick 1-3 from: ${FII_SECTORS.join(', ')}. Empty [] if unclear.
 - Translate non-English posts to English.
 
@@ -195,7 +197,7 @@ ${postsBlock}`,
     const summary = (entry.summary || '').replace(/^\*{0,2}RELEVANT\*{0,2}[\s.:]*\n*/i, '').trim();
     if (!summary) return;
     const sectors = Array.isArray(entry.sectors) ? entry.sectors.filter(s => FII_SECTORS.includes(s)) : [];
-    results[i] = { summary, important: entry.important === true, sectors };
+    results[i] = { summary, important: entry.important === true, sectors, forward_looking: entry.forward_looking === true };
   });
 
   return results;
@@ -296,12 +298,13 @@ async function processSource(source) {
     if (!result) {
       console.log(`[macroWatcher] ${label}: skipped — ${item.text.slice(0, 60)}`);
     } else {
-      const { summary, important, sectors } = result;
+      const { summary, important, sectors, forward_looking } = result;
       const { error } = await supabase.from('macro_alerts').insert({
         channel:          id,
         summary,
         important,
         affected_sectors: sectors,
+        forward_looking:  forward_looking ?? false,
         original_len:     item.text.length,
         post_id:          item.guid,
         created_at:       new Date().toISOString(),
@@ -315,7 +318,8 @@ async function processSource(source) {
         console.log(`[macroWatcher] ${label}${important ? ' 🚨' : ''}: ${summary.slice(0, 90)}…`);
         const ageMs = item.pubDate ? Date.now() - new Date(item.pubDate).getTime() : 0;
         if (ageMs < 2 * 60 * 60 * 1000) {
-          await sendMacro(`${emoji} *Macro · ${label}*\n${summary}`);
+          const tag = forward_looking ? ' _(tomorrow's outlook)_' : '';
+          await sendMacro(`${emoji} *Macro · ${label}*${tag}\n${summary}`);
         } else {
           console.log(`[macroWatcher] ${label}: stored silently (item is ${Math.round(ageMs / 60000)}m old)`);
         }
