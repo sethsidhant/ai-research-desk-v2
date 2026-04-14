@@ -65,7 +65,7 @@ const SOURCES = [
   },
 ];
 
-const POLL_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ── Persistence (last-seen item GUID/link) ────────────────────────────────────
@@ -157,7 +157,9 @@ async function filterAndSummarizeBatch(items, label) {
       role:    'user',
       content: `You are a market intelligence filter for Indian equity investors.
 
-For each numbered ${label} post below, decide if it is relevant to: tariffs, trade policy, sanctions, war/geopolitics, oil/energy, interest rates, USD/currency, Fed/RBI, inflation, GDP, jobs data, import/export, China/India/US relations, commodities, crypto regulation, or any macro topic that moves markets.
+For each numbered ${label} post below, decide if it is relevant to: tariffs, trade policy, sanctions, war/geopolitics, oil/energy, interest rates, USD/currency, Fed/RBI, inflation, GDP, jobs data, import/export, India trade (Russia oil, China goods, US relations), commodities, crypto regulation, or any macro topic that moves Indian equity markets.
+
+When in doubt for oil/energy, trade, or geopolitical items — lean toward relevant.
 
 Reply with a JSON array only — one entry per post, in the same order:
 - If NOT relevant (personal attacks, sports, entertainment, domestic politics with no market angle, bare URL): {"skip":true}
