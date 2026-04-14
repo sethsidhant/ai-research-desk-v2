@@ -318,7 +318,7 @@ async function processSource(source) {
         console.log(`[macroWatcher] ${label}${important ? ' 🚨' : ''}: ${summary.slice(0, 90)}…`);
         const ageMs = item.pubDate ? Date.now() - new Date(item.pubDate).getTime() : 0;
         if (ageMs < 2 * 60 * 60 * 1000) {
-          const tag = forward_looking ? ' _(tomorrow's outlook)_' : '';
+          const tag = forward_looking ? ' _(tomorrow\'s outlook)_' : '';
           await sendMacro(`${emoji} *Macro · ${label}*${tag}\n${summary}`);
         } else {
           console.log(`[macroWatcher] ${label}: stored silently (item is ${Math.round(ageMs / 60000)}m old)`);
