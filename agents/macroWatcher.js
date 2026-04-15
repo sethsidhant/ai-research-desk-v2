@@ -36,6 +36,7 @@ const SOURCES = [
     label:  'Trump',
     emoji:  '🇺🇸',
     // Official Telegram first (fastest), then English repost channel, then Truth Social mirror as last resort
+    filterMode: 'strict', // needs filtering: personal posts, sports, entertainment mixed in
     rssUrls: [
       'https://rsshub.ktachibana.party/telegram/channel/real_DonaldJTrump',
       'https://rsshub.app/telegram/channel/real_DonaldJTrump',
@@ -45,10 +46,10 @@ const SOURCES = [
     ],
   },
   {
-    id:     'moneycontrol',
-    label:  'MoneyControl',
-    emoji:  '📊',
-    // Telegram channel → RSSHub. Faster than ET Markets RSS.
+    id:         'moneycontrol',
+    label:      'MoneyControl',
+    emoji:      '📊',
+    filterMode: 'loose', // dedicated market channel — pass everything except clearly off-topic
     rssUrls: [
       'https://rsshub.ktachibana.party/telegram/channel/moneycontrolcom',
       'https://rsshub.app/telegram/channel/moneycontrolcom',
@@ -58,7 +59,7 @@ const SOURCES = [
     id:     'et_markets',
     label:  'Markets News',
     emoji:  '📰',
-    // Fallback: ET Markets RSS (MoneyControl Telegram preferred above)
+    filterMode: 'strict',
     rssUrls: [
       'https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms',
     ],
@@ -183,7 +184,7 @@ async function isDuplicateStory(summary, channelId) {
 
 // ── Batch filter + summarize: one API call for all items in a source.
 // Returns array of { summary, important, sectors, sentiment, forward_looking } | null, same order as input texts.
-async function filterAndSummarizeBatch(items, label) {
+async function filterAndSummarizeBatch(items, label, filterMode = 'strict') {
   // Pre-filter bare URLs
   const eligible = items.map(text => isJustUrl(text) ? null : text);
   const toProcess = eligible.map((text, i) => text ? { i, text } : null).filter(Boolean);
@@ -194,19 +195,30 @@ async function filterAndSummarizeBatch(items, label) {
     .map(({ i, text }) => `[${i}] ${text.slice(0, 800)}`)
     .join('\n\n---\n\n');
 
+  const isLoose = filterMode === 'loose';
+
+  const filterInstruction = isLoose
+    ? `This is a dedicated Indian financial markets channel. Pass through EVERYTHING except:
+- Pure sports results (cricket scores, match outcomes) with zero market angle
+- Celebrity/entertainment news with no market connection
+- Personal lifestyle content (food, travel, fashion) with no market connection
+- Festival/greeting messages
+If there is ANY market, economy, company, sector, policy, or trade angle — include it.`
+    : `For each post, decide if it is relevant to: tariffs, trade policy, sanctions, war/geopolitics, oil/energy, interest rates, USD/currency, Fed/RBI, inflation, GDP, jobs data, import/export, trade deficit/surplus, India bilateral deals (US-India, Russia-India, China-India), defence contracts, fighter jets, weapons deals, manufacturing partnerships, India PLI/Make-in-India, commodities, crypto regulation, or any macro topic that moves Indian equity markets.
+When in doubt for oil/energy, trade, defence, or geopolitical items — lean toward relevant. India's trade balance data, defence procurement, and bilateral manufacturing deals are always relevant.
+Skip only: personal attacks, pure sports/entertainment, domestic politics with no market angle, bare URLs.`;
+
   const msg = await anthropic.messages.create({
     model:      'claude-haiku-4-5-20251001',
     max_tokens: 100 * toProcess.length,
     messages: [{
       role:    'user',
-      content: `You are a market intelligence filter for Indian equity investors.
+      content: `You are a market intelligence summarizer for Indian equity investors.
 
-For each numbered ${label} post below, decide if it is relevant to: tariffs, trade policy, sanctions, war/geopolitics, oil/energy, interest rates, USD/currency, Fed/RBI, inflation, GDP, jobs data, import/export, trade deficit/surplus, India bilateral deals (US-India, Russia-India, China-India), defence contracts, fighter jets, weapons deals, manufacturing partnerships, India PLI/Make-in-India, commodities, crypto regulation, or any macro topic that moves Indian equity markets.
-
-When in doubt for oil/energy, trade, defence, or geopolitical items — lean toward relevant. India's trade balance data, defence procurement, and bilateral manufacturing deals are always relevant.
+${filterInstruction}
 
 Reply with a JSON array only — one entry per post, in the same order:
-- If NOT relevant (personal attacks, sports, entertainment, domestic politics with no market angle, bare URL): {"skip":true}
+- If should be skipped: {"skip":true}
 - If relevant: {"summary":"1-2 sentence factual summary starting with the key fact","important":true/false,"sentiment":"bull"/"bear"/"neutral","sectors":[],"forward_looking":false}
 
 Rules:
@@ -252,7 +264,7 @@ ${postsBlock}`,
 // ── Per-source processing ─────────────────────────────────────────────────────
 
 async function processSource(source) {
-  const { id, label, emoji, rssUrls } = source;
+  const { id, label, emoji, rssUrls, filterMode = 'strict' } = source;
 
   const items = await fetchRSS(rssUrls);
   if (!items) {
@@ -341,7 +353,7 @@ async function processSource(source) {
   // Single API call for all items in this source
   let results;
   try {
-    results = await filterAndSummarizeBatch(freshItems.map(i => i.text), label);
+    results = await filterAndSummarizeBatch(freshItems.map(i => i.text), label, filterMode);
   } catch (e) {
     console.error(`[macroWatcher] Batch API error: ${e.message}`);
     return;
