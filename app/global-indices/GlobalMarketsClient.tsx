@@ -11,14 +11,20 @@ import type { IndexQuote, StockTile } from '@/app/api/market-indices/route'
 const REFRESH_GLOBAL = 60 * 1000
 const REFRESH_KITE   = 15 * 1000
 
-// Yahoo Finance symbols for chart — keyed by Kite label
-const KITE_TO_YAHOO: Record<string, string> = {
-  'NIFTY 50':    '^NSEI',
-  'SENSEX':      '^BSESN',
-  'BANK NIFTY':  '^NSEBANK',
-  'NIFTY 500':   '^CNXFIN',
-  'MIDCAP 100':  '^NSEMDCP50',
-  'SMALLCAP 100':'^CNXSC',
+// Kite instrument tokens for Indian index charts (sourced from Kite instruments CSV).
+// Indian indices use Kite historical API — not Yahoo Finance (blocked from Vercel IPs).
+const KITE_TOKENS: Record<string, number> = {
+  'NIFTY 50':    256265,
+  'NIFTY 500':   268041,
+  'BANK NIFTY':  260105,
+  'SENSEX':      265,       // BSE token
+  'MIDCAP 100':  256777,
+  'SMALLCAP 100':267017,
+  'IT':          259849,
+  'PHARMA':      262409,
+  'AUTO':        263433,
+  'FMCG':        261897,
+  'METAL':       263689,
 }
 
 // Which Kite labels have constituent heatmaps
@@ -217,28 +223,34 @@ function StockHeatmap({ tiles, label }: { tiles: StockTile[]; label: string }) {
 // ── Index detail panel ────────────────────────────────────────────────────────
 
 function IndexDetailPanel({
-  name, flag, changePct, chartSymbol,
+  name, flag, changePct, kiteToken, yahooSymbol,
   heatmapTiles, heatmapLabel,
   onClose,
 }: {
   name: string
   flag?: string
   changePct: number
-  chartSymbol: string | null
+  kiteToken?: number | null      // for Indian indices → Kite historical API
+  yahooSymbol?: string | null    // for global indices → Yahoo Finance
   heatmapTiles?: StockTile[] | null
   heatmapLabel?: string
   onClose: () => void
 }) {
-  const [closes, setCloses]       = useState<{ date: string; close: number }[]>([])
-  const [loading, setLoading]     = useState(true)
+  const [closes, setCloses]         = useState<{ date: string; close: number }[]>([])
+  const [loading, setLoading]       = useState(true)
   const [chartError, setChartError] = useState(false)
 
+  const hasChart = !!(kiteToken || yahooSymbol)
+
   useEffect(() => {
-    if (!chartSymbol) { setLoading(false); return }
+    if (!hasChart) { setLoading(false); return }
     setLoading(true)
     setCloses([])
     setChartError(false)
-    fetch(`/api/index-chart?symbol=${encodeURIComponent(chartSymbol)}`)
+    const url = kiteToken
+      ? `/api/index-chart?token=${kiteToken}`
+      : `/api/index-chart?symbol=${encodeURIComponent(yahooSymbol!)}`
+    fetch(url)
       .then(r => r.json())
       .then(d => {
         if (d.closes?.length) setCloses(d.closes)
@@ -246,7 +258,7 @@ function IndexDetailPanel({
       })
       .catch(() => setChartError(true))
       .finally(() => setLoading(false))
-  }, [chartSymbol])
+  }, [kiteToken, yahooSymbol, hasChart])
 
   const rsi = calcRSI(closes.map(c => c.close))
   const up  = changePct >= 0
@@ -275,7 +287,7 @@ function IndexDetailPanel({
           >
             {up ? '+' : ''}{changePct.toFixed(2)}%
           </span>
-          {chartSymbol && (
+          {hasChart && (
             <span className="text-[9px] font-mono" style={{ color: 'var(--artha-text-faint)' }}>3M</span>
           )}
         </div>
@@ -290,10 +302,10 @@ function IndexDetailPanel({
       <div className="px-4 py-4">
         {loading ? (
           <div className="h-36 rounded animate-pulse" style={{ background: 'var(--artha-surface-low)' }} />
-        ) : chartError || !chartSymbol ? (
+        ) : chartError || !hasChart ? (
           <div className="h-36 flex items-center justify-center text-sm"
             style={{ color: 'var(--artha-text-faint)' }}>
-            {!chartSymbol ? 'No chart available for this index' : 'Chart unavailable'}
+            {!hasChart ? 'No chart available for this index' : 'Chart unavailable'}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-start">
@@ -424,9 +436,11 @@ function KiteCard({
         style={{ color: 'var(--artha-text)', letterSpacing: '-0.02em' }}>
         {fmtKitePrice(last)}
       </div>
-      {HEATMAP_TYPE[label] && (
+      {KITE_TOKENS[label] && (
         <div className="text-[9px]" style={{ color: 'var(--artha-text-faint)' }}>
-          {label === 'NIFTY 50' ? '50 stocks' : '12 stocks'} · heatmap
+          {HEATMAP_TYPE[label]
+            ? (label === 'NIFTY 50' ? '50 stocks · heatmap · chart' : '12 stocks · heatmap · chart')
+            : 'chart · RSI'}
         </div>
       )}
       {selected && (
@@ -469,7 +483,7 @@ function Section({
           name={sel.name}
           flag={sel.flag}
           changePct={sel.changePct}
-          chartSymbol={sel.symbol}
+          yahooSymbol={sel.symbol}
           onClose={() => onSelect('')}
         />
       )}
@@ -488,8 +502,16 @@ const KITE_FLAGS: Record<string, string> = {
   'SMALLCAP 100':'📊',
 }
 
-const BROAD_LABELS = ['NIFTY 50', 'SENSEX', 'BANK NIFTY', 'NIFTY 500', 'MIDCAP 100', 'SMALLCAP 100']
+const BROAD_LABELS  = ['NIFTY 50', 'SENSEX', 'BANK NIFTY', 'NIFTY 500', 'MIDCAP 100', 'SMALLCAP 100']
 const SECTOR_LABELS = ['IT', 'PHARMA', 'AUTO', 'FMCG', 'METAL']
+
+const SECTOR_ICONS: Record<string, string> = {
+  'IT':     '💻',
+  'PHARMA': '💊',
+  'AUTO':   '🚗',
+  'FMCG':   '🛒',
+  'METAL':  '🔩',
+}
 
 function IndianSection({
   indices, tiles, bankTiles, selectedId, onSelect,
@@ -505,7 +527,8 @@ function IndianSection({
   const gift    = indices.find(i => i.group === 'gift')
   const vix     = indices.find(i => i.group === 'vix')
 
-  const selBroad = broad.find(i => i.name === selectedId) ?? null
+  // Single selected index — broad or sector
+  const selIndex = indices.find(i => i.name === selectedId) ?? null
 
   return (
     <section>
@@ -538,40 +561,51 @@ function IndianSection({
         )}
       </div>
 
-      {/* Sector indices strip */}
+      {/* Sector indices — clickable pills */}
       {sectors.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-3">
           {sectors.map(idx => {
-            const up = idx.changePct >= 0
+            const up       = idx.changePct >= 0
+            const sel      = idx.name === selectedId
+            const color    = up ? '#006a61' : '#c0392b'
+            const bgNormal = up ? 'rgba(0,106,97,0.12)' : 'rgba(192,57,43,0.10)'
+            const bgSel    = up ? 'rgba(0,106,97,0.28)' : 'rgba(192,57,43,0.24)'
             return (
-              <div key={idx.name}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold"
+              <button
+                key={idx.name}
+                onClick={() => onSelect(idx.name === selectedId ? '' : idx.name)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
                 style={{
-                  background: up ? '#e6f4f2' : '#fef2f2',
-                  color: up ? '#006a61' : '#c0392b',
-                }}>
+                  background: sel ? bgSel : bgNormal,
+                  color,
+                  outline: sel ? `2px solid ${color}` : 'none',
+                  outlineOffset: '1px',
+                  cursor: 'pointer',
+                }}
+              >
+                {SECTOR_ICONS[idx.name] && <span>{SECTOR_ICONS[idx.name]}</span>}
                 {idx.name}
                 <span className="font-mono font-bold">
                   {up ? '+' : ''}{idx.changePct.toFixed(2)}%
                 </span>
-              </div>
+              </button>
             )
           })}
         </div>
       )}
 
-      {/* Detail panel */}
-      {selBroad && (
+      {/* Detail panel — shared for broad + sector */}
+      {selIndex && (
         <IndexDetailPanel
-          name={selBroad.name}
-          flag={KITE_FLAGS[selBroad.name]}
-          changePct={selBroad.changePct}
-          chartSymbol={KITE_TO_YAHOO[selBroad.name] ?? null}
+          name={selIndex.name}
+          flag={KITE_FLAGS[selIndex.name] ?? SECTOR_ICONS[selIndex.name]}
+          changePct={selIndex.changePct}
+          kiteToken={KITE_TOKENS[selIndex.name] ?? null}
           heatmapTiles={
-            HEATMAP_TYPE[selBroad.name] === 'nifty50' ? tiles :
-            HEATMAP_TYPE[selBroad.name] === 'banknifty' ? bankTiles : null
+            HEATMAP_TYPE[selIndex.name] === 'nifty50' ? tiles :
+            HEATMAP_TYPE[selIndex.name] === 'banknifty' ? bankTiles : null
           }
-          heatmapLabel={selBroad.name}
+          heatmapLabel={selIndex.name}
           onClose={() => onSelect('')}
         />
       )}
