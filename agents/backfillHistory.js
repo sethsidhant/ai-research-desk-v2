@@ -11,6 +11,19 @@ const path = require("path");
 const { createClient } = require("@supabase/supabase-js");
 const { NIFTY50_TOKEN, NIFTY500_TOKEN } = require("./technicalService");
 
+// Additional index tokens for index_history
+const INDEX_TOKENS = [
+  { token: 260105, col: 'banknifty_close'    },  // NSE:NIFTY BANK
+  { token: 265,    col: 'sensex_close'        },  // BSE:SENSEX
+  { token: 256777, col: 'midcap100_close'     },  // NSE:NIFTY MIDCAP 100
+  { token: 267017, col: 'smallcap100_close'   },  // NSE:NIFTY SMLCAP 100
+  { token: 259849, col: 'nifty_it_close'      },  // NSE:NIFTY IT
+  { token: 262409, col: 'nifty_pharma_close'  },  // NSE:NIFTY PHARMA
+  { token: 263433, col: 'nifty_auto_close'    },  // NSE:NIFTY AUTO
+  { token: 261897, col: 'nifty_fmcg_close'    },  // NSE:NIFTY FMCG
+  { token: 263689, col: 'nifty_metal_close'   },  // NSE:NIFTY METAL
+];
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY,
@@ -116,26 +129,41 @@ async function main() {
     await sleep(350); // stay under Kite's 3 req/sec limit
   }
 
-  // 3. Index history (Nifty50 + Nifty500) — always fetch 1 full year regardless of stock added_at
+  // 3. Index history — all indices, 1 full year
   const oneYearAgo = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
   console.log(`\n[backfillHistory] Indices ${oneYearAgo} → ${yesterday}`);
 
-  const [n50Candles, n500Candles] = await Promise.all([
+  // Fetch Nifty50 + Nifty500 (primary anchors) and all additional indices in parallel
+  const [n50Candles, n500Candles, ...extraCandles] = await Promise.all([
     fetchKiteCandles(NIFTY50_TOKEN,  oneYearAgo, yesterday),
     fetchKiteCandles(NIFTY500_TOKEN, oneYearAgo, yesterday),
+    ...INDEX_TOKENS.map(({ token }) => fetchKiteCandles(token, oneYearAgo, yesterday)),
   ]);
 
   if (n50Candles.length && n500Candles.length) {
+    // Build a date-keyed map from each extra index
+    const extraMaps = INDEX_TOKENS.map(({ col }, i) =>
+      Object.fromEntries((extraCandles[i] ?? []).map(([ts,,,, close]) => [ts.slice(0, 10), close]))
+    );
     const n500Map = Object.fromEntries(
       n500Candles.map(([ts,,,, close]) => [ts.slice(0, 10), close])
     );
+
     const indexRows = n50Candles
       .filter(([ts]) => n500Map[ts.slice(0, 10)])
-      .map(([ts,,,, close]) => ({
-        date:           ts.slice(0, 10),
-        nifty50_close:  close,
-        nifty500_close: n500Map[ts.slice(0, 10)],
-      }));
+      .map(([ts,,,, nifty50_close]) => {
+        const date = ts.slice(0, 10);
+        const row = {
+          date,
+          nifty50_close,
+          nifty500_close: n500Map[date],
+        };
+        INDEX_TOKENS.forEach(({ col }, i) => {
+          const val = extraMaps[i][date];
+          if (val != null) row[col] = val;
+        });
+        return row;
+      });
 
     const { error } = await supabase
       .from("index_history")
@@ -143,6 +171,13 @@ async function main() {
 
     if (error) console.error(`  ✗ Index history: ${error.message}`);
     else console.log(`  ✓ ${indexRows.length} index days upserted`);
+
+    // Log coverage for extra indices
+    INDEX_TOKENS.forEach(({ col }, i) => {
+      const count = Object.keys(extraMaps[i]).length;
+      if (count) console.log(`    ${col}: ${count} days`);
+      else console.log(`    ${col}: ✗ no data`);
+    });
   }
 
   console.log("\n[backfillHistory] Done.");

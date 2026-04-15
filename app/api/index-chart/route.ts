@@ -4,11 +4,20 @@ import { NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
 
-// Nifty50 and Nifty500 are stored in index_history — serve from Supabase (always reliable).
-// All other Indian indices fall back to Kite historical API.
+// All Indian indices are stored in index_history — always served from Supabase (reliable from Vercel).
+// Kite historical API is used only as a fallback for any token not in this map.
 const SUPABASE_COL: Record<string, string> = {
   '256265': 'nifty50_close',
   '268041': 'nifty500_close',
+  '260105': 'banknifty_close',
+  '265':    'sensex_close',
+  '256777': 'midcap100_close',
+  '267017': 'smallcap100_close',
+  '259849': 'nifty_it_close',
+  '262409': 'nifty_pharma_close',
+  '263433': 'nifty_auto_close',
+  '261897': 'nifty_fmcg_close',
+  '263689': 'nifty_metal_close',
 }
 
 async function getKiteToken() {
