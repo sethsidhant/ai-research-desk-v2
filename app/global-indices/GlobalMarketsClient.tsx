@@ -269,7 +269,6 @@ function IndexDetailPanel({
       style={{
         padding: 0,
         borderTop: `3px solid ${up ? '#006a61' : '#c0392b'}`,
-        animation: 'fadeSlideIn 0.2s ease',
       }}
     >
       {/* Header */}
@@ -527,8 +526,8 @@ function IndianSection({
   const gift    = indices.find(i => i.group === 'gift')
   const vix     = indices.find(i => i.group === 'vix')
 
-  // Single selected index — broad or sector
-  const selIndex = indices.find(i => i.name === selectedId) ?? null
+  // Selected index — broad or sector (same logic, just scoped to what we can show a panel for)
+  const selIndex = [...broad, ...sectors].find(i => i.name === selectedId) ?? null
 
   return (
     <section>
