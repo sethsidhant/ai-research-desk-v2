@@ -86,19 +86,40 @@ async function setLastGuid(sourceId, guid) {
   );
 }
 
-// ── RSS fetch (tries each URL until one works) ────────────────────────────────
+// ── RSS fetch (tries ALL URLs, merges items by GUID) ─────────────────────────
+// Critical: we no longer stop at the first successful URL. A post may appear on
+// a repost/mirror channel before the official channel's RSS refreshes (RSSHub
+// caching). We merge all unique items so no post is missed. First URL wins for
+// the same GUID (preserves source priority for watermark tracking).
 
 async function fetchRSS(rssUrls) {
+  const allItems = new Map(); // guid → item (first URL wins)
+  let anySuccess = false;
+
   for (const url of rssUrls) {
     try {
       const feed = await rssParser.parseURL(url);
       console.log(`  RSS OK: ${url} (${feed.items?.length ?? 0} items)`);
-      return feed.items ?? [];
+      anySuccess = true;
+      for (const item of (feed.items ?? [])) {
+        const guid = item.guid || item.link || item.id;
+        if (guid && !allItems.has(guid)) {
+          allItems.set(guid, item);
+        }
+      }
     } catch (e) {
       console.log(`  RSS failed: ${url} — ${e.message}`);
     }
   }
-  return null; // all failed
+
+  if (!anySuccess) return null;
+
+  // Sort newest-first after merging across sources
+  return [...allItems.values()].sort((a, b) => {
+    const ta = a.pubDate ? new Date(a.pubDate).getTime() : 0;
+    const tb = b.pubDate ? new Date(b.pubDate).getTime() : 0;
+    return tb - ta;
+  });
 }
 
 // ── AI Filter + Summarization ─────────────────────────────────────────────────
@@ -180,9 +201,9 @@ async function filterAndSummarizeBatch(items, label) {
       role:    'user',
       content: `You are a market intelligence filter for Indian equity investors.
 
-For each numbered ${label} post below, decide if it is relevant to: tariffs, trade policy, sanctions, war/geopolitics, oil/energy, interest rates, USD/currency, Fed/RBI, inflation, GDP, jobs data, import/export, India trade (Russia oil, China goods, US relations), commodities, crypto regulation, or any macro topic that moves Indian equity markets.
+For each numbered ${label} post below, decide if it is relevant to: tariffs, trade policy, sanctions, war/geopolitics, oil/energy, interest rates, USD/currency, Fed/RBI, inflation, GDP, jobs data, import/export, trade deficit/surplus, India bilateral deals (US-India, Russia-India, China-India), defence contracts, fighter jets, weapons deals, manufacturing partnerships, India PLI/Make-in-India, commodities, crypto regulation, or any macro topic that moves Indian equity markets.
 
-When in doubt for oil/energy, trade, or geopolitical items — lean toward relevant.
+When in doubt for oil/energy, trade, defence, or geopolitical items — lean toward relevant. India's trade balance data, defence procurement, and bilateral manufacturing deals are always relevant.
 
 Reply with a JSON array only — one entry per post, in the same order:
 - If NOT relevant (personal attacks, sports, entertainment, domestic politics with no market angle, bare URL): {"skip":true}
@@ -272,14 +293,24 @@ async function processSource(source) {
   // Process oldest-first so watermark advances correctly
   const orderedItems = [...newItems].reverse();
 
-  // Filter out blank items upfront; advance watermark for them immediately
+  // Filter out blank items and within-batch content duplicates.
+  // Content dedup: same post may appear under different GUIDs from different mirror
+  // channels. A 120-char text fingerprint catches these within a single poll cycle.
+  const seenFingerprints = new Set();
   const toProcess = [];
   for (const item of orderedItems) {
     if (!item.text || item.text.length < 10) {
       await setLastGuid(id, item.guid);
-    } else {
-      toProcess.push(item);
+      continue;
     }
+    const fp = item.text.slice(0, 120).toLowerCase().replace(/\s+/g, ' ').trim();
+    if (seenFingerprints.has(fp)) {
+      console.log(`[macroWatcher] ${label}: within-batch content dup skipped`);
+      await setLastGuid(id, item.guid);
+      continue;
+    }
+    seenFingerprints.add(fp);
+    toProcess.push(item);
   }
 
   if (!toProcess.length) return;
