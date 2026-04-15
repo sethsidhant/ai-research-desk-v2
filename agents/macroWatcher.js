@@ -167,7 +167,7 @@ Reply with a JSON array only — one entry per post, in the same order:
 
 Rules:
 - important=true ONLY for: Fed/RBI rate decision, major tariff/trade action, war escalation, INR crisis, oil shock 5%+, event likely to move Nifty 1%+.
-- forward_looking=true if the post is a preview/outlook/forecast article ("Ahead of Market", "what to watch", "tomorrow's outlook", "market may", "expected to", etc.) — these describe what MIGHT happen, not what has happened. Start the summary with "[Tomorrow] " for these.
+- forward_looking=true if the post is a preview/outlook/forecast article ("Ahead of Market", "what to watch", "forward outlook", "market may", "expected to", etc.) — these describe what MIGHT happen, not what has happened. Start the summary with "[Outlook] " for these.
 - Never state predictions or previews as facts. If the article says "market may fall", write "Market may open lower tomorrow on X" not "market fell on X".
 - sectors: pick 1-3 from: ${FII_SECTORS.join(', ')}. Empty [] if unclear.
 - Translate non-English posts to English.
@@ -318,7 +318,7 @@ async function processSource(source) {
         console.log(`[macroWatcher] ${label}${important ? ' 🚨' : ''}: ${summary.slice(0, 90)}…`);
         const ageMs = item.pubDate ? Date.now() - new Date(item.pubDate).getTime() : 0;
         if (ageMs < 2 * 60 * 60 * 1000) {
-          const tag = forward_looking ? ' _(tomorrow\'s outlook)_' : '';
+          const tag = forward_looking ? ' _(forward outlook)_' : '';
           await sendMacro(`${emoji} *Macro · ${label}*${tag}\n${summary}`);
         } else {
           console.log(`[macroWatcher] ${label}: stored silently (item is ${Math.round(ageMs / 60000)}m old)`);
