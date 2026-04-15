@@ -137,8 +137,31 @@ const FII_SECTORS = [
   'Media Entertainment & Publication', 'Textiles', 'Transportation',
 ];
 
-// Batch filter + summarize: one API call for all items in a source.
-// Returns array of { summary, important, sectors } | null, same order as input texts.
+// ── Cross-source story dedup ──────────────────────────────────────────────────
+// Returns true if a sufficiently similar summary already exists from a different
+// channel in the last 30 minutes (prevents MC + ET alerting on the same story).
+
+function keyWords(text) {
+  const stop = new Set(['the','and','for','are','was','were','has','have','had','that','this','with','from','they','will','been','their','said','also','but','not','its','into','more','than','over','about','after','before','other','which','when','what','where','would','could','should']);
+  return text.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w.length > 4 && !stop.has(w));
+}
+
+async function isDuplicateStory(summary, channelId) {
+  const since = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  const { data } = await supabase.from('macro_alerts').select('summary').gte('created_at', since).neq('channel', channelId);
+  if (!data?.length) return false;
+  const newWords = new Set(keyWords(summary));
+  if (newWords.size < 3) return false;
+  for (const row of data) {
+    const existing = keyWords(row.summary);
+    const overlap  = existing.filter(w => newWords.has(w)).length;
+    if (overlap / Math.min(newWords.size, existing.length || 1) >= 0.5) return true;
+  }
+  return false;
+}
+
+// ── Batch filter + summarize: one API call for all items in a source.
+// Returns array of { summary, important, sectors, sentiment, forward_looking } | null, same order as input texts.
 async function filterAndSummarizeBatch(items, label) {
   // Pre-filter bare URLs
   const eligible = items.map(text => isJustUrl(text) ? null : text);
@@ -163,10 +186,11 @@ When in doubt for oil/energy, trade, or geopolitical items — lean toward relev
 
 Reply with a JSON array only — one entry per post, in the same order:
 - If NOT relevant (personal attacks, sports, entertainment, domestic politics with no market angle, bare URL): {"skip":true}
-- If relevant: {"summary":"1-2 sentence factual summary starting with the key fact","important":true/false,"sectors":[],"forward_looking":false}
+- If relevant: {"summary":"1-2 sentence factual summary starting with the key fact","important":true/false,"sentiment":"bull"/"bear"/"neutral","sectors":[],"forward_looking":false}
 
 Rules:
 - important=true ONLY for: Fed/RBI rate decision, major tariff/trade action, war escalation, INR crisis, oil shock 5%+, event likely to move Nifty 1%+.
+- sentiment: "bull" if net positive for markets/India (rate cuts, trade deal, oil drop, inflows), "bear" if net negative (tariffs, war, rate hike, oil spike, outflows), "neutral" if mixed or unclear.
 - forward_looking=true if the post is a preview/outlook/forecast article ("Ahead of Market", "what to watch", "forward outlook", "market may", "expected to", etc.) — these describe what MIGHT happen, not what has happened. Start the summary with "[Outlook] " for these.
 - Never state predictions or previews as facts. If the article says "market may fall", write "Market may open lower tomorrow on X" not "market fell on X".
 - sectors: pick 1-3 from: ${FII_SECTORS.join(', ')}. Empty [] if unclear.
@@ -196,8 +220,9 @@ ${postsBlock}`,
     if (REFUSAL_PHRASES.some(p => lower.includes(p))) return;
     const summary = (entry.summary || '').replace(/^\*{0,2}RELEVANT\*{0,2}[\s.:]*\n*/i, '').trim();
     if (!summary) return;
-    const sectors = Array.isArray(entry.sectors) ? entry.sectors.filter(s => FII_SECTORS.includes(s)) : [];
-    results[i] = { summary, important: entry.important === true, sectors, forward_looking: entry.forward_looking === true };
+    const sectors   = Array.isArray(entry.sectors) ? entry.sectors.filter(s => FII_SECTORS.includes(s)) : [];
+    const sentiment = ['bull', 'bear', 'neutral'].includes(entry.sentiment) ? entry.sentiment : 'neutral';
+    results[i] = { summary, important: entry.important === true, sentiment, sectors, forward_looking: entry.forward_looking === true };
   });
 
   return results;
@@ -298,11 +323,21 @@ async function processSource(source) {
     if (!result) {
       console.log(`[macroWatcher] ${label}: skipped — ${item.text.slice(0, 60)}`);
     } else {
-      const { summary, important, sectors, forward_looking } = result;
+      const { summary, important, sentiment, sectors, forward_looking } = result;
+
+      // Cross-source dedup: skip if another channel already reported this story in last 30 min
+      const isDupe = await isDuplicateStory(summary, id);
+      if (isDupe) {
+        console.log(`[macroWatcher] ${label}: cross-source dupe skipped — ${summary.slice(0, 60)}`);
+        await setLastGuid(id, item.guid);
+        continue;
+      }
+
       const { error } = await supabase.from('macro_alerts').insert({
         channel:          id,
         summary,
         important,
+        sentiment,
         affected_sectors: sectors,
         forward_looking:  forward_looking ?? false,
         original_len:     item.text.length,
@@ -318,8 +353,10 @@ async function processSource(source) {
         console.log(`[macroWatcher] ${label}${important ? ' 🚨' : ''}: ${summary.slice(0, 90)}…`);
         const ageMs = item.pubDate ? Date.now() - new Date(item.pubDate).getTime() : 0;
         if (ageMs < 2 * 60 * 60 * 1000) {
-          const tag = forward_looking ? ' _(forward outlook)_' : '';
-          await sendMacro(`${emoji} *Macro · ${label}*${tag}\n${summary}`);
+          const sentimentEmoji = sentiment === 'bull' ? '🟢' : sentiment === 'bear' ? '🔴' : '⚪';
+          const tag  = forward_looking ? ' _(forward outlook)_' : '';
+          const link = item.guid?.startsWith('http') ? `\n${item.guid}` : '';
+          await sendMacro(`${sentimentEmoji} ${emoji} *Macro · ${label}*${tag}\n${summary}${link}`);
         } else {
           console.log(`[macroWatcher] ${label}: stored silently (item is ${Math.round(ageMs / 60000)}m old)`);
         }
