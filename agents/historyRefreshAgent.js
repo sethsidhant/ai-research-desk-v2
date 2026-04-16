@@ -67,7 +67,7 @@ async function main() {
   console.log(`Refreshing history for ${stocks.length} stocks...\n`);
 
   let updated = 0, skipped = 0, failed = 0;
-  const updatedTickers = [], skippedTickers = [], failedTickers = [];
+  const updatedTickers = [], newResultsTickers = [], skippedTickers = [], failedTickers = [];
 
   for (const stock of stocks) {
     const { ticker, stock_name } = stock;
@@ -116,6 +116,11 @@ async function main() {
       failed++; failedTickers.push(ticker);
     } else {
       updated++; updatedTickers.push(ticker);
+      // Only notify if this stock had previous history and got a genuinely new period
+      // (not a first-time fetch where stored was null)
+      if (stock.earnings_history && changed.includes('quarterly')) {
+        newResultsTickers.push(ticker);
+      }
     }
 
     await sleep(3000);
@@ -139,8 +144,8 @@ async function main() {
     { onConflict: 'key' }
   );
 
-  // Notify users if any stocks got new results
-  if (updatedTickers.length > 0) {
+  // Notify users only for stocks with genuinely new quarterly periods (not first-time fetches)
+  if (newResultsTickers.length > 0) {
     const { data: userPrefs } = await supabase
       .from('user_alert_preferences')
       .select('telegram_chat_id')
@@ -148,10 +153,10 @@ async function main() {
 
     const chatIds = (userPrefs ?? []).map(p => p.telegram_chat_id).filter(Boolean);
     if (chatIds.length) {
-      const lines = updatedTickers.map(t => `• ${t}`).join('\n');
-      const msg = `📊 *Earnings Update*\n\nNew quarterly results available for ${updatedTickers.length} stock${updatedTickers.length > 1 ? 's' : ''}:\n\n${lines}\n\n_History tab in the app is up to date._`;
+      const lines = newResultsTickers.map(t => `• ${t}`).join('\n');
+      const msg = `🧪 *[TEST] New Quarterly Results*\n\n${newResultsTickers.length} stock${newResultsTickers.length > 1 ? 's have' : ' has'} new results on Screener:\n\n${lines}\n\n_History tab in the app is up to date._\n\n_This is a test message — remove [TEST] once verified._`;
       await sendToMany(chatIds, msg);
-      console.log(`[historyRefreshAgent] Telegram sent to ${chatIds.length} user(s).`);
+      console.log(`[historyRefreshAgent] Telegram TEST sent to ${chatIds.length} user(s) for ${newResultsTickers.length} stocks.`);
     }
   }
 
