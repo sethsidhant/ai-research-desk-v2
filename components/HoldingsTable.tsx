@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { type WatchlistRow } from './WatchlistTable'
 import FundamentalsDrawer from './FundamentalsDrawer'
 import StockChartPanel from './StockChartPanel'
+import StockBriefModal from './StockBriefModal'
+import { Sparkles } from 'lucide-react'
 import { getValuationBand, peDeviationColor } from './ClassificationBadge'
 import { INDUSTRY_TO_FII_SECTOR } from '@/lib/fiiSectorMap'
 
@@ -103,10 +105,8 @@ export default function HoldingsTable({
   // Expand/details state
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
-  // Per-row AI brief state
-  const [briefs, setBriefs]           = useState<Record<string, string>>({})
-  const [briefLoading, setBriefLoading] = useState<Record<string, boolean>>({})
-  const [briefError, setBriefError]   = useState<Record<string, string>>({})
+  // AI brief modal state
+  const [briefRow, setBriefRow] = useState<{ ticker: string; stockName: string } | null>(null)
 
   // Edit state
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -186,24 +186,6 @@ export default function HoldingsTable({
     }
   }
 
-  async function requestBrief(ticker: string) {
-    setBriefLoading(p => ({ ...p, [ticker]: true }))
-    setBriefError(p => ({ ...p, [ticker]: '' }))
-    try {
-      const res  = await fetch('/api/stock-brief', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticker }),
-      })
-      const json = await res.json()
-      if (json.error) { setBriefError(p => ({ ...p, [ticker]: json.error })); return }
-      setBriefs(p => ({ ...p, [ticker]: json.brief }))
-    } catch (e: any) {
-      setBriefError(p => ({ ...p, [ticker]: 'Failed to load brief' }))
-    } finally {
-      setBriefLoading(p => ({ ...p, [ticker]: false }))
-    }
-  }
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir(d => d === 'desc' ? 'asc' : 'desc')
@@ -303,6 +285,9 @@ export default function HoldingsTable({
 
       {/* Chart drawer */}
       <StockChartPanel ticker={chartRow?.ticker ?? null} stockName={chartRow?.stock_name} onClose={() => setChartRow(null)} />
+
+      {/* AI Brief modal */}
+      {briefRow && <StockBriefModal ticker={briefRow.ticker} stockName={briefRow.stockName} onClose={() => setBriefRow(null)} />}
 
       {/* News drawer */}
       {newsData.ticker && (
@@ -683,40 +668,20 @@ export default function HoldingsTable({
 
                           {/* AI Brief */}
                           <div className="flex-1 flex justify-end">
-                            {briefs[row.ticker] ? (
-                              <button
-                                onClick={() => setBriefs(p => { const n = { ...p }; delete n[row.ticker]; return n })}
-                                className="text-[11px] text-gray-400 hover:text-gray-600 underline"
-                              >
-                                Clear brief
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => requestBrief(row.ticker)}
-                                disabled={briefLoading[row.ticker]}
-                                className="flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-blue-300 text-white transition-colors"
-                              >
-                                {briefLoading[row.ticker] ? (
-                                  <>
-                                    <span className="w-3 h-3 border border-white/30 border-t-white rounded-full animate-spin" />
-                                    Generating…
-                                  </>
-                                ) : '✦ Get AI Brief'}
-                              </button>
-                            )}
+                            <button
+                              onClick={() => setBriefRow({ ticker: row.ticker, stockName: row.stock_name })}
+                              className="flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                              style={{
+                                background: 'linear-gradient(135deg, rgba(0,61,155,0.08), rgba(0,106,97,0.08))',
+                                border: '1px solid rgba(0,106,97,0.2)',
+                                color: 'var(--artha-teal)',
+                              }}
+                            >
+                              <Sparkles size={11} strokeWidth={2.5} />
+                              AI Brief
+                            </button>
                           </div>
                         </div>
-
-                        {/* AI Brief result */}
-                        {briefError[row.ticker] && (
-                          <div className="mt-3 text-xs text-red-500">{briefError[row.ticker]}</div>
-                        )}
-                        {briefs[row.ticker] && (
-                          <div className="mt-3 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
-                            <div className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-1.5">AI Brief · {row.ticker}</div>
-                            <p className="text-xs text-gray-700 leading-relaxed">{briefs[row.ticker]}</p>
-                          </div>
-                        )}
                       </td>
                     </tr>
                   )}

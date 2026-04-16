@@ -13,6 +13,8 @@ import StockSummaryPanel from './StockSummaryPanel'
 import FundamentalsDrawer from './FundamentalsDrawer'
 import StockChartPanel from './StockChartPanel'
 import StockNotePanel from './StockNotePanel'
+import StockBriefModal from './StockBriefModal'
+import { Sparkles } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { removeFromWatchlist } from '@/app/watchlist/actions'
 
@@ -183,6 +185,7 @@ export default function WatchlistTable({
   const [noteRow, setNoteRow] = useState<WatchlistRow | null>(null)
   const [expandedEntry, setExpandedEntry] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [briefRow, setBriefRow] = useState<{ ticker: string; stockName: string } | null>(null)
 
   async function handleRemove(stockId: string) {
     if (!confirm('Remove from watchlist?')) return
@@ -220,6 +223,7 @@ export default function WatchlistTable({
     <>
     <StockSummaryPanel ticker={selectedTicker} mode={panelMode} onClose={() => setSelectedTicker(null)} />
     <FundamentalsDrawer row={fundamentalsRow} onClose={() => setFundamentalsRow(null)} />
+    {briefRow && <StockBriefModal ticker={briefRow.ticker} stockName={briefRow.stockName} onClose={() => setBriefRow(null)} />}
     <StockChartPanel ticker={chartRow?.ticker ?? null} stockName={chartRow?.stock_name} onClose={() => setChartRow(null)} />
     <StockNotePanel
       stockId={noteRow?.stock_id ?? null}
@@ -448,6 +452,14 @@ export default function WatchlistTable({
                       className="text-base hover:scale-110 transition-transform leading-none"
                     >
                       🤖
+                    </button>
+                    <button
+                      onClick={() => setBriefRow({ ticker: r.ticker, stockName: r.stock_name })}
+                      title="AI Brief"
+                      className="hover:scale-110 transition-transform leading-none flex items-center justify-center"
+                      style={{ color: 'var(--artha-teal)' }}
+                    >
+                      <Sparkles size={14} strokeWidth={2} />
                     </button>
                     <button
                       onClick={() => openPanel(r.ticker, 'filings')}

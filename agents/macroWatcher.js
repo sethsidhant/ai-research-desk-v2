@@ -208,7 +208,7 @@ If there is ANY market, economy, company, sector, policy, or trade angle — inc
 When in doubt for oil/energy, trade, defence, or geopolitical items — lean toward relevant. India's trade balance data, defence procurement, and bilateral manufacturing deals are always relevant.
 Skip only: personal attacks, pure sports/entertainment, domestic politics with no market angle, bare URLs.`;
 
-  const msg = await anthropic.messages.create({
+  const apiPayload = {
     model:      'claude-haiku-4-5-20251001',
     max_tokens: 100 * toProcess.length,
     messages: [{
@@ -232,7 +232,24 @@ Rules:
 Posts:
 ${postsBlock}`,
     }],
-  });
+  };
+
+  let msg;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      msg = await anthropic.messages.create(apiPayload);
+      break;
+    } catch (e) {
+      const isOverloaded = e.status === 529 || (e.error && e.error.type === 'overloaded_error');
+      if (isOverloaded && attempt < 3) {
+        const delay = attempt * 30000; // 30s, 60s
+        console.warn(`[macroWatcher] API overloaded (attempt ${attempt}/3), retrying in ${delay / 1000}s…`);
+        await new Promise(r => setTimeout(r, delay));
+      } else {
+        throw e;
+      }
+    }
+  }
 
   let raw = msg.content[0].text.trim().replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
 

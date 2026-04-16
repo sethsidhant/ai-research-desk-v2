@@ -5,6 +5,157 @@
 
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
+import { Sparkles, X } from 'lucide-react'
+
+type OverviewBriefData = {
+  sentiment: 'bull' | 'bear' | 'neutral'
+  summary: string
+  sections: {
+    composition: string
+    signals: string
+    macro: string
+    outlook: string
+  }
+}
+
+const OV_SENTIMENT = {
+  bull:    { bg: 'rgba(0,106,97,0.12)',     color: 'var(--artha-teal)',      label: 'Bullish'  },
+  bear:    { bg: 'rgba(192,57,43,0.12)',    color: 'var(--artha-negative)',  label: 'Bearish'  },
+  neutral: { bg: 'rgba(107,114,128,0.12)', color: 'var(--artha-text-muted)', label: 'Neutral' },
+}
+
+const OV_SECTIONS = [
+  { key: 'composition' as const, label: 'Composition', icon: '🗂️' },
+  { key: 'signals'     as const, label: 'Signals',     icon: '📡' },
+  { key: 'macro'       as const, label: 'Macro',       icon: '🌐' },
+  { key: 'outlook'     as const, label: 'Outlook',     icon: '🎯' },
+]
+
+function OverviewBriefModal({
+  type,
+  title,
+  onClose,
+}: {
+  type: 'portfolio' | 'watchlist'
+  title: string
+  onClose: () => void
+}) {
+  const [brief,   setBrief]   = useState<OverviewBriefData | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error,   setError]   = useState<string | null>(null)
+  const [cached,  setCached]  = useState(false)
+
+  useEffect(() => {
+    const cacheKey = `noesis_overview_brief_${type}`
+    const today    = new Date().toISOString().slice(0, 10)
+    try {
+      const raw = sessionStorage.getItem(cacheKey)
+      if (raw) {
+        const data = JSON.parse(raw)
+        if (data.date === today && data.brief) {
+          setBrief(data.brief); setCached(true); return
+        }
+        sessionStorage.removeItem(cacheKey)
+      }
+    } catch {}
+    fetchBrief()
+  }, [type]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  async function fetchBrief() {
+    setLoading(true); setError(null)
+    try {
+      const res  = await fetch('/api/overview-brief', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ type }),
+      })
+      const json = await res.json()
+      if (json.error) { setError(json.error); return }
+      const data: OverviewBriefData = typeof json.brief === 'string' ? JSON.parse(json.brief) : json.brief
+      setBrief(data); setCached(json.cached ?? false)
+      try {
+        sessionStorage.setItem(`noesis_overview_brief_${type}`, JSON.stringify({ brief: data, date: new Date().toISOString().slice(0, 10) }))
+      } catch {}
+    } catch {
+      setError('Failed to generate brief')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const s = OV_SENTIMENT[brief?.sentiment ?? 'neutral']
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+      <div
+        className="relative w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden"
+        style={{ background: 'var(--artha-card)', border: '1px solid rgba(0,106,97,0.15)' }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div
+          className="flex items-center justify-between px-5 py-4"
+          style={{ background: 'linear-gradient(135deg, rgba(0,61,155,0.06), rgba(0,106,97,0.08))', borderBottom: '1px solid rgba(0,106,97,0.12)' }}
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center rounded-xl" style={{ width: 32, height: 32, background: 'linear-gradient(135deg, #003d9b, #006a61)' }}>
+              <Sparkles size={14} color="white" strokeWidth={2.5} />
+            </div>
+            <div>
+              <div className="text-sm font-bold" style={{ color: 'var(--artha-text)', letterSpacing: '-0.01em' }}>{title}</div>
+              <div className="text-[11px]" style={{ color: 'var(--artha-text-muted)' }}>AI Overview Brief</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {brief && (
+              <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full" style={{ background: s.bg, color: s.color }}>{s.label}</span>
+            )}
+            <button onClick={onClose} className="flex items-center justify-center rounded-full hover:bg-black/5 transition-colors" style={{ width: 28, height: 28, color: 'var(--artha-text-muted)' }}>
+              <X size={15} />
+            </button>
+          </div>
+        </div>
+
+        <div className="px-5 py-4 space-y-3 max-h-[70vh] overflow-y-auto">
+          {loading && (
+            <div className="flex items-center justify-center gap-2 py-10 text-sm" style={{ color: 'var(--artha-text-muted)' }}>
+              <span className="w-4 h-4 border-2 border-gray-200 border-t-blue-500 rounded-full animate-spin" />
+              Generating overview…
+            </div>
+          )}
+          {error && <div className="text-sm py-6 text-center" style={{ color: 'var(--artha-negative)' }}>{error}</div>}
+          {brief && (
+            <>
+              <div className="rounded-xl px-4 py-3" style={{ background: 'var(--artha-surface-low)', border: '1px solid rgba(11,28,48,0.06)' }}>
+                <div className="text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: 'var(--artha-teal)' }}>Summary</div>
+                <p className="text-sm leading-relaxed" style={{ color: 'var(--artha-text-secondary)' }}>{brief.summary}</p>
+              </div>
+              {OV_SECTIONS.map(({ key, label, icon }) => brief.sections[key] && (
+                <div key={key} className="flex gap-3 rounded-xl px-4 py-3" style={{ background: 'var(--artha-surface-low)', border: '1px solid rgba(11,28,48,0.06)' }}>
+                  <div className="shrink-0 text-base leading-snug mt-0.5">{icon}</div>
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--artha-teal)' }}>{label}</div>
+                    <div className="text-sm leading-relaxed" style={{ color: 'var(--artha-text-secondary)' }}>{brief.sections[key]}</div>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+
+        <div className="px-5 pb-4 text-[10px] text-center" style={{ color: 'var(--artha-text-faint)' }}>
+          {cached ? 'Cached today · ' : ''}Generated by Noesis AI · Haiku · Not investment advice
+        </div>
+      </div>
+    </div>
+  )
+}
 
 type WatchRow = { ticker: string; invested: number; entryPrice: number }
 type PortRow  = { ticker: string; quantity: number; avgPrice: number; price5dAgo?: number | null }
@@ -86,7 +237,8 @@ function GainInline({ label, gain, pct, dim }: { label: string; gain: number; pc
 }
 
 export function WatchlistReturnCard({ rows, watchlistCount }: { rows: WatchRow[]; watchlistCount: number }) {
-  const [prices, setPrices] = useState<LivePrices | null>(null)
+  const [prices, setPrices]   = useState<LivePrices | null>(null)
+  const [briefOpen, setBriefOpen] = useState(false)
 
   useEffect(() => {
     async function poll() {
@@ -123,14 +275,26 @@ export function WatchlistReturnCard({ rows, watchlistCount }: { rows: WatchRow[]
   const accentColor = hasData ? (positive ? 'var(--artha-teal)' : 'var(--artha-negative)') : 'var(--artha-surface-low)'
 
   return (
+    <>
+    {briefOpen && <OverviewBriefModal type="watchlist" title="Watchlist" onClose={() => setBriefOpen(false)} />}
     <Link href="/watchlist" className="artha-card artha-card-hover block overflow-hidden" style={{ padding: 0 }}>
       <div className="h-1 w-full" style={{ background: hasData ? accentColor : 'var(--artha-surface-low)' }} />
       <div className="px-5 py-4">
         <div className="flex items-center justify-between mb-3">
           <span className="artha-label">Watchlist Return</span>
-          <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--artha-surface-low)', color: 'var(--artha-text-muted)' }}>
-            {watchlistCount} stocks
-          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={e => { e.preventDefault(); e.stopPropagation(); setBriefOpen(true) }}
+              title="AI Overview"
+              className="flex items-center justify-center rounded-lg transition-colors hover:opacity-80"
+              style={{ width: 24, height: 24, background: 'linear-gradient(135deg, rgba(0,61,155,0.1), rgba(0,106,97,0.1))', color: 'var(--artha-teal)' }}
+            >
+              <Sparkles size={11} strokeWidth={2.5} />
+            </button>
+            <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--artha-surface-low)', color: 'var(--artha-text-muted)' }}>
+              {watchlistCount} stocks
+            </span>
+          </div>
         </div>
         {hasData ? (
           <>
@@ -161,11 +325,13 @@ export function WatchlistReturnCard({ rows, watchlistCount }: { rows: WatchRow[]
         )}
       </div>
     </Link>
+    </>
   )
 }
 
 export function PortfolioReturnCard({ rows }: { rows: PortRow[] }) {
-  const [prices, setPrices] = useState<LivePrices | null>(null)
+  const [prices, setPrices]       = useState<LivePrices | null>(null)
+  const [briefOpen, setBriefOpen] = useState(false)
 
   useEffect(() => {
     async function poll() {
@@ -204,14 +370,26 @@ export function PortfolioReturnCard({ rows }: { rows: PortRow[] }) {
   const accentColor = hasHoldings ? (positive ? 'var(--artha-teal)' : 'var(--artha-negative)') : 'var(--artha-text-faint)'
 
   return (
+    <>
+    {briefOpen && <OverviewBriefModal type="portfolio" title="Portfolio" onClose={() => setBriefOpen(false)} />}
     <Link href="/portfolio" className="artha-card artha-card-hover block overflow-hidden" style={{ padding: 0 }}>
       <div className="h-1 w-full" style={{ background: hasHoldings ? accentColor : 'var(--artha-surface-low)' }} />
       <div className="px-5 py-4">
         <div className="flex items-center justify-between mb-3">
           <span className="artha-label">Portfolio Return</span>
-          <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--artha-surface-low)', color: 'var(--artha-text-muted)' }}>
-            {rows.length} holdings
-          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={e => { e.preventDefault(); e.stopPropagation(); setBriefOpen(true) }}
+              title="AI Overview"
+              className="flex items-center justify-center rounded-lg transition-colors hover:opacity-80"
+              style={{ width: 24, height: 24, background: 'linear-gradient(135deg, rgba(0,61,155,0.1), rgba(0,106,97,0.1))', color: 'var(--artha-teal)' }}
+            >
+              <Sparkles size={11} strokeWidth={2.5} />
+            </button>
+            <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--artha-surface-low)', color: 'var(--artha-text-muted)' }}>
+              {rows.length} holdings
+            </span>
+          </div>
         </div>
         {hasHoldings ? (
           <>
@@ -241,5 +419,6 @@ export function PortfolioReturnCard({ rows }: { rows: PortRow[] }) {
         )}
       </div>
     </Link>
+    </>
   )
 }

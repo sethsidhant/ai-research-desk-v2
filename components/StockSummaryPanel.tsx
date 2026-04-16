@@ -1,6 +1,20 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { type BriefData } from './StockBriefModal'
+
+const SENTIMENT_COLORS = {
+  bull:    { bg: 'rgba(0,106,97,0.1)',     color: 'var(--artha-teal)',      label: 'Bullish'  },
+  bear:    { bg: 'rgba(192,57,43,0.1)',    color: 'var(--artha-negative)',  label: 'Bearish'  },
+  neutral: { bg: 'rgba(107,114,128,0.1)', color: 'var(--artha-text-muted)', label: 'Neutral' },
+}
+
+const SECTION_CONFIG = [
+  { key: 'fundamentals' as const, label: 'Fundamentals', icon: '📊' },
+  { key: 'technicals'   as const, label: 'Technicals',   icon: '📈' },
+  { key: 'macro'        as const, label: 'Macro Context', icon: '🌐' },
+  { key: 'outlook'      as const, label: 'Outlook',       icon: '🎯' },
+]
 
 type StockData = {
   stock_name:       string
@@ -36,9 +50,9 @@ export default function StockSummaryPanel({
   const [error, setError]     = useState<string | null>(null)
 
   // AI brief state
-  const [brief, setBrief]           = useState<string | null>(null)
+  const [brief, setBrief]               = useState<BriefData | null>(null)
   const [briefLoading, setBriefLoading] = useState(false)
-  const [briefError, setBriefError] = useState<string | null>(null)
+  const [briefError, setBriefError]     = useState<string | null>(null)
 
   // Load stock data when ticker changes
   useEffect(() => {
@@ -76,7 +90,8 @@ export default function StockSummaryPanel({
       })
       const json = await res.json()
       if (json.error) { setBriefError(json.error); return }
-      setBrief(json.brief)
+      const data: BriefData = typeof json.brief === 'string' ? JSON.parse(json.brief) : json.brief
+      setBrief(data)
     } catch {
       setBriefError('Failed to generate brief')
     } finally {
@@ -193,20 +208,29 @@ export default function StockSummaryPanel({
                     <div className="text-sm text-red-500 mt-2">{briefError}</div>
                   )}
 
-                  {brief && (
-                    <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">AI Brief · {stock.ticker}</div>
-                        <button
-                          onClick={() => setBrief(null)}
-                          className="text-[10px] text-blue-300 hover:text-blue-500"
-                        >
-                          Refresh ↺
-                        </button>
+                  {brief && (() => {
+                    const s = SENTIMENT_COLORS[brief.sentiment ?? 'neutral']
+                    return (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ background: s.bg, color: s.color }}>{s.label}</span>
+                          <button onClick={() => setBrief(null)} className="text-[10px] text-gray-400 hover:text-gray-600">Refresh ↺</button>
+                        </div>
+                        <div className="bg-gray-50 rounded-xl px-4 py-3">
+                          <p className="text-sm text-gray-700 leading-relaxed">{brief.summary}</p>
+                        </div>
+                        {SECTION_CONFIG.map(({ key, label, icon }) => brief.sections[key] && (
+                          <div key={key} className="flex gap-2 bg-gray-50 rounded-xl px-4 py-3">
+                            <span className="shrink-0 text-sm mt-0.5">{icon}</span>
+                            <div>
+                              <div className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-0.5">{label}</div>
+                              <p className="text-xs text-gray-600 leading-relaxed">{brief.sections[key]}</p>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                      <p className="text-sm text-gray-700 leading-relaxed">{brief}</p>
-                    </div>
-                  )}
+                    )
+                  })()}
                 </div>
               )}
 
