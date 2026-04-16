@@ -152,7 +152,7 @@ export default async function AdminPage() {
   const recentUsers = allUsers.filter(u => u.created_at && new Date(u.created_at) > new Date(thirtyDaysAgoISO)).length
 
   // ── 7. Agent reports ──────────────────────────────────────────────────────
-  const AGENT_NAMES = ['token_health_check', 'heartbeat_monitor', 'onboarding_watchdog', 'data_quality_agent']
+  const AGENT_NAMES = ['token_health_check', 'heartbeat_monitor', 'onboarding_watchdog', 'data_quality_agent', 'history_refresh']
   const { data: agentReportRows } = await adminSupabase
     .from('agent_reports')
     .select('agent_name, status, summary, report, ran_at')
@@ -165,7 +165,35 @@ export default async function AdminPage() {
     if (!latestReports[row.agent_name]) latestReports[row.agent_name] = row
   }
 
-  // ── 8. DB stats (via get_db_stats() SQL function) ─────────────────────────
+  // ── 8. AI Brief usage (last 30d) ──────────────────────────────────────────
+  const { data: briefUsageRows } = await adminSupabase
+    .from('api_usage_log')
+    .select('agent, ticker, input_tokens, output_tokens, cost_usd, created_at')
+    .in('agent', ['ai_brief_stock', 'ai_brief_overview'])
+    .gte('created_at', thirtyDaysAgoISO)
+    .order('created_at', { ascending: false })
+
+  const briefUsage         = briefUsageRows ?? []
+  const briefTotalClicks   = briefUsage.length
+  const briefCacheHits     = briefUsage.filter(r => Number(r.input_tokens) === 0).length
+  const briefGenerations   = briefTotalClicks - briefCacheHits
+  const briefCacheRate     = briefTotalClicks > 0 ? Math.round((briefCacheHits / briefTotalClicks) * 100) : 0
+  const briefTotalCost     = briefUsage.reduce((s, r) => s + Number(r.cost_usd), 0)
+  const briefStockClicks   = briefUsage.filter(r => r.agent === 'ai_brief_stock').length
+  const briefOverviewClicks= briefUsage.filter(r => r.agent === 'ai_brief_overview').length
+
+  // Top clicked tickers (stock briefs only, cache hits + generations)
+  const briefTickerCounts: Record<string, number> = {}
+  for (const r of briefUsage) {
+    if (r.agent === 'ai_brief_stock' && r.ticker) {
+      briefTickerCounts[r.ticker] = (briefTickerCounts[r.ticker] ?? 0) + 1
+    }
+  }
+  const topBriefTickers = Object.entries(briefTickerCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+
+  // ── 9. DB stats (via get_db_stats() SQL function) ─────────────────────────
   const { data: dbStats } = await adminSupabase.rpc('get_db_stats')
 
 
@@ -197,7 +225,7 @@ export default async function AdminPage() {
         <section>
           <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1">Agent Team</h2>
           <p className="text-xs text-gray-400 mb-4">Automated admin agents running on GitHub Actions · Results written to <code className="bg-gray-100 px-1 rounded">agent_reports</code></p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
             {[
               {
                 key: 'token_health_check',
@@ -222,6 +250,14 @@ export default async function AdminPage() {
                 schedule: 'Every 2 days · 08:00 PM IST',
                 icon: '🔍',
                 description: 'Runs 7 data quality checks on prices, fundamentals, scores, FII/MF data, and screener cross-validation.',
+              },
+              {
+                key: 'history_refresh',
+                title: 'History Refresh',
+                designation: 'Results Tracker',
+                schedule: 'Earnings season · Daily (Railway)',
+                icon: '📊',
+                description: 'Refreshes Screener quarterly/annual history for all watchlist and portfolio stocks during earnings seasons. Sends Telegram alerts when new results are available.',
               },
             ].map(agent => {
               const r = latestReports[agent.key]
@@ -287,6 +323,60 @@ export default async function AdminPage() {
               latestReport={latestReports['heartbeat_monitor'] ?? null}
               dbStats={dbStats ?? null}
             />
+          </div>
+        </section>
+
+        {/* ── AI Brief Usage ────────────────────────────────────── */}
+        <section>
+          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1">AI Brief Usage</h2>
+          <p className="text-xs text-gray-400 mb-4">On-demand AI summaries generated via Haiku · Last 30 days</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-5">
+            <AdminCard label="Total Clicks (30d)"  value={briefTotalClicks.toString()} />
+            <AdminCard label="Generations"         value={briefGenerations.toString()} />
+            <AdminCard label="Cache Hit Rate"      value={`${briefCacheRate}%`} highlight={briefCacheRate > 70 ? 'green' : briefCacheRate > 40 ? undefined : 'amber'} />
+            <AdminCard label="Haiku Cost (30d)"    value={usd(briefTotalCost)} />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Click breakdown */}
+            <div className="bg-white border border-gray-200 rounded-xl shadow-sm px-5 py-4">
+              <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Breakdown by Type</div>
+              <div className="space-y-2">
+                {[
+                  { label: 'Stock Brief (individual)', count: briefStockClicks },
+                  { label: 'Overview Brief (portfolio/watchlist)', count: briefOverviewClicks },
+                ].map(row => (
+                  <div key={row.label} className="flex items-center justify-between text-sm">
+                    <span className="text-gray-600">{row.label}</span>
+                    <span className="font-semibold text-gray-900 font-mono">{row.count}</span>
+                  </div>
+                ))}
+                {briefTotalClicks === 0 && (
+                  <p className="text-xs text-gray-400 text-center py-2">No AI brief clicks yet</p>
+                )}
+              </div>
+            </div>
+            {/* Top tickers */}
+            <div className="bg-white border border-gray-200 rounded-xl shadow-sm px-5 py-4">
+              <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Most-Briefed Stocks (30d)</div>
+              <div className="space-y-1.5">
+                {topBriefTickers.map(([ticker, count], i) => (
+                  <div key={ticker} className="flex items-center gap-2">
+                    <span className="text-[10px] text-gray-300 font-mono w-4">{i + 1}</span>
+                    <span className="font-mono font-semibold text-gray-900 text-sm">{ticker}</span>
+                    <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-indigo-400 rounded-full"
+                        style={{ width: `${Math.round((count / (topBriefTickers[0]?.[1] ?? 1)) * 100)}%` }}
+                      />
+                    </div>
+                    <span className="text-xs text-gray-500 font-mono">{count}</span>
+                  </div>
+                ))}
+                {topBriefTickers.length === 0 && (
+                  <p className="text-xs text-gray-400 text-center py-2">No stock brief clicks yet</p>
+                )}
+              </div>
+            </div>
           </div>
         </section>
 

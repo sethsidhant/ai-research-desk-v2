@@ -26,6 +26,11 @@ export async function POST(request: Request) {
   if (stock.ai_brief && stock.ai_brief_date === todayIST) {
     try {
       const parsed = JSON.parse(stock.ai_brief)
+      // Log cache hit (0 tokens) — for click tracking
+      createAdminClient().from('api_usage_log').insert({
+        agent: 'ai_brief_stock', ticker: stock.ticker,
+        input_tokens: 0, output_tokens: 0, cost_usd: 0,
+      }).then()
       return NextResponse.json({ brief: parsed, cached: true })
     } catch {
       // stale plain-text cache — regenerate
@@ -173,12 +178,21 @@ ${ctx.join('\n')}`
     return NextResponse.json({ error: 'Failed to parse AI response' }, { status: 500 })
   }
 
-  // Cache to stocks table
+  // Cache to stocks table + log usage
   const admin = createAdminClient()
-  await admin
-    .from('stocks')
-    .update({ ai_brief: JSON.stringify(parsed), ai_brief_date: todayIST })
-    .eq('id', stock.id)
+  const inputTokens  = aiJson.usage?.input_tokens  ?? 0
+  const outputTokens = aiJson.usage?.output_tokens ?? 0
+  const HAIKU_INPUT_PER_M  = 0.80
+  const HAIKU_OUTPUT_PER_M = 4.00
+  const costUsd = (inputTokens / 1_000_000) * HAIKU_INPUT_PER_M + (outputTokens / 1_000_000) * HAIKU_OUTPUT_PER_M
+
+  await Promise.all([
+    admin.from('stocks').update({ ai_brief: JSON.stringify(parsed), ai_brief_date: todayIST }).eq('id', stock.id),
+    admin.from('api_usage_log').insert({
+      agent: 'ai_brief_stock', ticker: stock.ticker,
+      input_tokens: inputTokens, output_tokens: outputTokens, cost_usd: costUsd,
+    }),
+  ])
 
   return NextResponse.json({ brief: parsed })
 }

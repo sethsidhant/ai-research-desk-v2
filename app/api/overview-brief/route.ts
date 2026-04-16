@@ -31,6 +31,11 @@ export async function POST(request: Request) {
     const todayDate  = new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }).split(',')[0]
     if (cachedDate === todayDate) {
       try {
+        // Log cache hit (0 tokens) — for click tracking
+        admin.from('api_usage_log').insert({
+          agent: 'ai_brief_overview', ticker: type,
+          input_tokens: 0, output_tokens: 0, cost_usd: 0,
+        }).then()
         return NextResponse.json({ brief: JSON.parse(cached.brief), cached: true })
       } catch {}
     }
@@ -191,13 +196,23 @@ ${macroLines.length ? `\nRecent macro news (sectors held):\n${macroLines.map(l =
     return NextResponse.json({ error: 'Failed to parse AI response' }, { status: 500 })
   }
 
-  // Upsert to user_briefs (one row per user+type)
-  await admin
-    .from('user_briefs')
-    .upsert(
+  const inputTokens  = aiJson.usage?.input_tokens  ?? 0
+  const outputTokens = aiJson.usage?.output_tokens ?? 0
+  const HAIKU_INPUT_PER_M  = 0.80
+  const HAIKU_OUTPUT_PER_M = 4.00
+  const costUsd = (inputTokens / 1_000_000) * HAIKU_INPUT_PER_M + (outputTokens / 1_000_000) * HAIKU_OUTPUT_PER_M
+
+  // Upsert to user_briefs (one row per user+type) + log usage
+  await Promise.all([
+    admin.from('user_briefs').upsert(
       { user_id: user.id, type, brief: JSON.stringify(parsed), sentiment: parsed.sentiment ?? 'neutral', generated_at: new Date().toISOString() },
       { onConflict: 'user_id,type' }
-    )
+    ),
+    admin.from('api_usage_log').insert({
+      agent: 'ai_brief_overview', ticker: type,
+      input_tokens: inputTokens, output_tokens: outputTokens, cost_usd: costUsd,
+    }),
+  ])
 
   return NextResponse.json({ brief: parsed })
 }
