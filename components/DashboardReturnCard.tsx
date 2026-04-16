@@ -286,10 +286,11 @@ export function WatchlistReturnCard({ rows, watchlistCount }: { rows: WatchRow[]
             <button
               onClick={e => { e.preventDefault(); e.stopPropagation(); setBriefOpen(true) }}
               title="AI Overview"
-              className="flex items-center justify-center rounded-lg transition-colors hover:opacity-80"
-              style={{ width: 24, height: 24, background: 'linear-gradient(135deg, rgba(0,61,155,0.1), rgba(0,106,97,0.1))', color: 'var(--artha-teal)' }}
+              className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full transition-colors hover:opacity-80"
+              style={{ background: 'linear-gradient(135deg, rgba(0,61,155,0.1), rgba(0,106,97,0.1))', color: 'var(--artha-teal)', border: '1px solid rgba(0,106,97,0.2)' }}
             >
-              <Sparkles size={11} strokeWidth={2.5} />
+              <Sparkles size={10} strokeWidth={2.5} />
+              AI Brief
             </button>
             <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--artha-surface-low)', color: 'var(--artha-text-muted)' }}>
               {watchlistCount} stocks
@@ -381,10 +382,11 @@ export function PortfolioReturnCard({ rows }: { rows: PortRow[] }) {
             <button
               onClick={e => { e.preventDefault(); e.stopPropagation(); setBriefOpen(true) }}
               title="AI Overview"
-              className="flex items-center justify-center rounded-lg transition-colors hover:opacity-80"
-              style={{ width: 24, height: 24, background: 'linear-gradient(135deg, rgba(0,61,155,0.1), rgba(0,106,97,0.1))', color: 'var(--artha-teal)' }}
+              className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full transition-colors hover:opacity-80"
+              style={{ background: 'linear-gradient(135deg, rgba(0,61,155,0.1), rgba(0,106,97,0.1))', color: 'var(--artha-teal)', border: '1px solid rgba(0,106,97,0.2)' }}
             >
-              <Sparkles size={11} strokeWidth={2.5} />
+              <Sparkles size={10} strokeWidth={2.5} />
+              AI Brief
             </button>
             <span className="text-[11px] font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--artha-surface-low)', color: 'var(--artha-text-muted)' }}>
               {rows.length} holdings

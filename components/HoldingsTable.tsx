@@ -537,6 +537,14 @@ export default function HoldingsTable({
                     <td className="px-4 py-3 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end gap-2">
                         <button
+                          onClick={() => setBriefRow({ ticker: row.ticker, stockName: row.stock_name })}
+                          className="flex items-center gap-1 text-[10px] font-semibold px-2.5 py-1 rounded-lg transition-colors"
+                          style={{ background: 'linear-gradient(135deg, rgba(0,61,155,0.08), rgba(0,106,97,0.08))', border: '1px solid rgba(0,106,97,0.2)', color: 'var(--artha-teal)' }}
+                        >
+                          <Sparkles size={10} strokeWidth={2.5} />
+                          AI Brief
+                        </button>
+                        <button
                           onClick={() => setExpandedId(isExpanded ? null : row.stock_id)}
                           className={`flex items-center gap-1 text-[10px] font-semibold px-2.5 py-1 rounded-lg border transition-colors ${isExpanded ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'}`}
                         >
