@@ -10,8 +10,9 @@
 // Usage: node historyRefreshAgent.js
 
 require('dotenv').config({ path: '../.env.local' });
-const { execSync }    = require('child_process');
+const { execSync }     = require('child_process');
 const { createClient } = require('@supabase/supabase-js');
+const { sendToMany }   = require('./telegramAlert');
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -137,6 +138,22 @@ async function main() {
     { key: 'cron_history_refresh_last_run', value: startedAt.toISOString() },
     { onConflict: 'key' }
   );
+
+  // Notify users if any stocks got new results
+  if (updatedTickers.length > 0) {
+    const { data: userPrefs } = await supabase
+      .from('user_alert_preferences')
+      .select('telegram_chat_id')
+      .not('telegram_chat_id', 'is', null);
+
+    const chatIds = (userPrefs ?? []).map(p => p.telegram_chat_id).filter(Boolean);
+    if (chatIds.length) {
+      const lines = updatedTickers.map(t => `• ${t}`).join('\n');
+      const msg = `📊 *Earnings Update*\n\nNew quarterly results available for ${updatedTickers.length} stock${updatedTickers.length > 1 ? 's' : ''}:\n\n${lines}\n\n_History tab in the app is up to date._`;
+      await sendToMany(chatIds, msg);
+      console.log(`[historyRefreshAgent] Telegram sent to ${chatIds.length} user(s).`);
+    }
+  }
 
   console.log('[historyRefreshAgent] Report written.');
 }
