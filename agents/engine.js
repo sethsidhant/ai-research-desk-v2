@@ -156,8 +156,8 @@ async function runDailyScoring() {
       const raw  = instrument_token ? await getTechnicals(instrument_token) : null;
       const tech = raw ? {
         rsi:         raw.rsi,
-        above50DMA:  raw.currentPrice > raw.sma50,
-        above200DMA: raw.currentPrice > raw.sma200,
+        above50DMA:  raw.sma50  != null ? raw.currentPrice > raw.sma50  : null,
+        above200DMA: raw.sma200 != null ? raw.currentPrice > raw.sma200 : null,
         dma50Value:  raw.dma50Value,
         dma200Value: raw.dma200Value,
       } : null;

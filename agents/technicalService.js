@@ -37,15 +37,16 @@ async function getTechnicals(instrumentToken) {
     from.setDate(today.getDate() - 300);
 
     const candles = await kc.getHistoricalData(instrumentToken, "day", from, today);
-    if (!candles || candles.length < 200) {
+    if (!candles || candles.length < 15) {
       console.log(`  Not enough candles (${candles?.length ?? 0}) for token ${instrumentToken}`);
       return { currentPrice: 0, sma50: 0, sma200: 0, rsi: null };
     }
 
     const closes       = candles.map(c => c.close);
     const currentPrice = closes[closes.length - 1];
-    const sma50        = closes.slice(-50).reduce((a, b) => a + b, 0) / 50;
-    const sma200       = closes.slice(-200).reduce((a, b) => a + b, 0) / 200;
+    // Compute whichever DMAs we have enough data for; null if insufficient
+    const sma50        = closes.length >= 50  ? closes.slice(-50).reduce((a, b) => a + b, 0) / 50  : null;
+    const sma200       = closes.length >= 200 ? closes.slice(-200).reduce((a, b) => a + b, 0) / 200 : null;
     const rsi          = calculateRSI(closes);
 
     // 52W high/low from last 252 candles (useful for ETFs not on Screener)
@@ -59,8 +60,8 @@ async function getTechnicals(instrumentToken) {
       sma50,
       sma200,
       rsi,
-      dma50Value:   Math.round(sma50  * 100) / 100,
-      dma200Value:  Math.round(sma200 * 100) / 100,
+      dma50Value:   sma50  != null ? Math.round(sma50  * 100) / 100 : null,
+      dma200Value:  sma200 != null ? Math.round(sma200 * 100) / 100 : null,
       high52w:      Math.round(high52w  * 100) / 100,
       low52w:       Math.round(low52w   * 100) / 100,
       pctFromHigh,
