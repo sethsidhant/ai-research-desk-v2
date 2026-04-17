@@ -28,7 +28,9 @@ function latestHeaders(history) {
   if (!history) return {};
   const out = {};
   for (const s of SECTIONS) {
-    out[s] = history[s]?.headers?.[0] ?? null;
+    // Screener table is oldest-first (left→right) — last element is the most recent period
+    const headers = history[s]?.headers ?? [];
+    out[s] = headers[headers.length - 1] ?? null;
   }
   return out;
 }

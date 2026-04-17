@@ -33,7 +33,8 @@ function extractResultsSummary(scraped) {
   const q = scraped?.quarterly;
   if (!q?.headers?.length || !q?.rows?.length) return null;
 
-  const period     = q.headers[0];
+  // Screener table is oldest-first (left→right), so last element = most recent quarter
+  const period     = q.headers[q.headers.length - 1];
   const revenueRow = q.rows.find(r => REVENUE_LABELS.test(r.label?.trim()));
   const profitRow  = q.rows.find(r => PROFIT_LABELS.test(r.label?.trim()));
 
@@ -42,10 +43,11 @@ function extractResultsSummary(scraped) {
     return ((curr - prev) / Math.abs(prev) * 100).toFixed(1);
   }
 
-  const revenue   = revenueRow?.values?.[0]  ?? null;
-  const revenueLY = revenueRow?.values?.[4]  ?? null; // same quarter, 1 year ago
-  const profit    = profitRow?.values?.[0]   ?? null;
-  const profitLY  = profitRow?.values?.[4]   ?? null;
+  const len       = revenueRow?.values?.length ?? profitRow?.values?.length ?? 0;
+  const revenue   = revenueRow?.values?.[len - 1]  ?? null; // most recent quarter
+  const revenueLY = revenueRow?.values?.[len - 5]  ?? null; // same quarter 1 year ago
+  const profit    = profitRow?.values?.[len - 1]   ?? null;
+  const profitLY  = profitRow?.values?.[len - 5]   ?? null;
 
   return {
     period,
@@ -127,7 +129,9 @@ async function main() {
       continue;
     }
 
-    const storedPeriod = stock.earnings_history?.quarterly?.headers?.[0] ?? null;
+    // headers are oldest-first on Screener — use last element as latest period
+    const storedHeaders = stock.earnings_history?.quarterly?.headers ?? [];
+    const storedPeriod  = storedHeaders[storedHeaders.length - 1] ?? null;
 
     let scraped;
     try {
@@ -144,7 +148,8 @@ async function main() {
       continue;
     }
 
-    const newPeriod = scraped?.quarterly?.headers?.[0] ?? null;
+    const scrapedHeaders = scraped?.quarterly?.headers ?? [];
+    const newPeriod      = scrapedHeaders[scrapedHeaders.length - 1] ?? null;
     if (!newPeriod || newPeriod === storedPeriod) {
       process.stdout.write(`[${ticker}] up-to-date (${newPeriod ?? 'no data'})\n`);
       skipped++;
