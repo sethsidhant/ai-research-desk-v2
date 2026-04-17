@@ -115,7 +115,7 @@ async function main() {
 
   console.log(`Checking ${stocks.length} stocks for new quarterly results...\n`);
 
-  let alerted = 0, skipped = 0, failed = 0;
+  let alerted = 0, skipped = 0, noHistory = 0, failed = 0;
   const alertedTickers = [];
 
   for (const stock of stocks) {
@@ -124,7 +124,7 @@ async function main() {
 
     // Skip stocks with no prior history — avoids first-fetch false positives
     if (!stock.earnings_history) {
-      skipped++;
+      noHistory++;
       await sleep(500);
       continue;
     }
@@ -228,14 +228,14 @@ async function main() {
   }
 
   const durationSecs = Math.round((Date.now() - startedAt.getTime()) / 1000);
-  const summary = `Alerted: ${alerted}, Skipped: ${skipped}, Failed: ${failed} — ${durationSecs}s`;
+  const summary = `Alerted: ${alerted}, Up-to-date: ${skipped}, No history: ${noHistory}, Failed: ${failed} — ${durationSecs}s`;
   console.log(`\n[earningsAlertAgent] Done — ${summary}`);
 
   await supabase.from('agent_reports').insert({
     agent_name: 'earnings_alert',
     status:     failed > 0 ? 'warning' : 'ok',
     summary,
-    report:     { alerted: alertedTickers, skipped, failed, total: stocks.length, duration_secs: durationSecs },
+    report:     { alerted: alertedTickers, up_to_date: skipped, no_history: noHistory, failed, total: stocks.length, duration_secs: durationSecs },
     ran_at:     startedAt.toISOString(),
   });
 }
