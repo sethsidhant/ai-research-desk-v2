@@ -39,6 +39,25 @@ function isEarningsSeason() {
   });
 }
 
+// ── Earnings alert scheduler (every 4h, earnings season only, incl. Saturdays) ─
+let earningsAlertRunning = false;
+
+async function maybeRunEarningsAlert() {
+  if (!isEarningsSeason())       return;
+  if (earningsAlertRunning)      { console.log('[earningsAlert] Previous run still in progress — skipping.'); return; }
+
+  earningsAlertRunning = true;
+  console.log('[earningsAlert] Earnings season active — spawning earningsAlertAgent...');
+  const child = spawn('node', [path.join(__dirname, 'earningsAlertAgent.js')], {
+    stdio: 'inherit',
+    env: process.env,
+  });
+  child.on('exit', code => {
+    console.log(`[earningsAlert] earningsAlertAgent exited with code ${code}`);
+    earningsAlertRunning = false;
+  });
+}
+
 async function maybeRunHistoryRefresh(supabase) {
   if (!isEarningsSeason()) return;
 
@@ -100,6 +119,12 @@ async function main() {
   // Earnings season: run history refresh daily (check now + every 24h)
   await maybeRunHistoryRefresh(supabase);
   setInterval(() => maybeRunHistoryRefresh(supabase), 24 * 60 * 60 * 1000);
+
+  // Earnings season: run alert agent every 4h incl. Saturdays (staggered 2min after startup)
+  setTimeout(() => {
+    maybeRunEarningsAlert();
+    setInterval(maybeRunEarningsAlert, 4 * 60 * 60 * 1000);
+  }, 2 * 60 * 1000);
 }
 
 main();

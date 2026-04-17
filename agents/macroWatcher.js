@@ -66,7 +66,23 @@ const SOURCES = [
   },
 ];
 
-const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+// ── Adaptive polling intervals (IST) ──────────────────────────────────────────
+// Market hours   Mon–Fri 09:00–15:30 →  5 min  (fully live)
+// Pre-market     Mon–Fri 07:00–09:00 → 10 min  (gap-up/down prep)
+// Post-market    Mon–Fri 15:30–21:00 → 15 min  (results, filings)
+// Overnight      Mon–Fri 21:00–07:00 → 30 min  (nothing actionable until morning)
+// Weekend        Sat–Sun all day     → 60 min  (lands well before Monday open)
+function getPollIntervalMs() {
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+  const day = now.getDay(); // 0=Sun 1=Mon … 5=Fri 6=Sat
+  const hm  = now.getHours() * 60 + now.getMinutes();
+
+  if (day === 0 || day === 6)                          return 60 * 60 * 1000; // weekend
+  if (hm >= 9 * 60     && hm < 15 * 60 + 30)          return  5 * 60 * 1000; // market hours
+  if (hm >= 7 * 60     && hm < 9 * 60)                return 10 * 60 * 1000; // pre-market
+  if (hm >= 15 * 60 + 30 && hm < 21 * 60)             return 15 * 60 * 1000; // post-market
+  return 30 * 60 * 1000;                                                       // overnight
+}
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ── Persistence (last-seen item GUID/link) ────────────────────────────────────
@@ -437,9 +453,14 @@ async function poll() {
 }
 
 function start() {
-  console.log(`[macroWatcher] Starting — ${SOURCES.length} source(s), poll every ${POLL_INTERVAL_MS / 60000} min, dedup enabled`);
-  poll();
-  setInterval(poll, POLL_INTERVAL_MS);
+  console.log(`[macroWatcher] Starting — ${SOURCES.length} source(s), adaptive polling enabled`);
+  async function scheduledPoll() {
+    await poll();
+    const nextMs = getPollIntervalMs();
+    console.log(`[macroWatcher] Next poll in ${nextMs / 60000}min`);
+    setTimeout(scheduledPoll, nextMs);
+  }
+  scheduledPoll();
 }
 
 module.exports = { start };

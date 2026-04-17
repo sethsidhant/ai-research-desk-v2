@@ -152,7 +152,7 @@ export default async function AdminPage() {
   const recentUsers = allUsers.filter(u => u.created_at && new Date(u.created_at) > new Date(thirtyDaysAgoISO)).length
 
   // ── 7. Agent reports ──────────────────────────────────────────────────────
-  const AGENT_NAMES = ['token_health_check', 'heartbeat_monitor', 'onboarding_watchdog', 'data_quality_agent', 'history_refresh']
+  const AGENT_NAMES = ['token_health_check', 'heartbeat_monitor', 'onboarding_watchdog', 'data_quality_agent', 'history_refresh', 'earnings_alert']
   const { data: agentReportRows } = await adminSupabase
     .from('agent_reports')
     .select('agent_name, status, summary, report, ran_at')
@@ -254,10 +254,18 @@ export default async function AdminPage() {
               {
                 key: 'history_refresh',
                 title: 'History Refresh',
-                designation: 'Results Tracker',
+                designation: 'Daily Sync',
                 schedule: 'Earnings season · Daily (Railway)',
+                icon: '🔄',
+                description: 'Full Screener history sync for all stocks once per day during earnings season. Ensures all 6 sections (quarterly, annual, balance sheet, ratios…) are up to date.',
+              },
+              {
+                key: 'earnings_alert',
+                title: 'Earnings Alert',
+                designation: 'Results Tracker',
+                schedule: 'Earnings season · Every 4h incl. Sat (Railway)',
                 icon: '📊',
-                description: 'Refreshes Screener quarterly/annual history for all watchlist and portfolio stocks during earnings seasons. Sends Telegram alerts when new results are available.',
+                description: 'Scans for new quarterly results every 4 hours including Saturdays. Sends targeted Telegram notification with Revenue + Net Profit (YoY) only to users who hold each stock.',
               },
             ].map(agent => {
               const r = latestReports[agent.key]
