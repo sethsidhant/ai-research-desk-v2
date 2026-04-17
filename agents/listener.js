@@ -60,16 +60,35 @@ async function poll() {
       return;
     }
 
+    // Two tiers:
+    //   1. Never onboarded (fundamentals_updated_at IS NULL) → onboard all immediately
+    //   2. Stale (>14 days old) → max 1 per poll cycle to avoid hammering Screener
+    // This means a user adding a never-seen stock gets data within seconds.
+    // A user adding a stock another user had (but stale) gets data within minutes.
+    const staleThreshold = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
     const { data } = await supabase
       .from('stocks')
-      .select('ticker')
-      .is('fundamentals_updated_at', null)
+      .select('ticker, fundamentals_updated_at')
+      .or(`fundamentals_updated_at.is.null,fundamentals_updated_at.lt.${staleThreshold}`)
       .in('id', trackedIds);
 
-    const pending = (data ?? []).map(s => s.ticker).filter(Boolean);
+    const rows           = data ?? [];
+    const neverOnboarded = rows.filter(s => !s.fundamentals_updated_at).map(s => s.ticker).filter(Boolean);
+    const stale          = rows.filter(s =>  s.fundamentals_updated_at).map(s => s.ticker).filter(Boolean);
 
-    console.log(`[listener] Poll: ${pending.length} stocks need onboarding${pending.length ? ': ' + pending.join(', ') : ''}`)
-    for (const ticker of pending) onboard(ticker);
+    if (!rows.length) {
+      console.log('[listener] Poll: all stocks up to date');
+      return;
+    }
+
+    if (neverOnboarded.length) console.log(`[listener] Poll: first-time onboard — ${neverOnboarded.join(', ')}`);
+    if (stale.length)          console.log(`[listener] Poll: stale refresh queue (${stale.length}) — next: ${stale[0]}`);
+
+    // Process all first-timers immediately
+    for (const ticker of neverOnboarded) onboard(ticker);
+
+    // Process at most 1 stale stock per poll cycle — trickle through the backlog
+    if (stale.length && !processing.has(stale[0])) onboard(stale[0]);
   } catch (err) {
     console.error(`[listener] Poll error:`, err.message);
   }
