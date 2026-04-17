@@ -60,35 +60,61 @@ async function poll() {
       return;
     }
 
-    // Two tiers:
+    // Three tiers:
     //   1. Never onboarded (fundamentals_updated_at IS NULL) → onboard all immediately
-    //   2. Stale (>14 days old) → max 1 per poll cycle to avoid hammering Screener
-    // This means a user adding a never-seen stock gets data within seconds.
-    // A user adding a stock another user had (but stale) gets data within minutes.
-    const staleThreshold = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+    //   2. Stale fundamentals (>14 days) → max 1 per poll cycle
+    //   3. Stale scores (latest daily_score is >1 day old) → max 1 per poll cycle
+    // Tier 3 handles remove-and-re-add: even if fundamentals are fresh, missing
+    // daily_scores (stock was untracked) means RSI/DMA are stale until re-onboarded.
+    const staleThreshold   = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+    const yesterdayIST     = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+    yesterdayIST.setDate(yesterdayIST.getDate() - 1);
+    const yesterdayStr     = yesterdayIST.toISOString().slice(0, 10);
+
     const { data } = await supabase
       .from('stocks')
       .select('ticker, fundamentals_updated_at')
       .or(`fundamentals_updated_at.is.null,fundamentals_updated_at.lt.${staleThreshold}`)
       .in('id', trackedIds);
 
+    // Separately find stocks with stale/missing daily_scores (fresh fundamentals but absent from pipeline)
+    const { data: recentScores } = await supabase
+      .from('daily_scores')
+      .select('stock_id, date')
+      .in('stock_id', trackedIds)
+      .gte('date', yesterdayStr);
+    const stocksWithRecentScore = new Set((recentScores ?? []).map(r => r.stock_id));
+    const { data: freshStocks } = await supabase
+      .from('stocks')
+      .select('id, ticker, fundamentals_updated_at')
+      .not('fundamentals_updated_at', 'is', null)
+      .gte('fundamentals_updated_at', staleThreshold)
+      .in('id', trackedIds);
+    const staleScoreTickers = (freshStocks ?? [])
+      .filter(s => !stocksWithRecentScore.has(s.id))
+      .map(s => s.ticker)
+      .filter(Boolean);
+
     const rows           = data ?? [];
     const neverOnboarded = rows.filter(s => !s.fundamentals_updated_at).map(s => s.ticker).filter(Boolean);
-    const stale          = rows.filter(s =>  s.fundamentals_updated_at).map(s => s.ticker).filter(Boolean);
+    const staleFundamentals = rows.filter(s => s.fundamentals_updated_at).map(s => s.ticker).filter(Boolean);
 
-    if (!rows.length) {
+    // Merge stale queues — fundamentals first, then score-only gaps
+    const staleQueue = [...new Set([...staleFundamentals, ...staleScoreTickers])];
+
+    if (!neverOnboarded.length && !staleQueue.length) {
       console.log('[listener] Poll: all stocks up to date');
       return;
     }
 
     if (neverOnboarded.length) console.log(`[listener] Poll: first-time onboard — ${neverOnboarded.join(', ')}`);
-    if (stale.length)          console.log(`[listener] Poll: stale refresh queue (${stale.length}) — next: ${stale[0]}`);
+    if (staleQueue.length)     console.log(`[listener] Poll: stale queue (${staleQueue.length}) — next: ${staleQueue[0]}`);
 
     // Process all first-timers immediately
     for (const ticker of neverOnboarded) onboard(ticker);
 
     // Process at most 1 stale stock per poll cycle — trickle through the backlog
-    if (stale.length && !processing.has(stale[0])) onboard(stale[0]);
+    if (staleQueue.length && !processing.has(staleQueue[0])) onboard(staleQueue[0]);
   } catch (err) {
     console.error(`[listener] Poll error:`, err.message);
   }
