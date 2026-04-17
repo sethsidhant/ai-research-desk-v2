@@ -190,7 +190,9 @@ function keyWords(text) {
 
 async function isDuplicateStory(summary, channelId) {
   const since = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-  const { data } = await supabase.from('macro_alerts').select('summary').gte('created_at', since).neq('channel', channelId);
+  // Check ALL recent entries (same source included) — multiple trump mirror URLs can carry the
+  // same story under different GUIDs, so intra-source dedup is needed too.
+  const { data } = await supabase.from('macro_alerts').select('summary').gte('created_at', since);
   if (!data?.length) return false;
   const newWords = new Set(keyWords(summary));
   if (newWords.size < 3) return false;
