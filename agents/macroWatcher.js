@@ -85,6 +85,10 @@ function getPollIntervalMs() {
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+// First poll after startup: silence Telegram to absorb backlog from Railway restart.
+// All subsequent polls are real-time — send regardless of pubDate (which RSSHub can serve stale).
+let isFirstPoll = true;
+
 // ── Persistence (last-seen item GUID/link) ────────────────────────────────────
 
 async function getLastGuid(sourceId) {
@@ -427,14 +431,13 @@ async function processSource(source) {
         }
       } else {
         console.log(`[macroWatcher] ${label}${important ? ' 🚨' : ''}: ${summary.slice(0, 90)}…`);
-        const ageMs = item.pubDate ? Date.now() - new Date(item.pubDate).getTime() : 0;
-        if (ageMs < 2 * 60 * 60 * 1000) {
+        if (isFirstPoll) {
+          console.log(`[macroWatcher] ${label}: stored silently (startup catchup)`);
+        } else {
           const sentimentEmoji = sentiment === 'bull' ? '🟢' : sentiment === 'bear' ? '🔴' : '⚪';
           const tag  = forward_looking ? ' _(forward outlook)_' : '';
           const link = item.guid?.startsWith('http') ? `\n${item.guid}` : '';
           await sendMacro(`${sentimentEmoji} ${emoji} *Macro · ${label}*${tag}\n${summary}${link}`);
-        } else {
-          console.log(`[macroWatcher] ${label}: stored silently (item is ${Math.round(ageMs / 60000)}m old)`);
         }
       }
     }
@@ -450,6 +453,7 @@ async function poll() {
     await processSource(source);
     await sleep(2000);
   }
+  isFirstPoll = false; // all subsequent polls are real-time
 }
 
 function start() {
