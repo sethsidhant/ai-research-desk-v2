@@ -324,13 +324,19 @@ async function processSource(source) {
     if (guid === lastGuid) break; // hit last seen — stop
     // Prefer full content over title; strip HTML tags
     const raw = item.content || item.contentSnippet || item.title || '';
-    const text = raw
+    const cleaned = raw
       .replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')
       .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
-      // strip leading header line (e.g. "📣 Trump Truth Post – Mar 26, 10:29 PM\n\n")
-      .replace(/^[^\n]+\n\n/, '')
-      .replace(/\s+/g, ' ').trim();
+      .replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+    // Strip leading metadata header only when it looks like a channel/timestamp line
+    // (e.g. "📣 Trump Truth Post – Mar 26, 10:29 PM\n\n"). For MC posts the first line
+    // IS the article headline — stripping it leaves only "Read More ⤵️ https://..." which
+    // Haiku correctly skips. Only strip if what remains is longer than what was removed.
+    const afterStrip = cleaned.replace(/^[^\n]+\n\n/, '');
+    const text = (afterStrip.trim().length > cleaned.trim().length * 0.4
+      ? afterStrip
+      : cleaned
+    ).replace(/\s+/g, ' ').trim();
     newItems.push({ guid, text, pubDate: item.pubDate });
   }
 
