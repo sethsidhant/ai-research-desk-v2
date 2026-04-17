@@ -8,6 +8,7 @@ import PortfolioChart, { type ChartPoint } from './PortfolioChart'
 
 const POLL_INTERVAL        = 15000
 const ONBOARD_POLL_INTERVAL = 8000
+const SCORE_POLL_INTERVAL  = 5 * 60 * 1000  // 5 min — matches stockWatcher RSI flush cadence
 
 type PriceFlash  = 'up' | 'down' | null
 type PriceChange = { change: number; changePct: number }
@@ -279,6 +280,39 @@ export default function LivePriceTable({
     }, ONBOARD_POLL_INTERVAL)
     return () => clearInterval(id)
   }, [initialRows])
+
+  // Poll RSI / DMA / composite scores every 5 min — reflects stockWatcher flush + post-onboard updates
+  // without needing a full page refresh
+  useEffect(() => {
+    async function pollScores() {
+      try {
+        const res  = await fetch('/api/live-scores')
+        if (!res.ok) return
+        const json = await res.json()
+        if (!json.scores) return
+        setRows(prev => prev.map(row => {
+          const s = json.scores[row.ticker]
+          if (!s) return row
+          return {
+            ...row,
+            rsi:              s.rsi              ?? row.rsi,
+            rsi_signal:       s.rsi_signal       ?? row.rsi_signal,
+            dma_50:           s.dma_50           ?? row.dma_50,
+            dma_200:          s.dma_200          ?? row.dma_200,
+            above_50_dma:     s.above_50_dma     ?? row.above_50_dma,
+            above_200_dma:    s.above_200_dma    ?? row.above_200_dma,
+            composite_score:  s.composite_score  ?? row.composite_score,
+            classification:   s.classification   ?? row.classification,
+            suggested_action: s.suggested_action ?? row.suggested_action,
+            score_date:       s.score_date       ?? row.score_date,
+          }
+        }))
+      } catch { /* silent */ }
+    }
+    pollScores() // run immediately on mount to catch any post-server-render updates
+    const id = setInterval(pollScores, SCORE_POLL_INTERVAL)
+    return () => clearInterval(id)
+  }, [])
 
   useEffect(() => {
     if (!lastUpdated) return
