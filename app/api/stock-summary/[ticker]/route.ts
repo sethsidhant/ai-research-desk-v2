@@ -28,3 +28,4 @@ export async function GET(
 
   return NextResponse.json({ stock, score: scores?.[0] ?? null })
 }
+

@@ -469,15 +469,15 @@ async function main() {
   const stock = stocks?.[0];
   if (!stock) { console.error(`Stock ${ticker} not found`); process.exit(1); }
 
-  // Skip only if fundamentals, news AND summary are all populated today
+  // Skip only if fundamentals and news are both done today
+  // AI summary is user-triggered only — never auto-generated during onboarding
   const today = new Date().toISOString().slice(0, 10);
   const fundamentalsDone = stock.fundamentals_updated_at &&
     new Date(stock.fundamentals_updated_at).toISOString().slice(0, 10) === today;
-  const newsDone    = !!stock.last_news_update &&
+  const newsDone = !!stock.last_news_update &&
     new Date(stock.last_news_update).toISOString().slice(0, 10) === today;
-  const summaryDone = stock.summary_date === today && !!stock.ai_summary;
 
-  if (fundamentalsDone && newsDone && summaryDone) {
+  if (fundamentalsDone && newsDone) {
     console.log(`  Already fully onboarded today — skipping`);
     process.exit(0);
   }
@@ -495,8 +495,7 @@ async function main() {
       await runHistory({ ...stock, earnings_history: refreshed?.earnings_history ?? null });
       if (!newsDone) await runNews(stock);
       else console.log(`\n[2/3] News already fetched — skipping`);
-      if (!summaryDone) await runSummary(stock);
-      else console.log(`\n[3/3] Summary already written today — skipping`);
+      // Step 3 (AI summary) is user-triggered only — see POST /api/stock-summary/[ticker]
     }
     console.log(`\n[onboardStock] ✓ ${ticker} fully onboarded`);
     process.exit(0);
