@@ -107,14 +107,21 @@ async function poll() {
       return;
     }
 
-    if (neverOnboarded.length) console.log(`[listener] Poll: first-time onboard — ${neverOnboarded.join(', ')}`);
+    if (neverOnboarded.length) console.log(`[listener] Poll: first-time (${neverOnboarded.length}) — ${neverOnboarded.join(', ')}`);
     if (staleQueue.length)     console.log(`[listener] Poll: stale queue (${staleQueue.length}) — next: ${staleQueue[0]}`);
 
-    // Process all first-timers immediately
-    for (const ticker of neverOnboarded) onboard(ticker);
-
-    // Process at most 1 stale stock per poll cycle — trickle through the backlog
-    if (staleQueue.length && !processing.has(staleQueue[0])) onboard(staleQueue[0]);
+    // Unified concurrency cap — never-onboarded first, stale second.
+    // Caps at MAX_CONCURRENT across both queues so a 30-stock CSV import
+    // doesn't spawn 30 simultaneous Screener scrapers and get the IP blocked.
+    // With 30s poll interval and 3 slots, 30 stocks onboard in ~5 min.
+    const MAX_CONCURRENT = 3;
+    const available = MAX_CONCURRENT - processing.size;
+    if (available <= 0) {
+      console.log(`[listener] Poll: ${processing.size} onboards running — waiting for slot`);
+      return;
+    }
+    const unified = [...neverOnboarded, ...staleQueue].filter(t => !processing.has(t));
+    for (const ticker of unified.slice(0, available)) onboard(ticker);
   } catch (err) {
     console.error(`[listener] Poll error:`, err.message);
   }
