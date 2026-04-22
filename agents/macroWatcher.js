@@ -337,7 +337,7 @@ async function processSource(source) {
       ? afterStrip
       : cleaned
     ).replace(/\s+/g, ' ').trim();
-    newItems.push({ guid, text, pubDate: item.pubDate });
+    newItems.push({ guid, text, pubDate: item.pubDate, link: item.link ?? null });
   }
 
   if (!newItems.length) {
@@ -444,7 +444,9 @@ async function processSource(source) {
         } else {
           const sentimentEmoji = sentiment === 'bull' ? '🟢' : sentiment === 'bear' ? '🔴' : '⚪';
           const tag  = forward_looking ? ' _(forward outlook)_' : '';
-          const link = item.guid?.startsWith('http') ? `\n${item.guid}` : '';
+          // Prefer item.link (actual article URL) over item.guid (often a Telegram message URL)
+          const articleUrl = item.link?.startsWith('http') ? item.link : item.guid?.startsWith('http') ? item.guid : null;
+          const link = articleUrl ? `\n${articleUrl}` : '';
           await sendMacro(`${sentimentEmoji} ${emoji} *Macro · ${label}*${tag}\n${summary}${link}`);
         }
       }
