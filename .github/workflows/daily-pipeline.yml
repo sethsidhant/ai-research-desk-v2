@@ -100,11 +100,13 @@ jobs:
 
       - name: Fetch fresh Kite token from Supabase
         run: |
-          TOKEN=$(curl -s "${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}/rest/v1/app_settings?key=eq.kite_access_token&select=value" \
+          RESPONSE=$(curl -s "${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}/rest/v1/app_settings?key=eq.kite_access_token&select=value" \
             -H "apikey: ${{ secrets.SUPABASE_SERVICE_KEY }}" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}" | jq -r '.[0].value')
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}")
+          TOKEN=$(echo "$RESPONSE" | jq -r '.[0].value' 2>/dev/null || echo "")
           if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
             echo "⚠ Could not fetch token from Supabase — falling back to secret"
+            echo "⚠ Raw response: ${RESPONSE:0:200}"
           else
             echo "$TOKEN" > .kite_token
             echo "✓ Fresh token written to .kite_token (${TOKEN:0:8}...)"

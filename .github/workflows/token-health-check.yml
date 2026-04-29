@@ -51,11 +51,15 @@ jobs:
 
       - name: Fetch token from Supabase
         run: |
-          TOKEN=$(curl -s "${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}/rest/v1/app_settings?key=eq.kite_access_token&select=value" \
+          RESPONSE=$(curl -s "${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}/rest/v1/app_settings?key=eq.kite_access_token&select=value" \
             -H "apikey: ${{ secrets.SUPABASE_SERVICE_KEY }}" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}" | jq -r '.[0].value')
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}")
+          TOKEN=$(echo "$RESPONSE" | jq -r '.[0].value' 2>/dev/null || echo "")
           if [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ]; then
             echo "$TOKEN" > .kite_token
+            echo "✓ Token written to .kite_token"
+          else
+            echo "⚠ Could not parse token from Supabase response: ${RESPONSE:0:200}"
           fi
 
       - name: Run token health check
