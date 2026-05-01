@@ -46,16 +46,6 @@ const SOURCES = [
       'https://rsshub.app/telegram/channel/trump_ts_posts',
     ],
   },
-  {
-    id:     'rbi',
-    label:  'RBI',
-    emoji:  '🏦',
-    filterMode: 'loose', // central bank — rate decisions, circulars, MPC statements — always relevant
-    rssUrls: [
-      'https://rbi.org.in/Scripts/RSS.aspx',
-      'https://www.rbi.org.in/Scripts/RSS.aspx',
-    ],
-  },
   // ── Tier 2: Indian financial media (Telegram channels = fastest delivery) ──
   {
     id:         'moneycontrol',
@@ -85,16 +75,6 @@ const SOURCES = [
     filterMode: 'strict',
     rssUrls: [
       'https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms',
-    ],
-  },
-  {
-    id:     'reuters',
-    label:  'Reuters',
-    emoji:  '🌐',
-    filterMode: 'strict', // global news — strict filter for India-relevant macro only
-    rssUrls: [
-      'https://rsshub.ktachibana.party/reuters/category/businessNews',
-      'https://rsshub.ktachibana.party/reuters/category/marketsNews',
     ],
   },
 ];
@@ -477,8 +457,10 @@ async function processSource(source) {
         }
       } else {
         console.log(`[macroWatcher] ${label}${important ? ' 🚨' : ''}: ${summary.slice(0, 90)}…`);
-        if (isFirstPoll) {
-          console.log(`[macroWatcher] ${label}: stored silently (startup catchup)`);
+        const ageMs   = item.pubDate ? Date.now() - new Date(item.pubDate).getTime() : Infinity;
+        const isFresh = ageMs < 120 * 60 * 1000; // posted within last 2h (extended for outage recovery)
+        if (isFirstPoll && !isFresh) {
+          console.log(`[macroWatcher] ${label}: stored silently (startup catchup — ${Math.round(ageMs / 60000)}min old)`);
         } else {
           const sentimentEmoji = sentiment === 'bull' ? '🟢' : sentiment === 'bear' ? '🔴' : '⚪';
           const tag  = forward_looking ? ' _(forward outlook)_' : '';
