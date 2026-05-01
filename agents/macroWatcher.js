@@ -52,7 +52,8 @@ const SOURCES = [
     emoji:  '🏦',
     filterMode: 'loose', // central bank — rate decisions, circulars, MPC statements — always relevant
     rssUrls: [
-      'https://rbi.org.in/scripts/RSS.aspx',
+      'https://rbi.org.in/Scripts/RSS.aspx',
+      'https://www.rbi.org.in/Scripts/RSS.aspx',
     ],
   },
   // ── Tier 2: Indian financial media (Telegram channels = fastest delivery) ──
@@ -87,35 +88,13 @@ const SOURCES = [
     ],
   },
   {
-    id:     'business_standard',
-    label:  'Business Standard',
-    emoji:  '📈',
-    filterMode: 'loose', // dedicated Indian financial daily
-    rssUrls: [
-      'https://www.business-standard.com/rss/markets-106.rss',
-      'https://www.business-standard.com/rss/economy-policy-102.rss',
-    ],
-  },
-  {
     id:     'reuters',
     label:  'Reuters',
     emoji:  '🌐',
     filterMode: 'strict', // global news — strict filter for India-relevant macro only
     rssUrls: [
-      'https://feeds.reuters.com/reuters/businessNews',
-      'https://feeds.reuters.com/reuters/marketsNews',
-    ],
-  },
-  // ── Tier 4: Community / social ─────────────────────────────────────────────
-  {
-    id:          'reddit_india',
-    label:       'r/IndiaInvestments',
-    emoji:       '🔴',
-    filterMode:  'strict', // community posts — filter for macro/sector insights only
-    contentMode: 'reddit', // use item.title as primary text (link posts have no body)
-    rssUrls: [
-      'https://www.reddit.com/r/IndiaInvestments/.rss',
-      'https://old.reddit.com/r/IndiaInvestments/.rss',
+      'https://rsshub.ktachibana.party/reuters/category/businessNews',
+      'https://rsshub.ktachibana.party/reuters/category/marketsNews',
     ],
   },
 ];
