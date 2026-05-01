@@ -31,6 +31,7 @@ const rssParser  = new RSSParser({ timeout: 15000, headers: { 'User-Agent': 'Moz
 // emoji:  used in Telegram notifications
 
 const SOURCES = [
+  // ── Tier 1: Fastest / highest signal ──────────────────────────────────────
   {
     id:     'trump',
     label:  'Trump',
@@ -46,6 +47,16 @@ const SOURCES = [
     ],
   },
   {
+    id:     'rbi',
+    label:  'RBI',
+    emoji:  '🏦',
+    filterMode: 'loose', // central bank — rate decisions, circulars, MPC statements — always relevant
+    rssUrls: [
+      'https://rbi.org.in/scripts/RSS.aspx',
+    ],
+  },
+  // ── Tier 2: Indian financial media (Telegram channels = fastest delivery) ──
+  {
     id:         'moneycontrol',
     label:      'MoneyControl',
     emoji:      '📊',
@@ -56,12 +67,55 @@ const SOURCES = [
     ],
   },
   {
+    id:     'cnbctv18',
+    label:  'CNBC TV18',
+    emoji:  '📺',
+    filterMode: 'loose', // Indian markets TV channel — breaking market news
+    rssUrls: [
+      'https://rsshub.ktachibana.party/telegram/channel/CNBCTV18News',
+      'https://rsshub.app/telegram/channel/CNBCTV18News',
+    ],
+  },
+  // ── Tier 3: RSS feeds (slightly slower than Telegram but broader coverage) ──
+  {
     id:     'et_markets',
-    label:  'Markets News',
+    label:  'ET Markets',
     emoji:  '📰',
     filterMode: 'strict',
     rssUrls: [
       'https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms',
+    ],
+  },
+  {
+    id:     'business_standard',
+    label:  'Business Standard',
+    emoji:  '📈',
+    filterMode: 'loose', // dedicated Indian financial daily
+    rssUrls: [
+      'https://www.business-standard.com/rss/markets-106.rss',
+      'https://www.business-standard.com/rss/economy-policy-102.rss',
+    ],
+  },
+  {
+    id:     'reuters',
+    label:  'Reuters',
+    emoji:  '🌐',
+    filterMode: 'strict', // global news — strict filter for India-relevant macro only
+    rssUrls: [
+      'https://feeds.reuters.com/reuters/businessNews',
+      'https://feeds.reuters.com/reuters/marketsNews',
+    ],
+  },
+  // ── Tier 4: Community / social ─────────────────────────────────────────────
+  {
+    id:          'reddit_india',
+    label:       'r/IndiaInvestments',
+    emoji:       '🔴',
+    filterMode:  'strict', // community posts — filter for macro/sector insights only
+    contentMode: 'reddit', // use item.title as primary text (link posts have no body)
+    rssUrls: [
+      'https://www.reddit.com/r/IndiaInvestments/.rss',
+      'https://old.reddit.com/r/IndiaInvestments/.rss',
     ],
   },
 ];
@@ -180,8 +234,8 @@ const FII_SECTORS = [
 ];
 
 // ── Cross-source story dedup ──────────────────────────────────────────────────
-// Returns true if a sufficiently similar summary already exists from a different
-// channel in the last 30 minutes (prevents MC + ET alerting on the same story).
+// Returns true if a sufficiently similar summary already exists from any channel
+// in the last 4 hours (prevents MC + ET alerting on the same story within a trading session).
 
 function keyWords(text) {
   const stop = new Set(['the','and','for','are','was','were','has','have','had','that','this','with','from','they','will','been','their','said','also','but','not','its','into','more','than','over','about','after','before','other','which','when','what','where','would','could','should']);
@@ -189,7 +243,7 @@ function keyWords(text) {
 }
 
 async function isDuplicateStory(summary, channelId) {
-  const since = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  const since = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(); // 4h: catches cross-source same-story within a trading session
   // Check ALL recent entries (same source included) — multiple trump mirror URLs can carry the
   // same story under different GUIDs, so intra-source dedup is needed too.
   const { data } = await supabase.from('macro_alerts').select('summary').gte('created_at', since);
@@ -303,7 +357,7 @@ ${postsBlock}`,
 // ── Per-source processing ─────────────────────────────────────────────────────
 
 async function processSource(source) {
-  const { id, label, emoji, rssUrls, filterMode = 'strict' } = source;
+  const { id, label, emoji, rssUrls, filterMode = 'strict', contentMode = 'default' } = source;
 
   const items = await fetchRSS(rssUrls);
   if (!items) {
@@ -333,10 +387,15 @@ async function processSource(source) {
     // IS the article headline — stripping it leaves only "Read More ⤵️ https://..." which
     // Haiku correctly skips. Only strip if what remains is longer than what was removed.
     const afterStrip = cleaned.replace(/^[^\n]+\n\n/, '');
-    const text = (afterStrip.trim().length > cleaned.trim().length * 0.4
+    const body = (afterStrip.trim().length > cleaned.trim().length * 0.4
       ? afterStrip
       : cleaned
     ).replace(/\s+/g, ' ').trim();
+    // Reddit link posts: item.content is boilerplate HTML ("submitted by… [link] [comments]")
+    // so body strips to junk. Title is the actual headline — use it as primary text.
+    const text = contentMode === 'reddit'
+      ? [item.title, body.length > 40 && !body.startsWith('http') ? body : ''].filter(Boolean).join(' — ')
+      : body;
     newItems.push({ guid, text, pubDate: item.pubDate, link: item.link ?? null });
   }
 
@@ -413,7 +472,7 @@ async function processSource(source) {
     } else {
       const { summary, important, sentiment, sectors, forward_looking } = result;
 
-      // Cross-source dedup: skip if another channel already reported this story in last 30 min
+      // Cross-source dedup: skip if a similar story already stored in last 4h
       const isDupe = await isDuplicateStory(summary, id);
       if (isDupe) {
         console.log(`[macroWatcher] ${label}: cross-source dupe skipped — ${summary.slice(0, 60)}`);

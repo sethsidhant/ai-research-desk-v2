@@ -106,7 +106,13 @@ async function heartbeat() {
 async function main() {
   console.log('[main] Starting all watchers...');
   userCache.start(); // start shared cache refresh (5 min cycle)
-  await ready; // wait for fresh Kite token before first poll
+  try {
+    await ready; // wait for fresh Kite token before first poll
+  } catch (err) {
+    // Don't crash if Supabase is temporarily down or Kite token unavailable on startup.
+    // Each watcher retries independently — they'll recover once DB is reachable.
+    console.warn('[main] Kite token unavailable at startup — watchers will retry:', err.message);
+  }
   indexWatcher.start();
   stockWatcher.start();
   filingWatcher.start();
@@ -126,5 +132,8 @@ async function main() {
     setInterval(maybeRunEarningsAlert, 4 * 60 * 60 * 1000);
   }, 2 * 60 * 1000);
 }
+
+process.on('uncaughtException',  err => console.error('[main] Uncaught exception:', err.message));
+process.on('unhandledRejection', err => console.error('[main] Unhandled rejection:', err?.message ?? err));
 
 main();
