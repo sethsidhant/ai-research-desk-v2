@@ -458,7 +458,7 @@ async function processSource(source) {
       } else {
         console.log(`[macroWatcher] ${label}${important ? ' 🚨' : ''}: ${summary.slice(0, 90)}…`);
         const ageMs   = item.pubDate ? Date.now() - new Date(item.pubDate).getTime() : Infinity;
-        const isFresh = ageMs < 120 * 60 * 1000; // posted within last 2h (extended for outage recovery)
+        const isFresh = ageMs < 30 * 60 * 1000; // posted within last 30min — alerts even on restart
         if (isFirstPoll && !isFresh) {
           console.log(`[macroWatcher] ${label}: stored silently (startup catchup — ${Math.round(ageMs / 60000)}min old)`);
         } else {
