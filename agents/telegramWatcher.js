@@ -254,11 +254,14 @@ async function run() {
 
   console.log('[telegramWatcher] Listening for new messages...');
 
-  // Keep alive — reconnect on disconnect
-  client.addEventHandler(() => {
-    console.log('[telegramWatcher] Disconnected — reconnecting...');
-    setTimeout(() => run(), 5000);
-  }, { className: 'Disconnected' });
+  // Keep alive — poll connection and reconnect if dropped
+  const keepAlive = setInterval(async () => {
+    if (!client.connected) {
+      clearInterval(keepAlive);
+      console.log('[telegramWatcher] Disconnected — reconnecting in 5s...');
+      setTimeout(() => run(), 5000);
+    }
+  }, 30000);
 }
 
 function start() {
