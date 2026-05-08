@@ -8,7 +8,7 @@ const indexWatcher      = require('./indexWatcher');
 const stockWatcher      = require('./stockWatcher');
 const filingWatcher     = require('./filingWatcher');
 const technicalWatcher  = require('./technicalWatcher');
-const trumpWatcher      = require('./trumpWatcher');
+const telegramWatcher   = require('./telegramWatcher');
 
 const { ready }       = require('./kiteClient');
 const { createClient } = require('@supabase/supabase-js');
@@ -117,7 +117,7 @@ async function main() {
   stockWatcher.start();
   filingWatcher.start();
   technicalWatcher.start();
-  trumpWatcher.start();
+  telegramWatcher.start();
   // listener.js starts itself on require
   heartbeat();
   setInterval(heartbeat, 60 * 1000); // update every 60s

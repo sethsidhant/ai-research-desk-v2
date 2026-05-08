@@ -1,5 +1,5 @@
-// trumpWatcher.js — Real-time Telegram channel monitoring via MTProto (gramjs)
-// Monitors Trump + MoneyControl channels with zero RSSHub caching lag.
+// telegramWatcher.js — Real-time Telegram channel monitoring via MTProto (gramjs)
+// Monitors Trump, MoneyControl, CNBC TV18 with zero RSSHub caching lag.
 // Requires a valid session string in Supabase (run telegramAuth.js locally first).
 
 require('dotenv').config({ path: '../.env.local' });
@@ -164,11 +164,11 @@ async function handleMessage(event, channel) {
       .from('macro_alerts').select('post_id').eq('post_id', postId).single();
     if (existing) return;
 
-    console.log(`[trumpWatcher] ${channel.label}: new message — ${text.slice(0, 80)}`);
+    console.log(`[telegramWatcher] ${channel.label}: new message — ${text.slice(0, 80)}`);
 
     const result = await filterAndSummarize(text, channel.filterMode);
     if (!result) {
-      console.log(`[trumpWatcher] ${channel.label}: skipped — ${text.slice(0, 60)}`);
+      console.log(`[telegramWatcher] ${channel.label}: skipped — ${text.slice(0, 60)}`);
       return;
     }
 
@@ -176,7 +176,7 @@ async function handleMessage(event, channel) {
 
     const isDupe = await isDuplicateStory(summary);
     if (isDupe) {
-      console.log(`[trumpWatcher] ${channel.label}: cross-source dupe skipped — ${summary.slice(0, 60)}`);
+      console.log(`[telegramWatcher] ${channel.label}: cross-source dupe skipped — ${summary.slice(0, 60)}`);
       return;
     }
 
@@ -194,18 +194,18 @@ async function handleMessage(event, channel) {
 
     if (error) {
       if (!error.message.includes('unique') && !error.message.includes('duplicate')) {
-        console.error(`[trumpWatcher] DB error: ${error.message}`);
+        console.error(`[telegramWatcher] DB error: ${error.message}`);
       }
       return;
     }
 
-    console.log(`[trumpWatcher] ${channel.label}${important ? ' 🚨' : ''}: ${summary.slice(0, 90)}…`);
+    console.log(`[telegramWatcher] ${channel.label}${important ? ' 🚨' : ''}: ${summary.slice(0, 90)}…`);
     const sentimentEmoji = sentiment === 'bull' ? '🟢' : sentiment === 'bear' ? '🔴' : '⚪';
     const tag = forward_looking ? ' _(forward outlook)_' : '';
     await sendMacro(`${sentimentEmoji} ${channel.emoji} *Macro · ${channel.label}*${tag}\n${summary}`);
 
   } catch (err) {
-    console.error(`[trumpWatcher] Handler error: ${err.message}`);
+    console.error(`[telegramWatcher] Handler error: ${err.message}`);
   }
 }
 
@@ -218,7 +218,7 @@ async function run() {
   const sessionString = sessionRow?.value ?? '';
 
   if (!sessionString) {
-    console.log('[trumpWatcher] No session found in Supabase — run telegramAuth.js locally first');
+    console.log('[telegramWatcher] No session found in Supabase — run telegramAuth.js locally first');
     return;
   }
 
@@ -228,7 +228,7 @@ async function run() {
   });
 
   await client.connect();
-  console.log('[trumpWatcher] Connected to Telegram MTProto');
+  console.log('[telegramWatcher] Connected to Telegram MTProto');
 
   // Resolve all channel usernames to entity IDs
   for (const channel of CHANNELS) {
@@ -236,9 +236,9 @@ async function run() {
       try {
         const entity = await client.getEntity(username);
         channelMap.set(entity.id.toString(), channel);
-        console.log(`[trumpWatcher] Monitoring: @${username} (${channel.label})`);
+        console.log(`[telegramWatcher] Monitoring: @${username} (${channel.label})`);
       } catch (e) {
-        console.warn(`[trumpWatcher] Could not resolve @${username}: ${e.message}`);
+        console.warn(`[telegramWatcher] Could not resolve @${username}: ${e.message}`);
       }
     }
   }
@@ -252,23 +252,23 @@ async function run() {
     await handleMessage(event, channel);
   }, new NewMessage({}));
 
-  console.log('[trumpWatcher] Listening for new messages...');
+  console.log('[telegramWatcher] Listening for new messages...');
 
   // Keep alive — reconnect on disconnect
   client.addEventHandler(() => {
-    console.log('[trumpWatcher] Disconnected — reconnecting...');
+    console.log('[telegramWatcher] Disconnected — reconnecting...');
     setTimeout(() => run(), 5000);
   }, { className: 'Disconnected' });
 }
 
 function start() {
   if (!API_ID || !API_HASH) {
-    console.log('[trumpWatcher] Skipped — TELEGRAM_API_ID/HASH not configured');
+    console.log('[telegramWatcher] Skipped — TELEGRAM_API_ID/HASH not configured');
     return;
   }
-  console.log('[trumpWatcher] Starting MTProto watcher...');
+  console.log('[telegramWatcher] Starting MTProto watcher...');
   run().catch(err => {
-    console.error('[trumpWatcher] Fatal:', err.message);
+    console.error('[telegramWatcher] Fatal:', err.message);
     setTimeout(() => start(), 30000); // retry after 30s
   });
 }

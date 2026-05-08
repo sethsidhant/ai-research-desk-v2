@@ -31,43 +31,8 @@ const rssParser  = new RSSParser({ timeout: 15000, headers: { 'User-Agent': 'Moz
 // emoji:  used in Telegram notifications
 
 const SOURCES = [
-  // ── Tier 1: Fastest / highest signal ──────────────────────────────────────
-  {
-    id:     'trump',
-    label:  'Trump',
-    emoji:  '🇺🇸',
-    // Official Telegram first (fastest), then English repost channel, then Truth Social mirror as last resort
-    filterMode: 'strict', // needs filtering: personal posts, sports, entertainment mixed in
-    rssUrls: [
-      'https://rsshub.ktachibana.party/telegram/channel/real_DonaldJTrump',
-      'https://rsshub.app/telegram/channel/real_DonaldJTrump',
-      'https://rsshub.ktachibana.party/telegram/channel/trumptruthposts',
-      'https://rsshub.ktachibana.party/telegram/channel/trump_ts_posts',
-      'https://rsshub.app/telegram/channel/trump_ts_posts',
-    ],
-  },
-  // ── Tier 2: Indian financial media (Telegram channels = fastest delivery) ──
-  {
-    id:         'moneycontrol',
-    label:      'MoneyControl',
-    emoji:      '📊',
-    filterMode: 'loose', // dedicated market channel — pass everything except clearly off-topic
-    rssUrls: [
-      'https://rsshub.ktachibana.party/telegram/channel/moneycontrolcom',
-      'https://rsshub.app/telegram/channel/moneycontrolcom',
-    ],
-  },
-  {
-    id:     'cnbctv18',
-    label:  'CNBC TV18',
-    emoji:  '📺',
-    filterMode: 'loose', // Indian markets TV channel — breaking market news
-    rssUrls: [
-      'https://rsshub.ktachibana.party/telegram/channel/CNBCTV18News',
-      'https://rsshub.app/telegram/channel/CNBCTV18News',
-    ],
-  },
-  // ── Tier 3: RSS feeds (slightly slower than Telegram but broader coverage) ──
+  // Trump, MoneyControl, CNBC TV18 removed — now handled in real-time by telegramWatcher.js via MTProto
+  // ── RSS feeds ─────────────────────────────────────────────────────────────
   {
     id:     'et_markets',
     label:  'ET Markets',
