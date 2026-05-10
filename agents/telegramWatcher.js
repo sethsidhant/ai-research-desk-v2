@@ -230,6 +230,9 @@ async function run() {
   await client.connect();
   console.log('[telegramWatcher] Connected to Telegram MTProto');
 
+  // Kickstart gramjs update loop — without this, channel messages are not received
+  await client.getDialogs({ limit: 1 });
+
   // Resolve all channel usernames to entity IDs
   for (const channel of CHANNELS) {
     for (const username of channel.usernames) {
@@ -247,6 +250,7 @@ async function run() {
   client.addEventHandler(async (event) => {
     const peerId  = event.message?.peerId;
     const chanId  = peerId?.channelId?.toString() ?? peerId?.userId?.toString();
+    console.log(`[telegramWatcher] event — chanId: ${chanId}, mapped: ${!!channelMap.get(chanId)}`);
     const channel = channelMap.get(chanId);
     if (!channel) return;
     await handleMessage(event, channel);
