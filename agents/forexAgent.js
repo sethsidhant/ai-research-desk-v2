@@ -99,63 +99,80 @@ async function sendAlert(row) {
   const yoy    = row.yoy_change_usd_mn;
   const yoyAbs = Math.abs(yoy / 1000).toFixed(1);
   const yoyDir = yoy >= 0 ? '+' : '-';
+  const date   = new Date(row.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
-  const date = new Date(row.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-
-  // Check 3M / 6M low proximity
-  const now3m = new Date(row.date + ' UTC'); now3m.setMonth(now3m.getMonth() - 3);
+  // Fetch 6M history for signal computation (total + gold)
   const now6m = new Date(row.date + ' UTC'); now6m.setMonth(now6m.getMonth() - 6);
+  const now3m = new Date(row.date + ' UTC'); now3m.setMonth(now3m.getMonth() - 3);
   const { data: history } = await supabase
     .from('forex_reserves')
-    .select('date, total_usd_mn')
+    .select('date, total_usd_mn, gold_usd_mn')
     .gte('date', now6m.toISOString().slice(0, 10))
     .order('date', { ascending: true });
 
-  const in3m  = (history ?? []).filter(r => r.date >= now3m.toISOString().slice(0, 10));
-  const in6m  = history ?? [];
-  const low3m = in3m.length  ? Math.min(...in3m.map(r => r.total_usd_mn))  : null;
-  const low6m = in6m.length  ? Math.min(...in6m.map(r => r.total_usd_mn))  : null;
-  const near6mLow = low6m !== null && (row.total_usd_mn - low6m) / low6m < 0.01;
-  const near3mLow = low3m !== null && (row.total_usd_mn - low3m) / low3m < 0.01;
-  const lowFlag = near6mLow
+  const hist6m = history ?? [];
+  const hist3m = hist6m.filter(r => r.date >= now3m.toISOString().slice(0, 10));
+  const prev   = hist6m.length >= 2 ? hist6m[hist6m.length - 2] : null;
+
+  // Total reserves: 3M/6M low flag
+  const low6m = hist6m.length ? Math.min(...hist6m.map(r => r.total_usd_mn)) : null;
+  const low3m = hist3m.length ? Math.min(...hist3m.map(r => r.total_usd_mn)) : null;
+  const lowFlag = (low6m !== null && (row.total_usd_mn - low6m) / low6m < 0.01)
     ? `\n⚠️ *Near 6M low* ($${(low6m/1000).toFixed(1)}B) — reserves under pressure`
-    : near3mLow
+    : (low3m !== null && (row.total_usd_mn - low3m) / low3m < 0.01)
     ? `\n⚠️ *Near 3M low* ($${(low3m/1000).toFixed(1)}B) — reserves under pressure`
     : '';
 
-  // Fetch FII net for the week ending on this forex date
-  const weekStart = new Date(row.date + ' UTC');
-  weekStart.setDate(weekStart.getDate() - 6);
+  // Gold signals
+  let goldSignal = '';
+  if (hist6m.length >= 4) {
+    const g       = row.gold_usd_mn;
+    const gVals6m = hist6m.map(r => r.gold_usd_mn);
+    const gVals3m = hist3m.map(r => r.gold_usd_mn);
+    const gMin6m  = Math.min(...gVals6m); const gMax6m = Math.max(...gVals6m);
+    const gMin3m  = gVals3m.length ? Math.min(...gVals3m) : null;
+    const gMax3m  = gVals3m.length ? Math.max(...gVals3m) : null;
+    const last4   = gVals6m.slice(-4); const prior4 = gVals6m.slice(-8, -4);
+    const avg4    = last4.reduce((s,v)=>s+v,0)/(last4.length||1);
+    const avg8    = prior4.length ? prior4.reduce((s,v)=>s+v,0)/prior4.length : avg4;
+    if      ((gMax6m - g) / gMax6m < 0.01)                            goldSignal = '🟡 Gold near *6M high* — RBI accumulating aggressively';
+    else if (gMax3m !== null && (gMax3m - g) / gMax3m < 0.01)         goldSignal = '🟡 Gold near *3M high* — RBI accumulating';
+    else if ((g - gMin6m) / gMin6m < 0.01)                            goldSignal = '⚠️ Gold near *6M low* — price drop or RBI selling';
+    else if (gMin3m !== null && (g - gMin3m) / gMin3m < 0.01)         goldSignal = '⚠️ Gold near *3M low* — price drop or RBI selling';
+    else if (avg4 > avg8 * 1.005)                                      goldSignal = '🟡 Gold trending *up* (4-week) — RBI diversifying';
+    else if (avg4 < avg8 * 0.995)                                      goldSignal = '📉 Gold trending *down* (4-week)';
+  }
+
+  // FII context for the week
+  const weekStart = new Date(row.date + ' UTC'); weekStart.setDate(weekStart.getDate() - 6);
   const { data: fiiRows } = await supabase
-    .from('fii_dii_daily')
-    .select('fii_net')
+    .from('fii_dii_daily').select('fii_net')
     .gte('date', weekStart.toISOString().slice(0, 10))
     .lte('date', row.date);
-
   const fiiWeekly = fiiRows?.reduce((s, r) => s + (r.fii_net ?? 0), 0) ?? null;
   let fiiLine = '';
   if (fiiWeekly !== null) {
-    const fiiAmt = Math.abs(Math.round(fiiWeekly)).toLocaleString('en-IN');
-    const fiiDir = fiiWeekly >= 0 ? 'bought' : 'sold';
+    const fiiAmt   = Math.abs(Math.round(fiiWeekly)).toLocaleString('en-IN');
     const fiiEmoji = fiiWeekly >= 0 ? '🟢' : '🔴';
-    // Contextual insight: correlate forex move with FII direction
-    let insight = '';
-    if (wow < 0 && fiiWeekly < 0)      insight = ' — RBI likely sold USD as FIIs pulled out';
-    else if (wow < 0 && fiiWeekly >= 0) insight = ' — reserves dipped despite FII inflows (oil/other outflows)';
-    else if (wow >= 0 && fiiWeekly < 0) insight = ' — reserves rose despite FII outflows (RBI accumulating)';
-    else if (wow >= 0 && fiiWeekly >= 0) insight = ' — FII inflows supporting reserves build-up';
+    const fiiDir   = fiiWeekly >= 0 ? 'bought' : 'sold';
+    const insight  = wow < 0 && fiiWeekly < 0  ? ' — RBI likely sold USD as FIIs pulled out'
+      : wow < 0 && fiiWeekly >= 0              ? ' — reserves dipped despite FII inflows'
+      : wow >= 0 && fiiWeekly < 0             ? ' — reserves rose despite FII outflows'
+      :                                          ' — FII inflows supporting reserves';
     fiiLine = `\n${fiiEmoji} FII ${fiiDir} ₹${fiiAmt}cr same week${insight}`;
   }
+
+  const goldLine = goldSignal ? `\n${goldSignal}` : '';
 
   const msg = `${emoji} 🏦 *Forex Reserves — ${date}*
 Total: *$${total}B* ${wowDir} $${wowAbs}B WoW
 
-💵 Foreign Currency Assets: $${(row.fca_usd_mn/1000).toFixed(1)}B
-🥇 Gold: $${(row.gold_usd_mn/1000).toFixed(1)}B
+💵 FCA: $${(row.fca_usd_mn/1000).toFixed(1)}B
+🥇 Gold: $${(row.gold_usd_mn/1000).toFixed(1)}B${prev ? ` (${row.gold_usd_mn >= prev.gold_usd_mn ? '▲' : '▼'} $${Math.abs((row.gold_usd_mn-prev.gold_usd_mn)/1000).toFixed(1)}B)` : ''}
 📋 SDRs: $${(row.sdrs_usd_mn/1000).toFixed(1)}B
-🏛 IMF Position: $${(row.imf_usd_mn/1000).toFixed(1)}B
+🏛 IMF: $${(row.imf_usd_mn/1000).toFixed(1)}B
 
-📅 YoY change: ${yoyDir}$${yoyAbs}B${fiiLine}${lowFlag}`;
+📅 YoY: ${yoyDir}$${yoyAbs}B${fiiLine}${lowFlag}${goldLine}`;
 
   await sendMacro(msg);
 }

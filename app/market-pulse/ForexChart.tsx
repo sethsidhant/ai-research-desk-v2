@@ -49,16 +49,35 @@ function StatCard({ label, value, sub, subColor }: { label: string; value: strin
   )
 }
 
-function BreakdownBar({ label, value, total, color }: { label: string; value: number; total: number; color: string }) {
+function BreakdownBar({
+  label, value, total, color, trend, badge,
+}: {
+  label: string; value: number; total: number; color: string
+  trend?: 'up' | 'down' | 'flat'; badge?: { text: string; color: string }
+}) {
   const pct = total > 0 ? (value / total) * 100 : 0
+  const trendIcon = trend === 'up' ? '↑' : trend === 'down' ? '↓' : null
+  const trendColor = trend === 'up' ? '#10b981' : trend === 'down' ? '#ef4444' : '#9ca3af'
   return (
-    <div className="flex items-center gap-3">
-      <div className="w-32 text-xs font-medium shrink-0" style={{ color: 'var(--artha-text-muted)' }}>{label}</div>
-      <div className="flex-1 h-2 rounded-full bg-gray-100 overflow-hidden">
-        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
+    <div className="space-y-1">
+      <div className="flex items-center gap-3">
+        <div className="w-32 text-xs font-medium shrink-0 flex items-center gap-1" style={{ color: 'var(--artha-text-muted)' }}>
+          {label}
+          {trendIcon && <span className="text-xs font-bold" style={{ color: trendColor }}>{trendIcon}</span>}
+        </div>
+        <div className="flex-1 h-2 rounded-full bg-gray-100 overflow-hidden">
+          <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
+        </div>
+        <div className="w-20 text-xs font-semibold text-right" style={{ color: 'var(--artha-text)' }}>{fmtB(value)}</div>
+        <div className="w-10 text-xs text-right" style={{ color: 'var(--artha-text-muted)' }}>{pct.toFixed(1)}%</div>
       </div>
-      <div className="w-20 text-xs font-semibold text-right" style={{ color: 'var(--artha-text)' }}>{fmtB(value)}</div>
-      <div className="w-10 text-xs text-right" style={{ color: 'var(--artha-text-muted)' }}>{pct.toFixed(1)}%</div>
+      {badge && (
+        <div className="ml-[152px]">
+          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full" style={{ color: badge.color, backgroundColor: badge.color + '18' }}>
+            {badge.text}
+          </span>
+        </div>
+      )}
     </div>
   )
 }
@@ -141,6 +160,39 @@ export default function ForexChart({ data, fiiDii = [] }: { data: Row[]; fiiDii?
   const low6m   = in6m.length ? Math.min(...in6m.map(d => d.total_usd_mn)) : null
   const near3mLow = low3m !== null && (latest.total_usd_mn - low3m) / low3m < 0.01
   const near6mLow = low6m !== null && (latest.total_usd_mn - low6m) / low6m < 0.01
+
+  // Gold signals
+  const goldIn3m   = in3m.map(d => d.gold_usd_mn)
+  const goldIn6m   = in6m.map(d => d.gold_usd_mn)
+  const gold3mLow  = goldIn3m.length ? Math.min(...goldIn3m) : null
+  const gold3mHigh = goldIn3m.length ? Math.max(...goldIn3m) : null
+  const gold6mLow  = goldIn6m.length ? Math.min(...goldIn6m) : null
+  const gold6mHigh = goldIn6m.length ? Math.max(...goldIn6m) : null
+
+  // 4-week trend: compare avg of last 4 vs prior 4 weeks
+  const last4Gold  = data.slice(-4).map(d => d.gold_usd_mn)
+  const prior4Gold = data.slice(-8, -4).map(d => d.gold_usd_mn)
+  const avg4  = last4Gold.reduce((s, v) => s + v, 0) / (last4Gold.length  || 1)
+  const avg8  = prior4Gold.reduce((s, v) => s + v, 0) / (prior4Gold.length || 1)
+  const goldTrend: 'up' | 'down' | 'flat' = avg4 > avg8 * 1.005 ? 'up' : avg4 < avg8 * 0.995 ? 'down' : 'flat'
+
+  // Gold % of total trend
+  const latestGoldPct = latest.gold_usd_mn / latest.total_usd_mn
+  const week4GoldPct  = data.length >= 4 ? data[data.length - 4].gold_usd_mn / data[data.length - 4].total_usd_mn : null
+  const goldPctTrend  = week4GoldPct ? (latestGoldPct > week4GoldPct + 0.002 ? 'up' : latestGoldPct < week4GoldPct - 0.002 ? 'down' : 'flat') : 'flat'
+
+  // Gold badge
+  const goldNear3mHigh = gold3mHigh !== null && (gold3mHigh - latest.gold_usd_mn) / gold3mHigh < 0.01
+  const goldNear3mLow  = gold3mLow  !== null && (latest.gold_usd_mn - gold3mLow)  / gold3mLow  < 0.01
+  const goldNear6mHigh = gold6mHigh !== null && (gold6mHigh - latest.gold_usd_mn) / gold6mHigh < 0.01
+  const goldNear6mLow  = gold6mLow  !== null && (latest.gold_usd_mn - gold6mLow)  / gold6mLow  < 0.01
+  const goldBadge = goldNear6mHigh ? { text: `Near 6M high ($${(gold6mHigh!/1000).toFixed(1)}B) · RBI accumulating`, color: '#10b981' }
+    : goldNear3mHigh ? { text: `Near 3M high ($${(gold3mHigh!/1000).toFixed(1)}B) · RBI accumulating`, color: '#10b981' }
+    : goldNear6mLow  ? { text: `Near 6M low ($${(gold6mLow!/1000).toFixed(1)}B) · price drop or RBI selling`, color: '#ef4444' }
+    : goldNear3mLow  ? { text: `Near 3M low ($${(gold3mLow!/1000).toFixed(1)}B) · price drop or RBI selling`, color: '#ef4444' }
+    : goldPctTrend === 'up'   ? { text: `Share rising — RBI diversifying into gold`, color: '#f59e0b' }
+    : goldPctTrend === 'down' ? { text: `Share falling — FCA growing faster`, color: '#9ca3af' }
+    : undefined
 
   // Build weekly FII map and merge into chart data
   const weeklyFiiMap = useMemo(() =>
@@ -315,7 +367,7 @@ export default function ForexChart({ data, fiiDii = [] }: { data: Row[]; fiiDii?
         </p>
         <div className="space-y-3">
           <BreakdownBar label="Foreign Currency" value={latest.fca_usd_mn}  total={latest.total_usd_mn} color="#6366f1" />
-          <BreakdownBar label="Gold"             value={latest.gold_usd_mn} total={latest.total_usd_mn} color="#f59e0b" />
+          <BreakdownBar label="Gold"             value={latest.gold_usd_mn} total={latest.total_usd_mn} color="#f59e0b" trend={goldTrend} badge={goldBadge} />
           <BreakdownBar label="SDRs"             value={latest.sdrs_usd_mn} total={latest.total_usd_mn} color="#10b981" />
           <BreakdownBar label="IMF Position"     value={latest.imf_usd_mn}  total={latest.total_usd_mn} color="#8b5cf6" />
         </div>
