@@ -102,6 +102,27 @@ async function sendAlert(row) {
 
   const date = new Date(row.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
+  // Check 3M / 6M low proximity
+  const now3m = new Date(row.date + ' UTC'); now3m.setMonth(now3m.getMonth() - 3);
+  const now6m = new Date(row.date + ' UTC'); now6m.setMonth(now6m.getMonth() - 6);
+  const { data: history } = await supabase
+    .from('forex_reserves')
+    .select('date, total_usd_mn')
+    .gte('date', now6m.toISOString().slice(0, 10))
+    .order('date', { ascending: true });
+
+  const in3m  = (history ?? []).filter(r => r.date >= now3m.toISOString().slice(0, 10));
+  const in6m  = history ?? [];
+  const low3m = in3m.length  ? Math.min(...in3m.map(r => r.total_usd_mn))  : null;
+  const low6m = in6m.length  ? Math.min(...in6m.map(r => r.total_usd_mn))  : null;
+  const near6mLow = low6m !== null && (row.total_usd_mn - low6m) / low6m < 0.01;
+  const near3mLow = low3m !== null && (row.total_usd_mn - low3m) / low3m < 0.01;
+  const lowFlag = near6mLow
+    ? `\n⚠️ *Near 6M low* ($${(low6m/1000).toFixed(1)}B) — reserves under pressure`
+    : near3mLow
+    ? `\n⚠️ *Near 3M low* ($${(low3m/1000).toFixed(1)}B) — reserves under pressure`
+    : '';
+
   // Fetch FII net for the week ending on this forex date
   const weekStart = new Date(row.date + ' UTC');
   weekStart.setDate(weekStart.getDate() - 6);
@@ -134,7 +155,7 @@ Total: *$${total}B* ${wowDir} $${wowAbs}B WoW
 📋 SDRs: $${(row.sdrs_usd_mn/1000).toFixed(1)}B
 🏛 IMF Position: $${(row.imf_usd_mn/1000).toFixed(1)}B
 
-📅 YoY change: ${yoyDir}$${yoyAbs}B${fiiLine}`;
+📅 YoY change: ${yoyDir}$${yoyAbs}B${fiiLine}${lowFlag}`;
 
   await sendMacro(msg);
 }

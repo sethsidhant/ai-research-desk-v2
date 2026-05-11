@@ -132,6 +132,16 @@ export default function ForexChart({ data, fiiDii = [] }: { data: Row[]; fiiDii?
   const maxVal = Math.max(...vals)
   const pad    = (maxVal - minVal) * 0.1
 
+  // 3M / 6M low proximity flags (threshold: within 1%)
+  const now3m   = new Date(); now3m.setMonth(now3m.getMonth() - 3)
+  const now6m   = new Date(); now6m.setMonth(now6m.getMonth() - 6)
+  const in3m    = data.filter(d => new Date(d.date) >= now3m)
+  const in6m    = data.filter(d => new Date(d.date) >= now6m)
+  const low3m   = in3m.length ? Math.min(...in3m.map(d => d.total_usd_mn)) : null
+  const low6m   = in6m.length ? Math.min(...in6m.map(d => d.total_usd_mn)) : null
+  const near3mLow = low3m !== null && (latest.total_usd_mn - low3m) / low3m < 0.01
+  const near6mLow = low6m !== null && (latest.total_usd_mn - low6m) / low6m < 0.01
+
   // Build weekly FII map and merge into chart data
   const weeklyFiiMap = useMemo(() =>
     buildWeeklyFii(fiiDii, filtered.map(d => d.date)),
@@ -155,7 +165,12 @@ export default function ForexChart({ data, fiiDii = [] }: { data: Row[]; fiiDii?
         <StatCard
           label="Total Reserves"
           value={fmtB(latest.total_usd_mn)}
-          sub={`As of ${fmtDateShort(latest.date)}`}
+          sub={
+            near6mLow ? `⚠️ Near 6M low (${fmtB(low6m!)})` :
+            near3mLow ? `⚠️ Near 3M low (${fmtB(low3m!)})` :
+            `As of ${fmtDateShort(latest.date)}`
+          }
+          subColor={near6mLow || near3mLow ? '#f59e0b' : undefined}
         />
         <StatCard
           label="Week-on-Week"
