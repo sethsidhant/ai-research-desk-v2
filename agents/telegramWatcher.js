@@ -1,12 +1,11 @@
-// telegramWatcher.js — Real-time Telegram channel monitoring via MTProto (gramjs)
-// Monitors Trump, MoneyControl, CNBC TV18 with zero RSSHub caching lag.
+// telegramWatcher.js — Telegram channel monitoring via MTProto polling (gramjs)
+// Polls Trump, MoneyControl, CNBC TV18 every 60s — no RSSHub caching lag.
 // Requires a valid session string in Supabase (run telegramAuth.js locally first).
 
 require('dotenv').config({ path: '../.env.local' });
 
 const { TelegramClient } = require('telegram');
 const { StringSession }  = require('telegram/sessions');
-const { NewMessage }     = require('telegram/events');
 const { createClient }   = require('@supabase/supabase-js');
 const Anthropic          = require('@anthropic-ai/sdk');
 const { sendMacro }      = require('./telegramAlert');
@@ -124,7 +123,7 @@ ${text.slice(0, 800)}`,
   }
 }
 
-// ── Cross-source semantic dedup (same as macroWatcher) ────────────────────────
+// ── Cross-source semantic dedup ────────────────────────────────────────────────
 
 function keyWords(text) {
   const stop = new Set(['the','and','for','are','was','were','has','have','had','that','this','with','from','they','will','been','their','said','also','but','not','its','into','more','than','over','about','after','before','other','which','when','what','where','would','could','should']);
@@ -145,26 +144,20 @@ async function isDuplicateStory(summary) {
   return false;
 }
 
-// ── Message handler ───────────────────────────────────────────────────────────
+// ── Process a single message ───────────────────────────────────────────────────
 
-// Map from channel entity ID → channel config
-let channelMap = new Map();
-
-async function handleMessage(event, channel) {
+async function processMessage(msg, channel) {
   try {
-    const msg  = event.message;
     const text = msg.message?.replace(/\s+/g, ' ').trim();
     if (!text || text.length < 15) return;
 
-    // Unique post_id per message
     const postId = `${channel.id}_${msg.id}`;
 
-    // DB dedup — skip if already processed
     const { data: existing } = await supabase
       .from('macro_alerts').select('post_id').eq('post_id', postId).single();
     if (existing) return;
 
-    console.log(`[telegramWatcher] ${channel.label}: new message — ${text.slice(0, 80)}`);
+    console.log(`[telegramWatcher] ${channel.label}: new — ${text.slice(0, 80)}`);
 
     const result = await filterAndSummarize(text, channel.filterMode);
     if (!result) {
@@ -176,7 +169,7 @@ async function handleMessage(event, channel) {
 
     const isDupe = await isDuplicateStory(summary);
     if (isDupe) {
-      console.log(`[telegramWatcher] ${channel.label}: cross-source dupe skipped — ${summary.slice(0, 60)}`);
+      console.log(`[telegramWatcher] ${channel.label}: dupe skipped — ${summary.slice(0, 60)}`);
       return;
     }
 
@@ -205,14 +198,45 @@ async function handleMessage(event, channel) {
     await sendMacro(`${sentimentEmoji} ${channel.emoji} *Macro · ${channel.label}*${tag}\n${summary}`);
 
   } catch (err) {
-    console.error(`[telegramWatcher] Handler error: ${err.message}`);
+    console.error(`[telegramWatcher] processMessage error: ${err.message}`);
   }
+}
+
+// ── Poll one channel entity for new messages ───────────────────────────────────
+
+async function pollChannel(client, entity, channel, lastIdMap, isFirstPoll) {
+  const messages = await client.getMessages(entity, { limit: 10 });
+  if (!messages?.length) return;
+
+  const lastKnown = lastIdMap.get(entity.id.toString()) ?? 0;
+  const newest    = messages[0].id;
+
+  // On first poll, seed the watermark and process messages from last 5 minutes only
+  if (isFirstPoll) {
+    lastIdMap.set(entity.id.toString(), newest);
+    const cutoff = Date.now() - 5 * 60 * 1000;
+    const fresh  = messages.filter(m => m.date * 1000 >= cutoff);
+    if (fresh.length) {
+      console.log(`[telegramWatcher] ${channel.label}: ${fresh.length} fresh message(s) on startup`);
+      for (const m of fresh.reverse()) await processMessage(m, channel);
+    } else {
+      console.log(`[telegramWatcher] ${channel.label}: seeded at msg ${newest}`);
+    }
+    return;
+  }
+
+  if (newest <= lastKnown) return;
+
+  // Process only messages newer than lastKnown, oldest first
+  const newMsgs = messages.filter(m => m.id > lastKnown).reverse();
+  lastIdMap.set(entity.id.toString(), newest);
+
+  for (const m of newMsgs) await processMessage(m, channel);
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function run() {
-  // Load session from Supabase (saved by telegramAuth.js)
   const { data: sessionRow } = await supabase
     .from('app_settings').select('value').eq('key', 'telegram_session').single();
   const sessionString = sessionRow?.value ?? '';
@@ -230,42 +254,54 @@ async function run() {
   await client.connect();
   console.log('[telegramWatcher] Connected to Telegram MTProto');
 
-  // Kickstart gramjs update loop — without this, channel messages are not received
-  await client.getDialogs({ limit: 1 });
-
-  // Resolve all channel usernames to entity IDs
+  // Resolve channel usernames → entities (deduplicated — use first entity per channel)
+  const channelEntities = []; // [{ entity, channel }]
   for (const channel of CHANNELS) {
     for (const username of channel.usernames) {
       try {
         const entity = await client.getEntity(username);
-        channelMap.set(entity.id.toString(), channel);
-        console.log(`[telegramWatcher] Monitoring: @${username} (${channel.label})`);
+        // Only add one entity per channel id (first username that resolves)
+        if (!channelEntities.find(e => e.channel.id === channel.id)) {
+          channelEntities.push({ entity, channel });
+          console.log(`[telegramWatcher] Monitoring: @${username} (${channel.label})`);
+        }
       } catch (e) {
         console.warn(`[telegramWatcher] Could not resolve @${username}: ${e.message}`);
       }
     }
   }
 
-  // Listen for new messages in monitored channels
-  client.addEventHandler(async (event) => {
-    const peerId  = event.message?.peerId;
-    const chanId  = peerId?.channelId?.toString() ?? peerId?.userId?.toString();
-    console.log(`[telegramWatcher] event — chanId: ${chanId}, mapped: ${!!channelMap.get(chanId)}`);
-    const channel = channelMap.get(chanId);
-    if (!channel) return;
-    await handleMessage(event, channel);
-  }, new NewMessage({}));
+  if (!channelEntities.length) {
+    console.error('[telegramWatcher] No channels resolved — aborting');
+    return;
+  }
 
-  console.log('[telegramWatcher] Listening for new messages...');
+  const lastIdMap  = new Map(); // entityId → last processed message id
+  let   isFirstPoll = true;
 
-  // Keep alive — poll connection and reconnect if dropped
-  const keepAlive = setInterval(async () => {
+  async function poll() {
+    for (const { entity, channel } of channelEntities) {
+      try {
+        await pollChannel(client, entity, channel, lastIdMap, isFirstPoll);
+      } catch (e) {
+        console.error(`[telegramWatcher] Poll error (${channel.label}): ${e.message}`);
+      }
+    }
+    isFirstPoll = false;
+  }
+
+  await poll();
+  const interval = setInterval(async () => {
     if (!client.connected) {
-      clearInterval(keepAlive);
+      clearInterval(interval);
       console.log('[telegramWatcher] Disconnected — reconnecting in 5s...');
       setTimeout(() => run(), 5000);
+      return;
     }
-  }, 30000);
+    await poll();
+  }, 60 * 1000);
+
+  console.log('[telegramWatcher] Polling every 60s...');
 }
 
 function start() {
@@ -276,7 +312,7 @@ function start() {
   console.log('[telegramWatcher] Starting MTProto watcher...');
   run().catch(err => {
     console.error('[telegramWatcher] Fatal:', err.message);
-    setTimeout(() => start(), 30000); // retry after 30s
+    setTimeout(() => start(), 30000);
   });
 }
 
