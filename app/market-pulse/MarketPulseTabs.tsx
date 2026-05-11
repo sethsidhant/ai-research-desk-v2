@@ -73,7 +73,7 @@ export default function MarketPulseTabs({ fiiFlow, fiiDii, sectors, mfData, fore
             No forex reserve data yet — run <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">node forexAgent.js backfill</code> to populate.
           </div>
         ) : (
-          <ForexChart data={forexData} />
+          <ForexChart data={forexData} fiiDii={fiiDii} />
         )
       )}
     </>

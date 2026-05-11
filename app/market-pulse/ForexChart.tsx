@@ -1,7 +1,10 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ReferenceLine, ResponsiveContainer, CartesianGrid } from 'recharts'
+import {
+  ComposedChart, Area, Bar, Cell, XAxis, YAxis, Tooltip,
+  ResponsiveContainer, CartesianGrid,
+} from 'recharts'
 
 type Row = {
   date: string
@@ -14,8 +17,14 @@ type Row = {
   yoy_change_usd_mn: number
 }
 
+type FiiRow = {
+  date: string
+  fii_net: number
+}
+
 function fmtB(mn: number) { return `$${(mn / 1000).toFixed(1)}B` }
 function fmtBn(mn: number) { return (mn / 1000).toFixed(1) }
+function fmtCr(cr: number) { return `₹${Math.round(Math.abs(cr)).toLocaleString('en-IN')}cr` }
 function fmtDate(d: string) {
   return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })
 }
@@ -58,13 +67,19 @@ const CustomTooltip = ({ active, payload }: any) => {
   if (!active || !payload?.length) return null
   const d = payload[0].payload
   const wow = d.wow_change_usd_mn
+  const fii = d.fii_weekly_cr
   return (
-    <div className="bg-white border border-gray-200 rounded-xl shadow-lg p-3 text-xs min-w-[160px]">
+    <div className="bg-white border border-gray-200 rounded-xl shadow-lg p-3 text-xs min-w-[180px]">
       <p className="font-semibold mb-2 text-gray-700">{fmtDate(d.date)}</p>
       <p className="font-bold text-base text-gray-900 mb-1">{fmtB(d.total_usd_mn)}</p>
       <p className={`font-medium ${wow >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-        {wow >= 0 ? '▲' : '▼'} ${Math.abs(wow / 1000).toFixed(2)}B WoW
+        {wow >= 0 ? '▲' : '▼'} ${Math.abs(wow / 1000).toFixed(2)}B WoW reserves
       </p>
+      {fii != null && (
+        <p className={`font-medium mt-1 ${fii >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+          FII: {fii >= 0 ? '+' : '-'}{fmtCr(fii)} that week
+        </p>
+      )}
       <div className="mt-2 space-y-0.5 text-gray-500">
         <p>FCA: {fmtB(d.fca_usd_mn)}</p>
         <p>Gold: {fmtB(d.gold_usd_mn)}</p>
@@ -74,8 +89,25 @@ const CustomTooltip = ({ active, payload }: any) => {
   )
 }
 
-export default function ForexChart({ data }: { data: Row[] }) {
+// Aggregate daily FII net into weekly sums ending on each forex date
+function buildWeeklyFii(fiiDii: FiiRow[], forexDates: string[]): Map<string, number> {
+  const map = new Map<string, number>()
+  for (const forexDate of forexDates) {
+    const end   = new Date(forexDate)
+    const start = new Date(forexDate)
+    start.setDate(start.getDate() - 6)
+    const startStr = start.toISOString().slice(0, 10)
+    const total = fiiDii
+      .filter(r => r.date >= startStr && r.date <= forexDate)
+      .reduce((s, r) => s + (r.fii_net ?? 0), 0)
+    map.set(forexDate, Math.round(total))
+  }
+  return map
+}
+
+export default function ForexChart({ data, fiiDii = [] }: { data: Row[]; fiiDii?: FiiRow[] }) {
   const [period, setPeriod] = useState('1Y')
+  const [showFii, setShowFii] = useState(true)
 
   const filtered = useMemo(() => {
     const months = PERIODS.find(p => p.label === period)?.months ?? 12
@@ -95,11 +127,25 @@ export default function ForexChart({ data }: { data: Row[] }) {
   const ytdChg  = oldest ? latest.total_usd_mn - oldest.total_usd_mn : 0
   const wowColor = wow >= 0 ? '#10b981' : '#ef4444'
 
-  // Y-axis domain with padding
   const vals   = filtered.map(d => d.total_usd_mn)
   const minVal = Math.min(...vals)
   const maxVal = Math.max(...vals)
   const pad    = (maxVal - minVal) * 0.1
+
+  // Build weekly FII map and merge into chart data
+  const weeklyFiiMap = useMemo(() =>
+    buildWeeklyFii(fiiDii, filtered.map(d => d.date)),
+    [fiiDii, filtered]
+  )
+
+  const chartData = useMemo(() =>
+    filtered.map(d => ({ ...d, fii_weekly_cr: weeklyFiiMap.get(d.date) ?? null })),
+    [filtered, weeklyFiiMap]
+  )
+
+  // FII bar domain
+  const fiiVals = chartData.map(d => d.fii_weekly_cr).filter(v => v != null) as number[]
+  const fiiMax  = fiiVals.length ? Math.max(...fiiVals.map(Math.abs)) * 1.2 : 50000
 
   return (
     <div className="space-y-4">
@@ -136,31 +182,43 @@ export default function ForexChart({ data }: { data: Row[] }) {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-base font-semibold" style={{ color: 'var(--artha-text)' }}>
-              Total Forex Reserves
+              Forex Reserves vs FII Flow
             </h2>
             <p className="text-xs mt-0.5" style={{ color: 'var(--artha-text-muted)' }}>
-              USD Billions · Weekly RBI data
+              USD Billions (left) · Weekly FII net ₹Cr (right)
             </p>
           </div>
-          <div className="flex gap-1">
-            {PERIODS.map(p => (
-              <button
-                key={p.label}
-                onClick={() => setPeriod(p.label)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
-                  period === p.label
-                    ? 'bg-indigo-600 text-white'
-                    : 'text-gray-500 hover:bg-gray-100'
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowFii(v => !v)}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors border ${
+                showFii
+                  ? 'border-emerald-500 text-emerald-600 bg-emerald-50'
+                  : 'border-gray-200 text-gray-400'
+              }`}
+            >
+              FII overlay
+            </button>
+            <div className="flex gap-1">
+              {PERIODS.map(p => (
+                <button
+                  key={p.label}
+                  onClick={() => setPeriod(p.label)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                    period === p.label
+                      ? 'bg-indigo-600 text-white'
+                      : 'text-gray-500 hover:bg-gray-100'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
-        <ResponsiveContainer width="100%" height={260}>
-          <AreaChart data={filtered} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+        <ResponsiveContainer width="100%" height={280}>
+          <ComposedChart data={chartData} margin={{ top: 4, right: 52, left: 0, bottom: 0 }}>
             <defs>
               <linearGradient id="forexGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%"  stopColor="#6366f1" stopOpacity={0.15} />
@@ -177,6 +235,7 @@ export default function ForexChart({ data }: { data: Row[] }) {
               interval="preserveStartEnd"
             />
             <YAxis
+              yAxisId="reserves"
               tickFormatter={v => `$${(v / 1000).toFixed(0)}B`}
               tick={{ fontSize: 10, fill: '#9ca3af' }}
               tickLine={false}
@@ -184,8 +243,28 @@ export default function ForexChart({ data }: { data: Row[] }) {
               width={52}
               domain={[minVal - pad, maxVal + pad]}
             />
+            {showFii && (
+              <YAxis
+                yAxisId="fii"
+                orientation="right"
+                tickFormatter={v => `₹${Math.round(v / 1000)}k`}
+                tick={{ fontSize: 10, fill: '#9ca3af' }}
+                tickLine={false}
+                axisLine={false}
+                width={52}
+                domain={[-fiiMax, fiiMax]}
+              />
+            )}
             <Tooltip content={<CustomTooltip />} />
+            {showFii && (
+              <Bar yAxisId="fii" dataKey="fii_weekly_cr" opacity={0.5} radius={[2, 2, 0, 0]}>
+                {chartData.map((d, i) => (
+                  <Cell key={i} fill={(d.fii_weekly_cr ?? 0) >= 0 ? '#10b981' : '#ef4444'} />
+                ))}
+              </Bar>
+            )}
             <Area
+              yAxisId="reserves"
               type="monotone"
               dataKey="total_usd_mn"
               stroke="#6366f1"
@@ -194,8 +273,21 @@ export default function ForexChart({ data }: { data: Row[] }) {
               dot={false}
               activeDot={{ r: 4, strokeWidth: 0, fill: '#6366f1' }}
             />
-          </AreaChart>
+          </ComposedChart>
         </ResponsiveContainer>
+
+        {showFii && (
+          <div className="flex items-center gap-4 mt-3 text-xs" style={{ color: 'var(--artha-text-muted)' }}>
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-3 h-3 rounded-sm bg-emerald-400 opacity-70" />
+              FII net inflow (weekly)
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-12 h-0.5 bg-indigo-500" />
+              Forex reserves
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Breakdown */}
@@ -238,20 +330,24 @@ export default function ForexChart({ data }: { data: Row[] }) {
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-gray-100">
-                {['Date', 'Total', 'WoW Change', 'FCA', 'Gold', 'SDRs', 'IMF'].map(h => (
+                {['Date', 'Total', 'WoW Change', 'FII (week)', 'FCA', 'Gold', 'SDRs', 'IMF'].map(h => (
                   <th key={h} className="text-left pb-2 pr-4 font-medium" style={{ color: 'var(--artha-text-muted)' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {[...data].reverse().slice(0, 12).map(row => {
-                const w = row.wow_change_usd_mn
+                const w   = row.wow_change_usd_mn
+                const fii = weeklyFiiMap.get(row.date) ?? null
                 return (
                   <tr key={row.date} className="border-b border-gray-50 hover:bg-gray-50">
                     <td className="py-2 pr-4 font-medium" style={{ color: 'var(--artha-text)' }}>{fmtDateShort(row.date)}</td>
                     <td className="py-2 pr-4 font-semibold" style={{ color: 'var(--artha-text)' }}>{fmtB(row.total_usd_mn)}</td>
                     <td className={`py-2 pr-4 font-medium ${w >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
                       {w >= 0 ? '+' : ''}${fmtBn(w)}B
+                    </td>
+                    <td className={`py-2 pr-4 font-medium ${fii == null ? '' : fii >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                      {fii == null ? '—' : `${fii >= 0 ? '+' : '-'}₹${Math.abs(fii).toLocaleString('en-IN')}cr`}
                     </td>
                     <td className="py-2 pr-4" style={{ color: 'var(--artha-text-muted)' }}>{fmtB(row.fca_usd_mn)}</td>
                     <td className="py-2 pr-4" style={{ color: 'var(--artha-text-muted)' }}>{fmtB(row.gold_usd_mn)}</td>

@@ -102,6 +102,30 @@ async function sendAlert(row) {
 
   const date = new Date(row.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
+  // Fetch FII net for the week ending on this forex date
+  const weekStart = new Date(row.date + ' UTC');
+  weekStart.setDate(weekStart.getDate() - 6);
+  const { data: fiiRows } = await supabase
+    .from('fii_dii_daily')
+    .select('fii_net')
+    .gte('date', weekStart.toISOString().slice(0, 10))
+    .lte('date', row.date);
+
+  const fiiWeekly = fiiRows?.reduce((s, r) => s + (r.fii_net ?? 0), 0) ?? null;
+  let fiiLine = '';
+  if (fiiWeekly !== null) {
+    const fiiAmt = Math.abs(Math.round(fiiWeekly)).toLocaleString('en-IN');
+    const fiiDir = fiiWeekly >= 0 ? 'bought' : 'sold';
+    const fiiEmoji = fiiWeekly >= 0 ? '🟢' : '🔴';
+    // Contextual insight: correlate forex move with FII direction
+    let insight = '';
+    if (wow < 0 && fiiWeekly < 0)      insight = ' — RBI likely sold USD as FIIs pulled out';
+    else if (wow < 0 && fiiWeekly >= 0) insight = ' — reserves dipped despite FII inflows (oil/other outflows)';
+    else if (wow >= 0 && fiiWeekly < 0) insight = ' — reserves rose despite FII outflows (RBI accumulating)';
+    else if (wow >= 0 && fiiWeekly >= 0) insight = ' — FII inflows supporting reserves build-up';
+    fiiLine = `\n${fiiEmoji} FII ${fiiDir} ₹${fiiAmt}cr same week${insight}`;
+  }
+
   const msg = `${emoji} 🏦 *Forex Reserves — ${date}*
 Total: *$${total}B* ${wowDir} $${wowAbs}B WoW
 
@@ -110,7 +134,7 @@ Total: *$${total}B* ${wowDir} $${wowAbs}B WoW
 📋 SDRs: $${(row.sdrs_usd_mn/1000).toFixed(1)}B
 🏛 IMF Position: $${(row.imf_usd_mn/1000).toFixed(1)}B
 
-📅 YoY change: ${yoyDir}$${yoyAbs}B`;
+📅 YoY change: ${yoyDir}$${yoyAbs}B${fiiLine}`;
 
   await sendMacro(msg);
 }
