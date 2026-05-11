@@ -79,9 +79,10 @@ function parsePage(html) {
   const csiMatch = text.match(/Current\s+Situation\s+Index\s*\(CSI\)[^.]*?(?:at|stood\s+at|was)\s+([\d.]+)/i) ||
                    text.match(/CSI\)[^.]*?(?:at|to|of)\s+([\d.]+)/i);
 
-  // FEI: "Future Expectations Index (FEI) dropped... to 120.2"
-  const feiMatch = text.match(/Future\s+Expectations\s+Index\s*\(FEI\)[^.]*?(?:to|at|stood\s+at|was)\s+([\d.]+)/i) ||
-                   text.match(/FEI\)[^.]*?(?:at|to|of)\s+([\d.]+)/i);
+  // FEI: "Future Expectations Index (FEI) dropped by 3.2 points to 120.2"
+  // Use .{0,300}? instead of [^.]* so the decimal in "3.2 points" doesn't block the scan
+  const feiMatch = text.match(/Future\s+Expectations\s+Index\s*\(FEI\).{0,300}?(?:\bto\b|stood\s+at|was)\s+([\d]{2,3}\.[\d])/i) ||
+                   text.match(/FEI\).{0,200}?(?:\bto\b|at)\s+([\d]{2,3}\.[\d])/i);
 
   const csi = csiMatch ? parseFloat(csiMatch[1]) : null;
   const fei = feiMatch ? parseFloat(feiMatch[1]) : null;
