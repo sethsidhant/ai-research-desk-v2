@@ -7,11 +7,13 @@ import MFFlowChart from './MFFlowChart'
 import SectorGrid from './SectorGrid'
 import ForexChart from './ForexChart'
 import IndustriesGrid from './IndustriesGrid'
+import ConsumerSentimentPanel from './ConsumerSentimentPanel'
 
 const TABS = [
   { id: 'flows',      label: 'FII · DII · MF Flows' },
   { id: 'forex',      label: 'Forex Reserves' },
   { id: 'industries', label: 'Industry Overview' },
+  { id: 'consumer',   label: 'Consumer Sentiment' },
 ]
 
 type Props = {
@@ -21,12 +23,13 @@ type Props = {
   mfData:        any[]
   forexData:     any[]
   industries:    any[]
+  consumerData:  any[]
   userStocks:    any[]
   lastUpdated:   string | null
 }
 
 export default function MarketPulseTabs({
-  fiiFlow, fiiDii, sectors, mfData, forexData, industries, userStocks, lastUpdated,
+  fiiFlow, fiiDii, sectors, mfData, forexData, industries, consumerData, userStocks, lastUpdated,
 }: Props) {
   const [activeTab, setActiveTab] = useState('flows')
 
@@ -94,6 +97,11 @@ export default function MarketPulseTabs({
         ) : (
           <IndustriesGrid data={industries} userIndustries={userIndustries} updatedAt={industriesUpdatedAt} />
         )
+      )}
+
+      {/* Consumer Sentiment */}
+      {activeTab === 'consumer' && (
+        <ConsumerSentimentPanel data={consumerData} />
       )}
     </>
   )

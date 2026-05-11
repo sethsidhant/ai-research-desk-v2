@@ -18,7 +18,7 @@ export default async function MarketPulsePage() {
     return { ticker: s?.ticker ?? '', stock_name: s?.stock_name ?? '', industry: s?.industry ?? null }
   }).filter(s => s.ticker)
 
-  const [fiiFlowRes, fiiDiiRes, sectorsRes, mfRes, forexRes, industriesRes] = await Promise.all([
+  const [fiiFlowRes, fiiDiiRes, sectorsRes, mfRes, forexRes, industriesRes, consumerRes] = await Promise.all([
     supabase
       .from('fii_flow')
       .select('date, cumulative_net')
@@ -43,6 +43,10 @@ export default async function MarketPulsePage() {
       .from('screener_industries')
       .select('industry, screener_url, company_count, total_mcap_cr, median_mcap_cr, median_pe, avg_sales_growth, avg_opm, avg_roce, median_1y_return, updated_at')
       .order('total_mcap_cr', { ascending: false }),
+    supabase
+      .from('rbi_consumer_confidence')
+      .select('date, round_no, csi, fei, cs_general_econ, cs_employment, cs_income, cs_spending')
+      .order('date', { ascending: true }),
   ])
 
   const fiiFlow    = fiiFlowRes.data     ?? []
@@ -51,6 +55,7 @@ export default async function MarketPulsePage() {
   const mfData     = mfRes.data          ?? []
   const forexData  = forexRes.data       ?? []
   const industries = industriesRes.data  ?? []
+  const consumerData = consumerRes.data  ?? []
 
   const lastUpdated = fiiDii[fiiDii.length - 1]?.date ?? null
 
@@ -76,6 +81,7 @@ export default async function MarketPulsePage() {
           mfData={mfData}
           forexData={forexData}
           industries={industries}
+          consumerData={consumerData}
           userStocks={userStocks}
           lastUpdated={lastUpdated}
         />
