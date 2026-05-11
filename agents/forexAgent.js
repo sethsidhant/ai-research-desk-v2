@@ -16,6 +16,32 @@ const supabase = createClient(
 
 const BACKFILL = process.argv[2] === 'backfill';
 
+// ── Gold price (GC=F futures proxy) ──────────────────────────────────────────
+
+let _goldPriceMap = null; // cached
+
+async function fetchGoldPriceMap() {
+  if (_goldPriceMap) return _goldPriceMap;
+  try {
+    const raw = await get('https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval=1d&range=2y');
+    const j = JSON.parse(raw);
+    const res = j.chart?.result?.[0];
+    if (!res) return {};
+    const map = {};
+    res.timestamp.forEach((t, i) => {
+      const close = res.indicators.quote[0].close[i];
+      if (close) map[new Date(t * 1000).toISOString().slice(0, 10)] = close;
+    });
+    _goldPriceMap = map;
+    return map;
+  } catch { return {}; }
+}
+
+function lookupGoldPrice(map, date) {
+  const key = Object.keys(map).filter(k => k <= date).sort().at(-1);
+  return key ? map[key] : null;
+}
+
 // ── HTTP helper ───────────────────────────────────────────────────────────────
 
 function get(url) {
@@ -123,7 +149,7 @@ async function sendAlert(row) {
     ? `\n⚠️ *Near 3M low* ($${(low3m/1000).toFixed(1)}B) — reserves under pressure`
     : '';
 
-  // Gold signals
+  // Gold signals — high/low proximity + price-vs-tonnage decomposition
   let goldSignal = '';
   if (hist6m.length >= 4) {
     const g       = row.gold_usd_mn;
@@ -135,12 +161,37 @@ async function sendAlert(row) {
     const last4   = gVals6m.slice(-4); const prior4 = gVals6m.slice(-8, -4);
     const avg4    = last4.reduce((s,v)=>s+v,0)/(last4.length||1);
     const avg8    = prior4.length ? prior4.reduce((s,v)=>s+v,0)/prior4.length : avg4;
-    if      ((gMax6m - g) / gMax6m < 0.01)                            goldSignal = '🟡 Gold near *6M high* — RBI accumulating aggressively';
-    else if (gMax3m !== null && (gMax3m - g) / gMax3m < 0.01)         goldSignal = '🟡 Gold near *3M high* — RBI accumulating';
-    else if ((g - gMin6m) / gMin6m < 0.01)                            goldSignal = '⚠️ Gold near *6M low* — price drop or RBI selling';
-    else if (gMin3m !== null && (g - gMin3m) / gMin3m < 0.01)         goldSignal = '⚠️ Gold near *3M low* — price drop or RBI selling';
-    else if (avg4 > avg8 * 1.005)                                      goldSignal = '🟡 Gold trending *up* (4-week) — RBI diversifying';
-    else if (avg4 < avg8 * 0.995)                                      goldSignal = '📉 Gold trending *down* (4-week)';
+
+    // Price-vs-tonnage decomposition (directional only — GC=F futures proxy, not exact)
+    let priceVsTonnageLine = '';
+    if (prev) {
+      try {
+        const goldMap = await fetchGoldPriceMap();
+        const p1 = lookupGoldPrice(goldMap, prev.date);
+        const p2 = lookupGoldPrice(goldMap, row.date);
+        if (p1 && p2 && p1 > 0) {
+          const goldWow     = g - prev.gold_usd_mn;
+          const priceChgPct = (p2 / p1 - 1) * 100;
+          const expectedVal = prev.gold_usd_mn * (p2 / p1);
+          const tonnageEff  = g - expectedVal; // positive = RBI bought, negative = RBI sold
+          const THRESHOLD   = 0.005; // 0.5% — ignore noise below this
+          if (Math.abs(tonnageEff / expectedVal) > THRESHOLD) {
+            const dir = tonnageEff > 0 ? 'possible *RBI accumulation*' : 'possible *RBI tonnage reduction*';
+            priceVsTonnageLine = `\n   _(Gold price ${priceChgPct >= 0 ? '▲' : '▼'}${Math.abs(priceChgPct).toFixed(1)}% WoW · ${dir} · est. via GC=F futures)_`;
+          } else {
+            priceVsTonnageLine = `\n   _(Gold price ${priceChgPct >= 0 ? '▲' : '▼'}${Math.abs(priceChgPct).toFixed(1)}% WoW · change appears *price-driven*)_`;
+          }
+        }
+      } catch { /* skip if Yahoo unavailable */ }
+    }
+
+    if      ((gMax6m - g) / gMax6m < 0.01)                   goldSignal = `🟡 Gold near *6M high* ($${(gMax6m/1000).toFixed(1)}B)${priceVsTonnageLine}`;
+    else if (gMax3m !== null && (gMax3m - g) / gMax3m < 0.01) goldSignal = `🟡 Gold near *3M high* ($${(gMax3m/1000).toFixed(1)}B)${priceVsTonnageLine}`;
+    else if ((g - gMin6m) / gMin6m < 0.01)                    goldSignal = `⚠️ Gold near *6M low* ($${(gMin6m/1000).toFixed(1)}B)${priceVsTonnageLine}`;
+    else if (gMin3m !== null && (g - gMin3m) / gMin3m < 0.01) goldSignal = `⚠️ Gold near *3M low* ($${(gMin3m/1000).toFixed(1)}B)${priceVsTonnageLine}`;
+    else if (priceVsTonnageLine)                               goldSignal = `🥇 Gold WoW signal${priceVsTonnageLine}`;
+    else if (avg4 > avg8 * 1.005)                              goldSignal = '🟡 Gold trending *up* (4-week)';
+    else if (avg4 < avg8 * 0.995)                              goldSignal = '📉 Gold trending *down* (4-week)';
   }
 
   // FII context for the week

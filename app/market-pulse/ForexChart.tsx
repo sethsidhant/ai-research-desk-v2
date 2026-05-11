@@ -186,12 +186,12 @@ export default function ForexChart({ data, fiiDii = [] }: { data: Row[]; fiiDii?
   const goldNear3mLow  = gold3mLow  !== null && (latest.gold_usd_mn - gold3mLow)  / gold3mLow  < 0.01
   const goldNear6mHigh = gold6mHigh !== null && (gold6mHigh - latest.gold_usd_mn) / gold6mHigh < 0.01
   const goldNear6mLow  = gold6mLow  !== null && (latest.gold_usd_mn - gold6mLow)  / gold6mLow  < 0.01
-  const goldBadge = goldNear6mHigh ? { text: `Near 6M high ($${(gold6mHigh!/1000).toFixed(1)}B) · RBI accumulating`, color: '#10b981' }
-    : goldNear3mHigh ? { text: `Near 3M high ($${(gold3mHigh!/1000).toFixed(1)}B) · RBI accumulating`, color: '#10b981' }
-    : goldNear6mLow  ? { text: `Near 6M low ($${(gold6mLow!/1000).toFixed(1)}B) · price drop or RBI selling`, color: '#ef4444' }
-    : goldNear3mLow  ? { text: `Near 3M low ($${(gold3mLow!/1000).toFixed(1)}B) · price drop or RBI selling`, color: '#ef4444' }
-    : goldPctTrend === 'up'   ? { text: `Share rising — RBI diversifying into gold`, color: '#f59e0b' }
-    : goldPctTrend === 'down' ? { text: `Share falling — FCA growing faster`, color: '#9ca3af' }
+  const goldBadge = goldNear6mHigh ? { text: `Near 6M high (${fmtB(gold6mHigh!)}) · may reflect price rally or RBI accumulation`, color: '#10b981' }
+    : goldNear3mHigh ? { text: `Near 3M high (${fmtB(gold3mHigh!)}) · may reflect price rally or RBI accumulation`, color: '#10b981' }
+    : goldNear6mLow  ? { text: `Near 6M low (${fmtB(gold6mLow!)}) · may reflect price drop or reduced holdings`, color: '#ef4444' }
+    : goldNear3mLow  ? { text: `Near 3M low (${fmtB(gold3mLow!)}) · may reflect price drop or reduced holdings`, color: '#ef4444' }
+    : goldPctTrend === 'up'   ? { text: `Share of reserves rising (4-week)`, color: '#f59e0b' }
+    : goldPctTrend === 'down' ? { text: `Share of reserves falling (4-week)`, color: '#9ca3af' }
     : undefined
 
   // Build weekly FII map and merge into chart data

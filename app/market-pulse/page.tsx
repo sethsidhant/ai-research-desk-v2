@@ -18,7 +18,7 @@ export default async function MarketPulsePage() {
     return { ticker: s?.ticker ?? '', stock_name: s?.stock_name ?? '', industry: s?.industry ?? null }
   }).filter(s => s.ticker)
 
-  const [fiiFlowRes, fiiDiiRes, sectorsRes, mfRes, forexRes] = await Promise.all([
+  const [fiiFlowRes, fiiDiiRes, sectorsRes, mfRes, forexRes, industriesRes] = await Promise.all([
     supabase
       .from('fii_flow')
       .select('date, cumulative_net')
@@ -39,13 +39,18 @@ export default async function MarketPulsePage() {
       .from('forex_reserves')
       .select('date, total_usd_mn, fca_usd_mn, gold_usd_mn, sdrs_usd_mn, imf_usd_mn, wow_change_usd_mn, yoy_change_usd_mn')
       .order('date', { ascending: true }),
+    supabase
+      .from('screener_industries')
+      .select('industry, screener_url, company_count, total_mcap_cr, median_mcap_cr, median_pe, avg_sales_growth, avg_opm, avg_roce, median_1y_return, updated_at')
+      .order('total_mcap_cr', { ascending: false }),
   ])
 
-  const fiiFlow   = fiiFlowRes.data  ?? []
-  const fiiDii    = fiiDiiRes.data   ?? []
-  const sectors   = sectorsRes.data  ?? []
-  const mfData    = mfRes.data       ?? []
-  const forexData = forexRes.data    ?? []
+  const fiiFlow    = fiiFlowRes.data     ?? []
+  const fiiDii     = fiiDiiRes.data      ?? []
+  const sectors    = sectorsRes.data     ?? []
+  const mfData     = mfRes.data          ?? []
+  const forexData  = forexRes.data       ?? []
+  const industries = industriesRes.data  ?? []
 
   const lastUpdated = fiiDii[fiiDii.length - 1]?.date ?? null
 
@@ -70,6 +75,7 @@ export default async function MarketPulsePage() {
           sectors={sectors}
           mfData={mfData}
           forexData={forexData}
+          industries={industries}
           userStocks={userStocks}
           lastUpdated={lastUpdated}
         />
