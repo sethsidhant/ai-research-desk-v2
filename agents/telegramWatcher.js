@@ -211,13 +211,15 @@ async function pollChannel(client, entity, channel, lastIdMap, isFirstPoll) {
   const lastKnown = lastIdMap.get(entity.id.toString()) ?? 0;
   const newest    = messages[0].id;
 
-  // On first poll, seed the watermark and process messages from last 5 minutes only
+  // On first poll, seed watermark and process recent messages not yet in DB
+  // Trump: 15 min (high-volume, avoid flooding); financial channels: 2 hours (catch up after outages)
   if (isFirstPoll) {
     lastIdMap.set(entity.id.toString(), newest);
-    const cutoff = Date.now() - 5 * 60 * 1000;
-    const fresh  = messages.filter(m => m.date * 1000 >= cutoff);
+    const catchupMs = channel.id === 'trump' ? 15 * 60 * 1000 : 2 * 60 * 60 * 1000;
+    const cutoff    = Date.now() - catchupMs;
+    const fresh     = messages.filter(m => m.date * 1000 >= cutoff);
     if (fresh.length) {
-      console.log(`[telegramWatcher] ${channel.label}: ${fresh.length} fresh message(s) on startup`);
+      console.log(`[telegramWatcher] ${channel.label}: ${fresh.length} startup message(s) to check (last ${catchupMs / 60000} min)`);
       for (const m of fresh.reverse()) await processMessage(m, channel);
     } else {
       console.log(`[telegramWatcher] ${channel.label}: seeded at msg ${newest}`);
@@ -236,6 +238,8 @@ async function pollChannel(client, entity, channel, lastIdMap, isFirstPoll) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
+let _running = false; // guard against concurrent start() calls within same process
+
 async function run() {
   const { data: sessionRow } = await supabase
     .from('app_settings').select('value').eq('key', 'telegram_session').single();
@@ -247,61 +251,67 @@ async function run() {
   }
 
   const client = new TelegramClient(new StringSession(sessionString), API_ID, API_HASH, {
-    connectionRetries: 10,
-    retryDelay:        3000,
+    connectionRetries: 3,
+    retryDelay:        2000,
   });
 
-  await client.connect();
-  console.log('[telegramWatcher] Connected to Telegram MTProto');
+  try {
+    await client.connect();
+    console.log('[telegramWatcher] Connected to Telegram MTProto');
 
-  // Resolve channel usernames → entities (deduplicated — use first entity per channel)
-  const channelEntities = []; // [{ entity, channel }]
-  for (const channel of CHANNELS) {
-    for (const username of channel.usernames) {
-      try {
-        const entity = await client.getEntity(username);
-        // Only add one entity per channel id (first username that resolves)
-        if (!channelEntities.find(e => e.channel.id === channel.id)) {
-          channelEntities.push({ entity, channel });
-          console.log(`[telegramWatcher] Monitoring: @${username} (${channel.label})`);
+    // Resolve channel usernames → entities (deduplicated — use first entity per channel)
+    const channelEntities = []; // [{ entity, channel }]
+    for (const channel of CHANNELS) {
+      for (const username of channel.usernames) {
+        try {
+          const entity = await client.getEntity(username);
+          // Only add one entity per channel id (first username that resolves)
+          if (!channelEntities.find(e => e.channel.id === channel.id)) {
+            channelEntities.push({ entity, channel });
+            console.log(`[telegramWatcher] Monitoring: @${username} (${channel.label})`);
+          }
+        } catch (e) {
+          console.warn(`[telegramWatcher] Could not resolve @${username}: ${e.message}`);
         }
-      } catch (e) {
-        console.warn(`[telegramWatcher] Could not resolve @${username}: ${e.message}`);
       }
     }
-  }
 
-  if (!channelEntities.length) {
-    console.error('[telegramWatcher] No channels resolved — aborting');
-    return;
-  }
-
-  const lastIdMap  = new Map(); // entityId → last processed message id
-  let   isFirstPoll = true;
-
-  async function poll() {
-    for (const { entity, channel } of channelEntities) {
-      try {
-        await pollChannel(client, entity, channel, lastIdMap, isFirstPoll);
-      } catch (e) {
-        console.error(`[telegramWatcher] Poll error (${channel.label}): ${e.message}`);
-      }
-    }
-    isFirstPoll = false;
-  }
-
-  await poll();
-  const interval = setInterval(async () => {
-    if (!client.connected) {
-      clearInterval(interval);
-      console.log('[telegramWatcher] Disconnected — reconnecting in 5s...');
-      setTimeout(() => run(), 5000);
+    if (!channelEntities.length) {
+      console.error('[telegramWatcher] No channels resolved — aborting');
       return;
     }
-    await poll();
-  }, 60 * 1000);
 
-  console.log('[telegramWatcher] Polling every 60s...');
+    const lastIdMap  = new Map(); // entityId → last processed message id
+    let   isFirstPoll = true;
+
+    async function poll() {
+      for (const { entity, channel } of channelEntities) {
+        try {
+          await pollChannel(client, entity, channel, lastIdMap, isFirstPoll);
+        } catch (e) {
+          console.error(`[telegramWatcher] Poll error (${channel.label}): ${e.message}`);
+        }
+      }
+      isFirstPoll = false;
+    }
+
+    await poll();
+
+    await new Promise((_, reject) => {
+      const interval = setInterval(async () => {
+        if (!client.connected) {
+          clearInterval(interval);
+          reject(new Error('client disconnected'));
+          return;
+        }
+        await poll();
+      }, 60 * 1000);
+    });
+
+    console.log('[telegramWatcher] Polling every 60s...');
+  } finally {
+    try { await client.disconnect(); } catch {}
+  }
 }
 
 function start() {
@@ -309,11 +319,24 @@ function start() {
     console.log('[telegramWatcher] Skipped — TELEGRAM_API_ID/HASH not configured');
     return;
   }
+  if (_running) {
+    console.log('[telegramWatcher] Already running — skipping duplicate start');
+    return;
+  }
+  _running = true;
   console.log('[telegramWatcher] Starting MTProto watcher...');
-  run().catch(err => {
-    console.error('[telegramWatcher] Fatal:', err.message);
-    setTimeout(() => start(), 30000);
-  });
+  run()
+    .catch(err => {
+      const msg     = err.message ?? '';
+      const isAuthDup = msg.includes('AUTH_KEY_DUPLICATED');
+      console.error(`[telegramWatcher] Fatal: ${msg}`);
+      if (isAuthDup) {
+        // Old session still alive on Telegram's side — wait 5 min for it to expire
+        console.log('[telegramWatcher] AUTH_KEY_DUPLICATED — waiting 5 min for old session to expire...');
+      }
+      const delay = isAuthDup ? 5 * 60 * 1000 : 30 * 1000;
+      setTimeout(() => { _running = false; start(); }, delay);
+    });
 }
 
 module.exports = { start };
