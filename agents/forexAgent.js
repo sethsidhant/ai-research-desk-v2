@@ -51,7 +51,8 @@ async function fetchForexRow(id) {
   // Extract "as on" date — handles "May 01, 2026" and "Aug. 01, 2025"
   const asOnMatch = html.match(/As on ([A-Za-z]+\.?\s+\d+,\s+\d{4})/);
   if (!asOnMatch) return null;
-  const asOnDate = new Date(asOnMatch[1].replace('.', ''));
+  // Parse via UTC to avoid timezone shift (local midnight IST = prev day in UTC)
+  const asOnDate = new Date(asOnMatch[1].replace('.', '') + ' UTC');
   if (isNaN(asOnDate.getTime())) return null;
   const date = asOnDate.toISOString().slice(0, 10);
 
