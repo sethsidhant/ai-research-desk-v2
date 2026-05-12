@@ -202,27 +202,38 @@ async function processMessage(msg, channel) {
   }
 }
 
-// ── Poll one channel entity for new messages ───────────────────────────────────
+// ── Poll one channel for new messages (username resolved fresh each cycle) ──────
 
-async function pollChannel(client, entity, channel, lastIdMap, isFirstPoll) {
-  const messages = await client.getMessages(entity, { limit: 10 });
+async function pollChannel(client, channel, lastIdMap, isFirstPoll) {
+  // Try each username until one returns messages — no cached entity objects
+  let messages = null;
+  let resolvedVia = null;
+  for (const username of channel.usernames) {
+    try {
+      const result = await client.getMessages(username, { limit: 10 });
+      if (result?.length) { messages = result; resolvedVia = username; break; }
+    } catch (e) {
+      console.warn(`[telegramWatcher] @${username} (${channel.label}): ${e.message}`);
+    }
+  }
   if (!messages?.length) return;
 
-  const lastKnown = lastIdMap.get(entity.id.toString()) ?? 0;
+  const mapKey   = channel.id;
+  const lastKnown = lastIdMap.get(mapKey) ?? 0;
   const newest    = messages[0].id;
 
   // On first poll, seed watermark and process recent messages not yet in DB
   // Trump: 15 min (high-volume, avoid flooding); financial channels: 2 hours (catch up after outages)
   if (isFirstPoll) {
-    lastIdMap.set(entity.id.toString(), newest);
+    lastIdMap.set(mapKey, newest);
     const catchupMs = channel.id === 'trump' ? 15 * 60 * 1000 : 2 * 60 * 60 * 1000;
     const cutoff    = Date.now() - catchupMs;
     const fresh     = messages.filter(m => m.date * 1000 >= cutoff);
     if (fresh.length) {
-      console.log(`[telegramWatcher] ${channel.label}: ${fresh.length} startup message(s) to check (last ${catchupMs / 60000} min)`);
+      console.log(`[telegramWatcher] ${channel.label}: ${fresh.length} startup message(s) to check via @${resolvedVia}`);
       for (const m of fresh.reverse()) await processMessage(m, channel);
     } else {
-      console.log(`[telegramWatcher] ${channel.label}: seeded at msg ${newest}`);
+      console.log(`[telegramWatcher] ${channel.label}: seeded at msg ${newest} via @${resolvedVia}`);
     }
     return;
   }
@@ -231,7 +242,7 @@ async function pollChannel(client, entity, channel, lastIdMap, isFirstPoll) {
 
   // Process only messages newer than lastKnown, oldest first
   const newMsgs = messages.filter(m => m.id > lastKnown).reverse();
-  lastIdMap.set(entity.id.toString(), newest);
+  lastIdMap.set(mapKey, newest);
 
   for (const m of newMsgs) await processMessage(m, channel);
 }
@@ -250,49 +261,25 @@ async function run() {
     return;
   }
 
-  // Poll-based MTProto: connect → fetch → disconnect each cycle.
-  // Connection is alive for ~2s per minute, so Railway restart overlap window is negligible.
+  // Poll-based MTProto: connect → fetch → disconnect each cycle (~2s alive per minute).
+  // Entities resolved fresh each cycle via username string — no stale access hash risk.
   const client = new TelegramClient(new StringSession(sessionString), API_ID, API_HASH, {
     connectionRetries: 3,
     retryDelay:        2000,
   });
 
-  // Resolve entities once on startup (cached across poll cycles)
-  await client.connect();
-  console.log('[telegramWatcher] Connected — resolving channels...');
-  const channelEntities = [];
-  for (const channel of CHANNELS) {
-    for (const username of channel.usernames) {
-      try {
-        const entity = await client.getEntity(username);
-        if (!channelEntities.find(e => e.channel.id === channel.id)) {
-          channelEntities.push({ entity, channel });
-          console.log(`[telegramWatcher] Monitoring: @${username} (${channel.label})`);
-        }
-      } catch (e) {
-        console.warn(`[telegramWatcher] Could not resolve @${username}: ${e.message}`);
-      }
-    }
-  }
-  await client.disconnect();
-
-  if (!channelEntities.length) {
-    console.error('[telegramWatcher] No channels resolved — aborting');
-    return;
-  }
-
   const lastIdMap = new Map();
   let isFirstPoll = true;
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-  console.log('[telegramWatcher] Polling every 60s (connect-fetch-disconnect)...');
+  console.log('[telegramWatcher] Polling every 60s (connect-fetch-disconnect, username-based)...');
 
   while (true) {
     try {
       await client.connect();
-      for (const { entity, channel } of channelEntities) {
+      for (const channel of CHANNELS) {
         try {
-          await pollChannel(client, entity, channel, lastIdMap, isFirstPoll);
+          await pollChannel(client, channel, lastIdMap, isFirstPoll);
         } catch (e) {
           console.error(`[telegramWatcher] Poll error (${channel.label}): ${e.message}`);
         }
