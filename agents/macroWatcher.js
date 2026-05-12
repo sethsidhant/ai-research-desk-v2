@@ -3,9 +3,8 @@
 // stores AI summaries in macro_alerts table.
 //
 // Sources:
-//   trump          — Trump posts via RSSHub (official Telegram → RSS, fallback to repost channels)
-//   moneycontrol   — MoneyControl Telegram channel via RSSHub (faster than ET RSS)
-//   et_markets     — ET Markets RSS (fallback)
+//   trump/mc/cnbc  — handled by telegramWatcher.js (MTProto, poll-based)
+//   et_markets     — ET Markets RSS
 //
 // No Telegram API credentials needed.
 
@@ -31,8 +30,10 @@ const rssParser  = new RSSParser({ timeout: 15000, headers: { 'User-Agent': 'Moz
 // emoji:  used in Telegram notifications
 
 const SOURCES = [
-  // Trump, MoneyControl, CNBC TV18 removed — now handled in real-time by telegramWatcher.js via MTProto
-  // ── RSS feeds ─────────────────────────────────────────────────────────────
+  // Trump handled separately by telegramWatcher.js (MTProto) — no reliable RSS alternative
+  // MC and CNBC moved back to RSS: MTProto breaks on every Railway restart (AUTH_KEY_DUPLICATED),
+  // direct RSS is more reliable for sources that have it.
+  // Trump, MoneyControl, CNBC TV18 handled by telegramWatcher.js (MTProto poll-based)
   {
     id:     'et_markets',
     label:  'ET Markets',

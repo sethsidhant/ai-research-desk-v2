@@ -250,41 +250,46 @@ async function run() {
     return;
   }
 
+  // Poll-based MTProto: connect → fetch → disconnect each cycle.
+  // Connection is alive for ~2s per minute, so Railway restart overlap window is negligible.
   const client = new TelegramClient(new StringSession(sessionString), API_ID, API_HASH, {
     connectionRetries: 3,
     retryDelay:        2000,
   });
 
-  try {
-    await client.connect();
-    console.log('[telegramWatcher] Connected to Telegram MTProto');
-
-    // Resolve channel usernames → entities (deduplicated — use first entity per channel)
-    const channelEntities = []; // [{ entity, channel }]
-    for (const channel of CHANNELS) {
-      for (const username of channel.usernames) {
-        try {
-          const entity = await client.getEntity(username);
-          // Only add one entity per channel id (first username that resolves)
-          if (!channelEntities.find(e => e.channel.id === channel.id)) {
-            channelEntities.push({ entity, channel });
-            console.log(`[telegramWatcher] Monitoring: @${username} (${channel.label})`);
-          }
-        } catch (e) {
-          console.warn(`[telegramWatcher] Could not resolve @${username}: ${e.message}`);
+  // Resolve entities once on startup (cached across poll cycles)
+  await client.connect();
+  console.log('[telegramWatcher] Connected — resolving channels...');
+  const channelEntities = [];
+  for (const channel of CHANNELS) {
+    for (const username of channel.usernames) {
+      try {
+        const entity = await client.getEntity(username);
+        if (!channelEntities.find(e => e.channel.id === channel.id)) {
+          channelEntities.push({ entity, channel });
+          console.log(`[telegramWatcher] Monitoring: @${username} (${channel.label})`);
         }
+      } catch (e) {
+        console.warn(`[telegramWatcher] Could not resolve @${username}: ${e.message}`);
       }
     }
+  }
+  await client.disconnect();
 
-    if (!channelEntities.length) {
-      console.error('[telegramWatcher] No channels resolved — aborting');
-      return;
-    }
+  if (!channelEntities.length) {
+    console.error('[telegramWatcher] No channels resolved — aborting');
+    return;
+  }
 
-    const lastIdMap  = new Map(); // entityId → last processed message id
-    let   isFirstPoll = true;
+  const lastIdMap = new Map();
+  let isFirstPoll = true;
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-    async function poll() {
+  console.log('[telegramWatcher] Polling every 60s (connect-fetch-disconnect)...');
+
+  while (true) {
+    try {
+      await client.connect();
       for (const { entity, channel } of channelEntities) {
         try {
           await pollChannel(client, entity, channel, lastIdMap, isFirstPoll);
@@ -293,24 +298,17 @@ async function run() {
         }
       }
       isFirstPoll = false;
+    } catch (e) {
+      if (e.message?.includes('AUTH_KEY_DUPLICATED')) {
+        console.log('[telegramWatcher] AUTH_KEY_DUPLICATED — waiting 3 min...');
+        await sleep(3 * 60 * 1000);
+        continue;
+      }
+      throw e;
+    } finally {
+      try { await client.disconnect(); } catch {}
     }
-
-    await poll();
-
-    await new Promise((_, reject) => {
-      const interval = setInterval(async () => {
-        if (!client.connected) {
-          clearInterval(interval);
-          reject(new Error('client disconnected'));
-          return;
-        }
-        await poll();
-      }, 60 * 1000);
-    });
-
-    console.log('[telegramWatcher] Polling every 60s...');
-  } finally {
-    try { await client.disconnect(); } catch {}
+    await sleep(60 * 1000);
   }
 }
 
