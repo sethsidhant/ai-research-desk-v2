@@ -272,6 +272,12 @@ async function run() {
   let isFirstPoll = true;
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+  // Wait for previous Railway container to die before connecting.
+  // Railway keeps old containers alive for several minutes during rolling deploys.
+  // Without this delay, both instances try to connect with the same session → AUTH_KEY_DUPLICATED loop.
+  console.log('[telegramWatcher] Startup delay 7 min — letting any prior container exit first...');
+  await sleep(7 * 60 * 1000);
+
   console.log('[telegramWatcher] Polling every 60s (connect-fetch-disconnect, username-based)...');
 
   while (true) {
@@ -287,8 +293,8 @@ async function run() {
       isFirstPoll = false;
     } catch (e) {
       if (e.message?.includes('AUTH_KEY_DUPLICATED')) {
-        console.log('[telegramWatcher] AUTH_KEY_DUPLICATED — waiting 3 min...');
-        await sleep(3 * 60 * 1000);
+        console.log('[telegramWatcher] AUTH_KEY_DUPLICATED — waiting 8 min for old container to die...');
+        await sleep(8 * 60 * 1000);
         continue;
       }
       throw e;
