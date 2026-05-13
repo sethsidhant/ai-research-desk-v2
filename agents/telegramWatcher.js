@@ -190,8 +190,9 @@ async function processMessage(msg, channel) {
 
     console.log(`[telegramWatcher] ${channel.label}${important ? ' 🚨' : ''}: ${summary.slice(0, 90)}…`);
     const sentimentEmoji = sentiment === 'bull' ? '🟢' : sentiment === 'bear' ? '🔴' : '⚪';
-    const tag = forward_looking ? ' _(forward outlook)_' : '';
-    await sendMacro(`${sentimentEmoji} ${channel.emoji} *Macro · ${channel.label}*${tag}\n${summary}`);
+    const tag  = forward_looking ? ' _(forward outlook)_' : '';
+    const link = msg.url ? `\n${msg.url}` : '';
+    await sendMacro(`${sentimentEmoji} ${channel.emoji} *Macro · ${channel.label}*${tag}\n${summary}${link}`);
 
   } catch (err) {
     console.error(`[telegramWatcher] processMessage error: ${err.message}`);
@@ -240,13 +241,19 @@ function parseMessages(html) {
 
     const textMatch = part.match(/class="tgme_widget_message_text[^"]*"[^>]*>([\s\S]*?)<\/div>/);
     if (!textMatch) continue;
-    const message = stripHtml(textMatch[1]);
+    const rawText = textMatch[1];
+    const message = stripHtml(rawText);
     if (!message || message.length < 10) continue;
+
+    // Extract first external article URL from <a href="..."> inside the message text
+    const urlMatches = [...rawText.matchAll(/href="(https?:\/\/[^"]+)"/g)];
+    const url = (urlMatches.map(m => m[1]).find(u => !u.startsWith('https://t.me')) ?? null)
+      ?.replace(/&amp;/g, '&');
 
     const timeMatch = part.match(/datetime="([^"]+)"/);
     const date = timeMatch ? Math.floor(new Date(timeMatch[1]).getTime() / 1000) : Math.floor(Date.now() / 1000);
 
-    messages.push({ id, message, date });
+    messages.push({ id, message, url, date });
   }
   return messages.sort((a, b) => b.id - a.id); // newest first
 }
