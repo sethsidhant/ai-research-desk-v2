@@ -140,17 +140,6 @@ jobs:
         run: node rbiConsumerAgent.js
         working-directory: agents
 
-      - name: Fetch Forex Reserves (Fridays only — RBI publishes weekly)
-        run: |
-          DAY=$(TZ='Asia/Kolkata' date +%u)
-          if [ "$DAY" = "5" ]; then
-            echo "Friday — running forexAgent"
-            node forexAgent.js
-          else
-            echo "Not Friday (day=$DAY) — skipping forexAgent"
-          fi
-        working-directory: agents
-
       - name: Write heartbeat
         run: |
           curl -s -X POST "${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}/rest/v1/app_settings" \
