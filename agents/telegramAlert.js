@@ -6,13 +6,16 @@ const ADMIN_CHAT_ID = process.env.TELEGRAM_ADMIN_CHAT_ID;
 const MACRO_CHAT_ID = process.env.TELEGRAM_MACRO_CHAT_ID;
 
 async function sendToUser(chatId, text) {
-  if (!TOKEN || !chatId) return;
+  if (!TOKEN) { console.error('[telegram] TELEGRAM_BOT_TOKEN not set'); return; }
+  if (!chatId) { console.error('[telegram] chatId is missing — check env var'); return; }
   try {
-    await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
+    const res  = await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown' }),
     });
+    const json = await res.json();
+    if (!json.ok) console.error(`[telegram] API error to ${chatId}: ${json.description}`);
   } catch (err) {
     console.error(`[telegram] Send error to ${chatId}:`, err.message);
   }
