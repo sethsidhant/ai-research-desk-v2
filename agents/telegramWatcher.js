@@ -191,7 +191,8 @@ async function processMessage(msg, channel) {
     console.log(`[telegramWatcher] ${channel.label}${important ? ' 🚨' : ''}: ${summary.slice(0, 90)}…`);
     const sentimentEmoji = sentiment === 'bull' ? '🟢' : sentiment === 'bear' ? '🔴' : '⚪';
     const tag  = forward_looking ? ' _(forward outlook)_' : '';
-    const link = msg.url ? `\n${msg.url}` : '';
+    const cleanUrl = msg.url?.replace(/([?&])utm_[^&]*/g, '$1').replace(/[?&]$/, '') ?? null;
+    const link = cleanUrl ? `\n${cleanUrl}` : '';
     await sendMacro(`${sentimentEmoji} ${channel.emoji} *Macro · ${channel.label}*${tag}\n${summary}${link}`);
 
   } catch (err) {
