@@ -29,8 +29,18 @@ function isMarketOpen(): boolean {
   return mins >= 555 && mins <= 930
 }
 
-const userCaches = new Map<string, { data: Record<string, { last: number; change: number; changePct: number }>; ts: number }>()
+// Kite token: module-level cache, 55min TTL
+let kiteTokenCache: { apiKey: string; accessToken: string } | null = null
+let kiteTokenTs = 0
+const KITE_TOKEN_TTL = 55 * 60 * 1000
+
+// Price cache: per-user, 15s TTL
+const userPriceCaches = new Map<string, { data: Record<string, { last: number; change: number; changePct: number }>; ts: number }>()
 const CACHE_TTL_MS = 15000
+
+// Holdings cache: per-user, 5min TTL
+const userHoldingCaches = new Map<string, { tokens: { ticker: string; instrument_token: string }[]; ts: number }>()
+const HOLDINGS_TTL = 5 * 60 * 1000
 
 export async function GET() {
   const supabase = await createClient()
@@ -39,30 +49,40 @@ export async function GET() {
 
   const marketOpen = isMarketOpen()
 
-  const cache = userCaches.get(`portfolio:${user.id}`)
+  const cache = userPriceCaches.get(user.id)
   if (cache && Date.now() - cache.ts < CACHE_TTL_MS) {
     return NextResponse.json({ marketOpen, prices: cache.data, cached: true })
   }
 
-  const kite = await getKiteToken()
+  if (!kiteTokenCache || Date.now() - kiteTokenTs > KITE_TOKEN_TTL) {
+    kiteTokenCache = await getKiteToken()
+    kiteTokenTs = Date.now()
+  }
+  const kite = kiteTokenCache
   if (!kite) return NextResponse.json({ error: 'Kite credentials not configured' }, { status: 500 })
 
-  const admin = createAdminClient()
+  let holdingCache = userHoldingCaches.get(user.id)
+  if (!holdingCache || Date.now() - holdingCache.ts > HOLDINGS_TTL) {
+    const admin = createAdminClient()
+    const { data: holdings } = await admin
+      .from('portfolio_holdings')
+      .select('stock_id')
+      .eq('user_id', user.id)
 
-  const { data: holdings } = await admin
-    .from('portfolio_holdings')
-    .select('stock_id')
-    .eq('user_id', user.id)
+    const stockIds = (holdings ?? []).map(h => h.stock_id)
+    if (!stockIds.length) return NextResponse.json({ marketOpen, prices: {} })
 
-  const stockIds = (holdings ?? []).map(h => h.stock_id)
-  if (!stockIds.length) return NextResponse.json({ marketOpen, prices: {} })
+    const { data: stocks } = await admin
+      .from('stocks')
+      .select('ticker, instrument_token')
+      .in('id', stockIds)
+      .not('instrument_token', 'is', null)
 
-  const { data: stocks } = await admin
-    .from('stocks')
-    .select('ticker, instrument_token')
-    .in('id', stockIds)
-    .not('instrument_token', 'is', null)
+    holdingCache = { tokens: stocks ?? [], ts: Date.now() }
+    userHoldingCaches.set(user.id, holdingCache)
+  }
 
+  const stocks = holdingCache.tokens
   if (!stocks?.length) return NextResponse.json({ marketOpen, prices: {} })
 
   const tokens = stocks.map(s => s.instrument_token).join('&i=')
@@ -91,7 +111,7 @@ export async function GET() {
       prices[ticker]  = { last: v.last_price, change, changePct }
     }
 
-    userCaches.set(`portfolio:${user.id}`, { data: prices, ts: Date.now() })
+    userPriceCaches.set(user.id, { data: prices, ts: Date.now() })
     return NextResponse.json({ marketOpen, prices })
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 502 })

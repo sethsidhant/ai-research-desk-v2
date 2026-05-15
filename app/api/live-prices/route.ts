@@ -41,8 +41,18 @@ export type LivePriceData = {
   changePct:  number   // % change from prev close
 }
 
-const userCaches = new Map<string, { data: Record<string, LivePriceData>; ts: number }>()
-const CACHE_TTL_MS = 15000
+// Kite token: read once per hour (token rotates daily, 1h TTL is safe)
+let kiteTokenCache: { apiKey: string; accessToken: string } | null = null
+let kiteTokenTs = 0
+const KITE_TOKEN_TTL = 55 * 60 * 1000
+
+// Price cache: per-user, 15s TTL
+const userPriceCaches = new Map<string, { data: Record<string, LivePriceData>; ts: number }>()
+const PRICE_TTL_MS = 15000
+
+// Stock list cache: per-user, 5min TTL (watchlist/portfolio rarely changes)
+const userStockCaches = new Map<string, { tickers: string[]; tokens: { ticker: string; instrument_token: string }[]; ts: number }>()
+const STOCK_LIST_TTL = 5 * 60 * 1000
 
 export async function GET() {
   const supabase = await createClient()
@@ -51,33 +61,40 @@ export async function GET() {
 
   const marketOpen = isMarketOpen()
 
-  const cache = userCaches.get(user.id)
-  if (cache && Date.now() - cache.ts < CACHE_TTL_MS) {
-    return NextResponse.json({ marketOpen, prices: cache.data, cached: true })
+  const priceCache = userPriceCaches.get(user.id)
+  if (priceCache && Date.now() - priceCache.ts < PRICE_TTL_MS) {
+    return NextResponse.json({ marketOpen, prices: priceCache.data, cached: true })
   }
 
-  const kite = await getKiteToken()
+  // Token: use module-level cache to avoid app_settings read every 15s
+  if (!kiteTokenCache || Date.now() - kiteTokenTs > KITE_TOKEN_TTL) {
+    kiteTokenCache = await getKiteToken()
+    kiteTokenTs = Date.now()
+  }
+  const kite = kiteTokenCache
   if (!kite) return NextResponse.json({ error: 'Kite credentials not configured' }, { status: 500 })
   const { apiKey, accessToken } = kite
 
-  // Fetch watchlist + portfolio holdings — both need live prices
-  const [{ data: watchlist }, { data: holdings }] = await Promise.all([
-    supabase.from('user_stocks').select('stock_id').eq('user_id', user.id),
-    supabase.from('portfolio_holdings').select('stock_id').eq('user_id', user.id),
-  ])
+  // Stock list: cache for 5 min to avoid user_stocks + portfolio_holdings reads every 15s
+  let stockCache = userStockCaches.get(user.id)
+  if (!stockCache || Date.now() - stockCache.ts > STOCK_LIST_TTL) {
+    const [{ data: watchlist }, { data: holdings }] = await Promise.all([
+      supabase.from('user_stocks').select('stock_id').eq('user_id', user.id),
+      supabase.from('portfolio_holdings').select('stock_id').eq('user_id', user.id),
+    ])
+    const stockIds = [...new Set([
+      ...(watchlist ?? []).map(w => w.stock_id),
+      ...(holdings ?? []).map(h => h.stock_id),
+    ])]
+    if (!stockIds.length) return NextResponse.json({ marketOpen, prices: {} })
+    const { data: stocks } = await supabase
+      .from('stocks').select('ticker, instrument_token')
+      .in('id', stockIds).not('instrument_token', 'is', null)
+    stockCache = { tickers: stockIds, tokens: stocks ?? [], ts: Date.now() }
+    userStockCaches.set(user.id, stockCache)
+  }
 
-  const stockIds = [...new Set([
-    ...(watchlist ?? []).map(w => w.stock_id),
-    ...(holdings ?? []).map(h => h.stock_id),
-  ])]
-  if (!stockIds.length) return NextResponse.json({ marketOpen, prices: {} })
-
-  const { data: stocks } = await supabase
-    .from('stocks')
-    .select('ticker, instrument_token')
-    .in('id', stockIds)
-    .not('instrument_token', 'is', null)
-
+  const stocks = stockCache.tokens
   if (!stocks?.length) return NextResponse.json({ marketOpen, prices: {} })
 
   const tokens = stocks.map(s => s.instrument_token).join('&i=')
@@ -106,7 +123,7 @@ export async function GET() {
       prices[ticker]  = { last: v.last_price, change, changePct }
     }
 
-    userCaches.set(user.id, { data: prices, ts: Date.now() })
+    userPriceCaches.set(user.id, { data: prices, ts: Date.now() })
     return NextResponse.json({ marketOpen, prices })
 
   } catch (err: any) {
