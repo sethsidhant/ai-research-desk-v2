@@ -26,8 +26,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 //   Industrials/IT/Consumer → Sales / Net Sales / Revenue from Operations
 //   Banks                   → Interest Earned
 //   Insurance               → Gross Premium Written / Net Premium Earned
-const REVENUE_LABELS = /^(sales|net sales|revenue from operations|revenue|interest earned|gross premium written|net premium earned)/i;
-const PROFIT_LABELS  = /^(net profit|profit after tax|pat|profit \/ loss after tax|profit\/loss after tax)/i;
+const REVENUE_LABELS = /^(sales|net sales|net revenue|revenue from operations|revenue|total income|income from operations|interest earned|gross premium written|net premium earned|total revenue)/i;
+const PROFIT_LABELS  = /^(net profit|profit after tax|pat|profit \/ loss after tax|profit\/loss after tax|profit after exceptional|net income)/i;
 
 function extractResultsSummary(scraped) {
   const q = scraped?.quarterly;
@@ -212,14 +212,18 @@ async function main() {
 
     // Send targeted Telegram notification
     const summary = extractResultsSummary(scraped);
-    if (summary && targets.length) {
-      const msg = buildMessage(ticker, summary);
-      await sendToMany(targets.map(t => t.chatId), msg);
-      console.log(`[${ticker}] Notified ${targets.length} user(s) — ${newPeriod} | Rev: ${formatCr(summary.revenue)} | PAT: ${formatCr(summary.profit)}`);
+    if (!summary) {
+      console.log(`[${ticker}] DB updated — could not extract P&L (no quarterly headers/rows)`);
     } else if (!targets.length) {
       console.log(`[${ticker}] DB updated — no Telegram users to notify`);
     } else {
-      console.log(`[${ticker}] DB updated — could not extract P&L from Screener rows`);
+      if (summary.revenue == null) {
+        const labels = scraped?.quarterly?.rows?.map(r => r.label).join(', ') ?? 'none';
+        console.log(`[${ticker}] Revenue label not matched — available: ${labels.slice(0, 120)}`);
+      }
+      const msg = buildMessage(ticker, summary);
+      await sendToMany(targets.map(t => t.chatId), msg);
+      console.log(`[${ticker}] Notified ${targets.length} user(s) — ${newPeriod} | Rev: ${formatCr(summary.revenue)} | PAT: ${formatCr(summary.profit)}`);
     }
 
     alerted++;
