@@ -13,7 +13,6 @@ import CollapsibleSection from '@/components/CollapsibleSection'
 import WatchlistMiniSection, { type WatchRow } from '@/components/WatchlistMiniSection'
 import PortfolioMiniSection, { type PortRow } from '@/components/PortfolioMiniSection'
 import EtfSpotlight, { type EtfMeta } from '@/components/EtfSpotlight'
-import GlobalMiniWidget from '@/components/GlobalMiniWidget'
 import NewsTabs, { type NewsItem, type MacroItem } from '@/components/NewsTabs'
 import MarketPulsePanel from '@/components/MarketPulsePanel'
 
@@ -382,6 +381,14 @@ export default async function DashboardPage() {
     .order('aum_cr', { ascending: false })
     .limit(8)
 
+  // ── Forex Reserves ────────────────────────────────────────────────────────
+  const { data: forexRow } = await admin
+    .from('forex_reserves')
+    .select('date, total_usd_mn, gold_usd_mn, wow_change_usd_mn')
+    .order('date', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
   // ── Nifty turning points (last 30 days, moves ≥ 1.5%) ───────────────────
   const cutoff30d = new Date(Date.now() - 35 * 86400000).toISOString().slice(0, 10)
   const { data: indexHistory } = await supabase
@@ -550,7 +557,7 @@ export default async function DashboardPage() {
         </div>
 
         {/* ── KPI row ─────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-5 items-start">
           <WatchlistReturnCard
             rows={allRows
               .filter((w: any) => w.invested_amount && w.entry_price)
@@ -635,6 +642,17 @@ export default async function DashboardPage() {
           {/* ── Right: xl:col-span-1 ──────────────────────────────────── */}
           <div className="space-y-4">
 
+            {/* ETF Spotlight — top of sidebar */}
+            <div className="artha-card px-4 py-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="artha-label">ETF Spotlight</div>
+                <Link href="/etf" className="text-xs transition-colors hover:opacity-70" style={{ color: 'var(--artha-text-faint)' }}>
+                  All ETFs →
+                </Link>
+              </div>
+              <EtfSpotlight etfs={topEtfs} />
+            </div>
+
             {/* Market Pulse — FII/DII/MF collapsible panel */}
             {fiiDiiRow && (
               <MarketPulsePanel
@@ -653,26 +671,38 @@ export default async function DashboardPage() {
               />
             )}
 
-            {/* Indian Markets widget */}
-            <div className="artha-card px-4 py-4">
-              <div className="artha-label mb-3">Indian Markets</div>
-              <GlobalMiniWidget />
-            </div>
-
-            {/* ETF Spotlight */}
-            <div className="artha-card px-4 py-4">
-              <div className="flex items-center justify-between mb-3">
-                <div className="artha-label">ETF Spotlight</div>
-                <Link
-                  href="/etf"
-                  className="text-xs transition-colors hover:opacity-70"
-                  style={{ color: 'var(--artha-text-faint)' }}
-                >
-                  All ETFs →
-                </Link>
-              </div>
-              <EtfSpotlight etfs={topEtfs} />
-            </div>
+            {/* Forex Reserves — compact weekly card */}
+            {forexRow && (() => {
+              const totalB   = forexRow.total_usd_mn / 1000
+              const goldB    = forexRow.gold_usd_mn  / 1000
+              const wowB     = forexRow.wow_change_usd_mn / 1000
+              const up       = wowB >= 0
+              const dateLabel = new Date(forexRow.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+              return (
+                <div className="artha-card px-4 py-3.5">
+                  <div className="flex items-center justify-between mb-2.5">
+                    <div className="artha-label">Forex Reserves</div>
+                    <span className="text-[10px]" style={{ color: 'var(--artha-text-faint)' }}>Week of {dateLabel}</span>
+                  </div>
+                  <div className="flex items-end justify-between">
+                    <div>
+                      <div className="font-display font-bold text-xl leading-none" style={{ color: 'var(--artha-text)', letterSpacing: '-0.03em' }}>
+                        ${totalB.toFixed(1)}B
+                      </div>
+                      <div className="text-[11px] mt-1" style={{ color: 'var(--artha-text-faint)' }}>
+                        Gold: ${goldB.toFixed(1)}B
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-mono font-bold text-sm" style={{ color: up ? 'var(--artha-teal)' : 'var(--artha-negative)' }}>
+                        {up ? '+' : ''}${wowB.toFixed(2)}B
+                      </div>
+                      <div className="text-[10px]" style={{ color: 'var(--artha-text-faint)' }}>WoW change</div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
 
             {/* Sectors vs FII — collapsible, closed by default */}
             {sectorExposure.length > 0 && (
