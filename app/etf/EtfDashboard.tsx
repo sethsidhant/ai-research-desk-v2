@@ -30,8 +30,9 @@ type EtfQuote = {
 const CATEGORIES = [
   { id: 'all',           label: 'All ETFs' },
   { id: 'equity_broad',  label: 'Equity Index' },
-  { id: 'equity_midcap', label: 'Midcap' },
-  { id: 'equity_sector', label: 'Sectoral' },
+  { id: 'equity_midcap',    label: 'Midcap' },
+  { id: 'equity_smallcap', label: 'Smallcap' },
+  { id: 'equity_sector',   label: 'Sectoral' },
   { id: 'gold',          label: 'Gold' },
   { id: 'silver',        label: 'Silver' },
   { id: 'international', label: 'International' },
@@ -41,8 +42,9 @@ const CATEGORIES = [
 
 const CATEGORY_COLORS: Record<string, { bg: string; text: string }> = {
   equity_broad:  { bg: '#dbeafe', text: '#1d4ed8' },
-  equity_midcap: { bg: '#e0e7ff', text: '#4338ca' },
-  equity_sector: { bg: '#fce7f3', text: '#be185d' },
+  equity_midcap:    { bg: '#e0e7ff', text: '#4338ca' },
+  equity_smallcap:  { bg: '#ede9fe', text: '#6d28d9' },
+  equity_sector:    { bg: '#fce7f3', text: '#be185d' },
   gold:          { bg: '#fef3c7', text: '#92400e' },
   silver:        { bg: '#f1f5f9', text: '#475569' },
   international: { bg: '#dcfce7', text: '#166534' },
