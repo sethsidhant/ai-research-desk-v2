@@ -14,6 +14,7 @@ import {
   TrendingUp,
   X,
   BookOpen,
+  Layers,
 } from 'lucide-react'
 import { signOut } from '@/app/actions'
 
@@ -29,6 +30,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/watchlist',    label: 'Watchlist',    icon: Star },
   { href: '/portfolio',    label: 'Portfolio',    icon: Briefcase },
   { href: '/market-pulse',    label: 'Market Pulse',    icon: BarChart2 },
+  { href: '/etf',              label: 'ETF Tracker',      icon: Layers },
   { href: '/global-indices',  label: 'Global Markets',  icon: Globe },
   { href: '/research/nri-india-case', label: 'NRI Research', icon: BookOpen },
   { href: '/settings',        label: 'Settings',        icon: Settings },
