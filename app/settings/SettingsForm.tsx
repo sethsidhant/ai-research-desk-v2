@@ -229,7 +229,7 @@ export default function SettingsForm({ prefs, apiKeySet }: { prefs: Prefs; apiKe
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248-1.97 9.289c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.48 14.013 4.53 13.1c-.657-.204-.67-.657.136-.975l10.862-4.187c.548-.196 1.027.12.848.97l-.814-.66z"/>
             </svg>
-            Join Noesis Macro News on Telegram
+            Join Oasis Macro News on Telegram
           </a>
           <p className="text-[11px] text-gray-400">Tap to join — no approval needed, instant access.</p>
         </div>

@@ -963,7 +963,7 @@ export default function NriResearchClient() {
                 ))}
               </div>
               <div className="flex items-center justify-between mt-5 pt-4" style={{ borderTop: '1px solid rgba(11,28,48,0.07)' }}>
-                <div className="text-[10px]" style={{ color: 'var(--artha-text-faint)' }}>Noesis Research · April 2026 · Not financial advice</div>
+                <div className="text-[10px]" style={{ color: 'var(--artha-text-faint)' }}>Oasis Research · April 2026 · Not financial advice</div>
                 <div className="flex gap-2">
                   {['DTAA', 'NRI', 'EM'].map(tag => (
                     <span key={tag} className="px-2 py-0.5 rounded text-[9px] tracking-widest uppercase font-semibold"

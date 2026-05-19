@@ -178,7 +178,7 @@ export default function PortfolioImport({ defaultOpen = false }: { defaultOpen?:
               const blob = new Blob([csv], { type: 'text/csv' })
               const url  = URL.createObjectURL(blob)
               const a    = document.createElement('a')
-              a.href = url; a.download = 'noesis_portfolio_template.csv'; a.click()
+              a.href = url; a.download = 'oasis_portfolio_template.csv'; a.click()
               URL.revokeObjectURL(url)
             }}
             className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-lg transition-colors border border-gray-200"

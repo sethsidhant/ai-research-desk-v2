@@ -7,9 +7,15 @@ import MarketStatusLight from '@/components/MarketStatusLight'
 import AppShell from '@/components/AppShell'
 import { INDUSTRY_TO_FII_SECTOR } from '@/lib/fiiSectorMap'
 import { WatchlistReturnCard, PortfolioReturnCard } from '@/components/DashboardReturnCard'
-import MarketBreadthCard, { type SignalGroup, type VolumeRow } from '@/components/MarketBreadthCard'
-import MacroNewsCard from '@/components/MacroNewsCard'
+import MarketBreadthCard, { type SignalGroup } from '@/components/MarketBreadthCard'
 import PortfolioMovers, { type TurningPoint } from '@/components/PortfolioMovers'
+import CollapsibleSection from '@/components/CollapsibleSection'
+import WatchlistMiniSection, { type WatchRow } from '@/components/WatchlistMiniSection'
+import PortfolioMiniSection, { type PortRow } from '@/components/PortfolioMiniSection'
+import EtfSpotlight, { type EtfMeta } from '@/components/EtfSpotlight'
+import GlobalMiniWidget from '@/components/GlobalMiniWidget'
+import NewsTabs, { type NewsItem, type MacroItem } from '@/components/NewsTabs'
+import MarketPulsePanel from '@/components/MarketPulsePanel'
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -76,12 +82,6 @@ export default async function DashboardPage() {
   })
 
   // ── Watchlist P&L ────────────────────────────────────────────────────────
-  const portfolioRows = allRows.filter(w => w.invested_amount && w.entry_price && w.stock?.current_price)
-  const totalInvested = portfolioRows.reduce((s: number, w: any) => s + w.invested_amount, 0)
-  const totalCurrent  = portfolioRows.reduce((s: number, w: any) =>
-    s + (w.stock.current_price / w.entry_price) * w.invested_amount, 0)
-  const totalPnl    = totalCurrent - totalInvested
-  const totalPnlPct = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0
 
   // ── Portfolio holdings (real) ─────────────────────────────────────────────
   const { data: portfolioHoldings } = await admin
@@ -96,19 +96,6 @@ export default async function DashboardPage() {
 
   const portRows = portRowsAll.filter((h: any) => h.stock?.current_price)
 
-  const portInvested = portRows.reduce((s: number, h: any) => s + h.quantity * h.avg_price, 0)
-  const portCurrent  = portRows.reduce((s: number, h: any) => s + h.quantity * h.stock.current_price, 0)
-  const portPnl      = portCurrent - portInvested
-  const portPnlPct   = portInvested > 0 ? (portPnl / portInvested) * 100 : 0
-
-  const topHoldings = portRows
-    .map((h: any) => ({
-      ticker: h.stock.ticker,
-      pct: h.avg_price > 0 ? ((h.stock.current_price - h.avg_price) / h.avg_price) * 100 : 0,
-      alloc: portInvested > 0 ? (h.quantity * h.avg_price / portInvested) * 100 : 0,
-    }))
-    .sort((a: any, b: any) => b.alloc - a.alloc)
-    .slice(0, 4)
 
   // ── Signals: latest score per stock (watchlist + portfolio combined) ────
   const watchStockIds = allRows.map((w: any) => w.stock_id).filter(Boolean)
@@ -119,9 +106,6 @@ export default async function DashboardPage() {
   const stockTickerMap: Record<string, string> = {}
   for (const w of allRows)     stockTickerMap[w.stock_id]  = w.stock?.ticker ?? ''
   for (const h of portRowsAll) stockTickerMap[h.stock_id]  = h.stock?.ticker ?? ''
-
-  // Legacy alias so existing code below doesn't break
-  const stockIds = watchStockIds
 
   const { data: scores } = allStockIds.length > 0
     ? await supabase
@@ -189,8 +173,6 @@ export default async function DashboardPage() {
     .filter((h: any) => latestScore[h.stock_id]?.above_200_dma === false)
     .map((h: any) => h.stock?.ticker).filter(Boolean)
 
-  const portHasSignals = portOversold.length > 0 || portOverbought.length > 0 || portBelow200.length > 0
-
   // Portfolio sector exposure vs FII
   const portSectorMap: Record<string, { count: number; invested: number }> = {}
   for (const h of portRowsAll) {
@@ -201,17 +183,6 @@ export default async function DashboardPage() {
     portSectorMap[fiiSectorName].count++
     portSectorMap[fiiSectorName].invested += h.quantity * h.avg_price
   }
-  const portTotalInvested = portRows.reduce((s: number, h: any) => s + h.quantity * h.avg_price, 0)
-  const portSectorExposure = Object.entries(portSectorMap)
-    .sort(([, a], [, b]) => b.invested - a.invested)
-    .slice(0, 5)
-    .map(([industry, { count, invested }]) => ({
-      industry,
-      count,
-      invested,
-      pct: portTotalInvested > 0 ? Math.round((invested / portTotalInvested) * 100) : 0,
-    }))
-
   // ── Portfolio 5-day closing price (for 5d gain in KPI card) ────────────
   const price5dMap: Record<string, number> = {}
   if (portStockIds.length > 0) {
@@ -281,21 +252,10 @@ export default async function DashboardPage() {
   // Volume alerts for activity board (>=2x avg — dedicated section now)
   const volumeAlerts = volumeBreakouts.filter(v => v.ratio >= 2)
 
-  // Watchlist movers (virtual P&L, by entry price)
-  const watchlistMovers = allRows
-    .filter((w: any) => w.entry_price && w.stock?.current_price)
-    .map((w: any) => ({
-      ticker:    w.stock.ticker as string,
-      returnPct: ((w.stock.current_price - w.entry_price) / w.entry_price) * 100,
-    }))
-    .sort((a: any, b: any) => b.returnPct - a.returnPct)
-  const watchGainers = watchlistMovers.slice(0, 2)
-  const watchLosers  = [...watchlistMovers].reverse().slice(0, 2).filter((h: any) => h.returnPct < 0)
-
   // Activity board — news items (last 2 days, watchlist + portfolio, deduplicated)
   const yesterday_date = new Date(Date.now() - 86400000).toISOString().slice(0, 10)
-  type NewsItem = { ticker: string; source: string; headline: string; url: string | null; isPortfolio: boolean; lastUpdate: string }
-  const newsItems: NewsItem[] = []
+  type RawNewsItem = { ticker: string; source: string; headline: string; url: string | null; isPortfolio: boolean; lastUpdate: string }
+  const rawNewsItems: RawNewsItem[] = []
   const newsTickerSet = new Set<string>()
 
   for (const w of allRows) {
@@ -303,7 +263,7 @@ export default async function DashboardPage() {
     if (!t || newsTickerSet.has(t)) continue
     if ((w.stock?.last_news_update ?? '') >= yesterday_date) {
       const parsed = parseFirstHeadline(w.stock?.latest_headlines)
-      if (parsed) { newsItems.push({ ticker: t, ...parsed, isPortfolio: false, lastUpdate: w.stock?.last_news_update ?? '' }); newsTickerSet.add(t) }
+      if (parsed) { rawNewsItems.push({ ticker: t, ...parsed, isPortfolio: false, lastUpdate: w.stock?.last_news_update ?? '' }); newsTickerSet.add(t) }
     }
   }
   for (const h of portRowsAll) {
@@ -311,11 +271,13 @@ export default async function DashboardPage() {
     if (!t || newsTickerSet.has(t)) continue
     if ((h.stock?.last_news_update ?? '') >= yesterday_date) {
       const parsed = parseFirstHeadline(h.stock?.latest_headlines)
-      if (parsed) { newsItems.push({ ticker: t, ...parsed, isPortfolio: true, lastUpdate: h.stock?.last_news_update ?? '' }); newsTickerSet.add(t) }
+      if (parsed) { rawNewsItems.push({ ticker: t, ...parsed, isPortfolio: true, lastUpdate: h.stock?.last_news_update ?? '' }); newsTickerSet.add(t) }
     }
   }
   // Sort by most recent update first so today's filings always appear at top
-  newsItems.sort((a, b) => (b.lastUpdate ?? '').localeCompare(a.lastUpdate ?? ''))
+  rawNewsItems.sort((a, b) => (b.lastUpdate ?? '').localeCompare(a.lastUpdate ?? ''))
+
+  const newsItems: NewsItem[] = rawNewsItems.map(({ lastUpdate, ...rest }) => rest)
 
   // Activity board — combined technical alerts
   const actOversold  = [...new Set([...oversoldTickers,  ...portOversold])]
@@ -340,18 +302,6 @@ export default async function DashboardPage() {
       { shortLabel: '52W Low',  type: 'low52w'     as const, tickers: near52wLowTickers },
     ] satisfies SignalGroup[]
   ).filter(s => s.tickers.length > 0)
-
-  // Activity board — portfolio movers
-  const portMovers = portRows
-    .map((h: any) => ({
-      ticker:    h.stock.ticker,
-      returnPct: h.avg_price > 0 ? ((h.stock.current_price - h.avg_price) / h.avg_price) * 100 : 0,
-      alloc:     portTotalInvested > 0 ? (h.quantity * h.avg_price / portTotalInvested) * 100 : 0,
-    }))
-    .sort((a: any, b: any) => b.returnPct - a.returnPct)
-
-  const portGainers = portMovers.slice(0, 2)
-  const portLosers  = [...portMovers].reverse().slice(0, 2).filter((h: any) => h.returnPct < 0)
 
   // ── Sector exposure (watchlist + portfolio combined, deduplicated by ticker) ──
   const sectorMap: Record<string, { count: number; invested: number; tickers: string[] }> = {}
@@ -424,6 +374,14 @@ export default async function DashboardPage() {
       .limit(100),
   ])
 
+  // ── ETF Spotlight ─────────────────────────────────────────────────────────
+  const { data: etfSpotlight } = await admin
+    .from('etfs')
+    .select('ticker,name,category,aum_cr,expense_ratio')
+    .not('aum_cr', 'is', null)
+    .order('aum_cr', { ascending: false })
+    .limit(8)
+
   // ── Nifty turning points (last 30 days, moves ≥ 1.5%) ───────────────────
   const cutoff30d = new Date(Date.now() - 35 * 86400000).toISOString().slice(0, 10)
   const { data: indexHistory } = await supabase
@@ -445,8 +403,6 @@ export default async function DashboardPage() {
   rawTurning.sort((a, b) => b.date.localeCompare(a.date))
   const topTurning = rawTurning.slice(0, 5)
 
-  // Fetch macro news for full 35-day window. No important=true filter — macroWatcher
-  // already AI-filters everything; we sort by proximity so same-day news wins.
   let turningPoints: TurningPoint[] = topTurning.map(tp => ({ ...tp, news: [] }))
   if (topTurning.length > 0) {
     const { data: tpNews } = await admin
@@ -456,7 +412,6 @@ export default async function DashboardPage() {
       .order('created_at', { ascending: false })
       .limit(500)
 
-    // Group news by nearest turning point (±1.5 days), track diff for proximity sort
     type NewsWithDiff = { summary: string; channel: string; affected_sectors: string[] | null; diff: number }
     const newsMap: Record<string, NewsWithDiff[]> = {}
     for (const tp of topTurning) newsMap[tp.date] = []
@@ -473,7 +428,6 @@ export default async function DashboardPage() {
         diff: bestDiff,
       })
     }
-    // Sort each group by proximity (closest date first), take top 3
     turningPoints = topTurning.map(tp => ({
       ...tp,
       news: (newsMap[tp.date] ?? [])
@@ -507,15 +461,15 @@ export default async function DashboardPage() {
     .filter(Boolean) as string[]
   const uniqueUserSectors = [...new Set(userSectors)]
 
-  // Skip rows with null fii_net/dii_net (can happen when scraper inserts partial row)
+  // Skip rows with null fii_net/dii_net
   const fiiDiiRow  = (fiiDiiRows ?? []).find(r => r.fii_net != null && r.dii_net != null) ?? null
   const fiiDiiYest = (fiiDiiRows ?? []).filter(r => r.fii_net != null && r.dii_net != null)[1] ?? null
 
-  // 5-day rolling net (guard against null values)
+  // 5-day rolling net
   const fii5d = (fiiDiiRows ?? []).slice(0, 5).reduce((s, r) => s + (r.fii_net ?? 0), 0)
   const dii5d = (fiiDiiRows ?? []).slice(0, 5).reduce((s, r) => s + (r.dii_net ?? 0), 0)
 
-  // Consecutive FII streak (buying or selling)
+  // Consecutive FII streak
   let fiiStreak = 0
   let fiiStreakDir: 'buying' | 'selling' | null = null
   for (const r of (fiiDiiRows ?? [])) {
@@ -531,25 +485,56 @@ export default async function DashboardPage() {
     fiiFlowMap[decodeSector(s.sector)] = s.fortnight_flow ?? 0
   }
 
-  const validSectors = Object.entries(fiiFlowMap)
-    .map(([name, flow]) => ({ name, flow }))
-    .filter(s => s.flow !== 0)
-    .sort((a, b) => b.flow - a.flow)
-
-  const top3 = validSectors.slice(0, 4)
-  const bot3 = validSectors.slice(-4).reverse()
-  const sectorBuyCount  = validSectors.filter(s => s.flow > 0).length
-  const sectorSellCount = validSectors.filter(s => s.flow < 0).length
-
   const today = new Date().toLocaleDateString('en-IN', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
   })
 
   const watchlistCount = allRows.length
-  const hasSignals = filingTickers.length > 0 || oversoldTickers.length > 0 ||
-                     overboughtTickers.length > 0 || below200Tickers.length > 0
-
   const isAdmin = user.email === process.env.ADMIN_EMAIL
+
+  // ── Watchlist mini rows ──────────────────────────────────────────────────
+  const watchlistMiniRows: WatchRow[] = allRows.slice(0, 6).map((w: any) => ({
+    ticker:      w.stock?.ticker ?? '',
+    entryPrice:  w.entry_price ?? null,
+    rsi:         latestScore[w.stock_id]?.rsi ?? null,
+    above200dma: latestScore[w.stock_id]?.above_200_dma ?? null,
+    currentPrice: w.stock?.current_price ?? null,
+  })).filter((r: WatchRow) => r.ticker)
+
+  // ── Portfolio mini rows ──────────────────────────────────────────────────
+  const portTotalInvestedForAlloc = portRows.reduce((s: number, h: any) => s + h.quantity * h.avg_price, 0)
+  const portfolioMiniRows: PortRow[] = portRows.slice(0, 6).map((h: any) => ({
+    ticker:   h.stock.ticker,
+    quantity: h.quantity,
+    avgPrice: h.avg_price,
+    alloc:    portTotalInvestedForAlloc > 0
+      ? (h.quantity * h.avg_price / portTotalInvestedForAlloc) * 100
+      : 0,
+  }))
+
+  // Macro items typed for NewsTabs
+  const trumpItems: MacroItem[] = (trumpAlertRows ?? []).map((r: any) => ({
+    channel: r.channel,
+    summary: r.summary,
+    created_at: r.created_at,
+    important: r.important ?? null,
+    affected_sectors: r.affected_sectors ?? null,
+  }))
+  const marketItems: MacroItem[] = (marketAlertRows ?? []).map((r: any) => ({
+    channel: r.channel,
+    summary: r.summary,
+    created_at: r.created_at,
+    important: r.important ?? null,
+    affected_sectors: r.affected_sectors ?? null,
+  }))
+
+  const topEtfs: EtfMeta[] = (etfSpotlight ?? []).map((e: any) => ({
+    ticker: e.ticker,
+    name: e.name,
+    category: e.category,
+    aum_cr: e.aum_cr,
+    expense_ratio: e.expense_ratio,
+  }))
 
   return (
     <AppShell userEmail={user.email!} isAdmin={isAdmin}>
@@ -566,16 +551,12 @@ export default async function DashboardPage() {
 
         {/* ── KPI row ─────────────────────────────────────────────────── */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
-
-          {/* Watchlist Return — live prices via client component */}
           <WatchlistReturnCard
             rows={allRows
               .filter((w: any) => w.invested_amount && w.entry_price)
               .map((w: any) => ({ ticker: w.stock.ticker, invested: w.invested_amount, entryPrice: w.entry_price }))}
             watchlistCount={watchlistCount}
           />
-
-          {/* Portfolio Return — live prices via client component */}
           <PortfolioReturnCard
             rows={portRowsAll.map((h: any) => ({
               ticker:     h.stock.ticker,
@@ -584,8 +565,6 @@ export default async function DashboardPage() {
               price5dAgo: price5dMap[h.stock_id] ?? null,
             }))}
           />
-
-          {/* Market Breadth */}
           <MarketBreadthCard
             above200={breadthAbove200}
             below200={breadthBelow200}
@@ -600,80 +579,51 @@ export default async function DashboardPage() {
               isPortfolio: v.isPortfolio,
             }))}
           />
-
         </div>
 
         {/* ── Main grid ───────────────────────────────────────────────── */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
 
-          {/* ── Left: Activity feed (2/3 width) ───────────────────────── */}
-          <div className="xl:col-span-2 space-y-5">
+          {/* ── Left: xl:col-span-2 ───────────────────────────────────── */}
+          <div className="xl:col-span-2 space-y-4">
 
-            {/* News feed */}
-            <div className="artha-card px-5 py-5">
-              <div className="flex items-center justify-between mb-4">
-                <div className="artha-label">Recent BSE Filings</div>
-                <div className="text-xs" style={{ color: 'var(--artha-text-faint)' }}>Last 48 hours</div>
-              </div>
-              {newsItems.length === 0 ? (
-                <p className="text-sm" style={{ color: 'var(--artha-text-muted)' }}>No news in the last 48 hours.</p>
-              ) : (
-                <div className="space-y-4">
-                  {newsItems.slice(0, 8).map((item, i) => (
-                    <div key={i} className="flex gap-3 items-start">
-                      <div className="shrink-0 w-16 pt-0.5">
-                        <span
-                          className="block w-full text-center font-mono font-bold text-xs px-1 py-0.5 rounded-md truncate"
-                          style={{
-                            background: item.isPortfolio ? 'var(--artha-surface-low)' : 'var(--artha-surface)',
-                            color: item.isPortfolio ? 'var(--artha-primary)' : 'var(--artha-text-secondary)',
-                            border: `1px solid ${item.isPortfolio ? 'rgba(0,61,155,0.15)' : 'rgba(11,28,48,0.08)'}`,
-                          }}
-                        >
-                          {item.ticker}
-                        </span>
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="artha-label mb-0.5">{item.source}</div>
-                        {item.url ? (
-                          <a href={item.url} target="_blank" rel="noopener noreferrer"
-                            className="text-sm leading-snug line-clamp-2 hover:underline"
-                            style={{ color: 'var(--artha-text-secondary)' }}>
-                            {item.headline}
-                          </a>
-                        ) : (
-                          <p className="text-sm leading-snug line-clamp-2" style={{ color: 'var(--artha-text-secondary)' }}>
-                            {item.headline}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+            {/* Watchlist mini — collapsible */}
+            <div className="artha-card overflow-hidden">
+              <CollapsibleSection
+                label="My Watchlist"
+                badge={`${watchlistCount} stocks`}
+                defaultOpen
+                linkHref="/watchlist"
+                linkLabel="Watchlist"
+              >
+                <WatchlistMiniSection rows={watchlistMiniRows} />
+              </CollapsibleSection>
             </div>
 
-            {/* Macro alerts: Trump + Markets */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              <MacroNewsCard
-                allItems={trumpAlertRows ?? []}
-                label="🇺🇸 Trump Watch"
-                emptyText="No market-relevant posts this week."
-                briefType="trump"
-                briefTitle="Trump Watch"
-                userSectors={uniqueUserSectors}
-              />
-              <MacroNewsCard
-                allItems={marketAlertRows ?? []}
-                label="📰 Macro News"
-                emptyText="No macro news this week."
-                briefType="macro"
-                briefTitle="Macro News"
+            {/* Portfolio mini — collapsible */}
+            <div className="artha-card overflow-hidden">
+              <CollapsibleSection
+                label="Portfolio"
+                badge={`${portfolioMiniRows.length} holdings`}
+                defaultOpen
+                linkHref="/portfolio"
+                linkLabel="Portfolio"
+              >
+                <PortfolioMiniSection rows={portfolioMiniRows} />
+              </CollapsibleSection>
+            </div>
+
+            {/* News + Macro — tabs */}
+            <div className="artha-card overflow-hidden" style={{ padding: 0 }}>
+              <NewsTabs
+                newsItems={newsItems}
+                trumpItems={trumpItems}
+                marketItems={marketItems}
                 userSectors={uniqueUserSectors}
               />
             </div>
 
-            {/* Portfolio turning points */}
+            {/* Nifty Turning Points */}
             <PortfolioMovers
               turningPoints={turningPoints}
               userSectors={uniqueUserSectors}
@@ -682,230 +632,114 @@ export default async function DashboardPage() {
             />
           </div>
 
-          {/* ── Right: Data sidebar (1/3 width) ───────────────────────── */}
+          {/* ── Right: xl:col-span-1 ──────────────────────────────────── */}
           <div className="space-y-4">
 
-            {/* FII / DII detail */}
+            {/* Market Pulse — FII/DII/MF collapsible panel */}
             {fiiDiiRow && (
-              <div className="artha-card px-4 py-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="artha-label">FII · DII Flows</div>
-                  <div className="text-xs" style={{ color: 'var(--artha-text-faint)' }}>
-                    {new Date(fiiDiiRow.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                  </div>
-                </div>
-
-                {/* Today's net boxes */}
-                <div className="grid grid-cols-2 gap-2 mb-3">
-                  {[
-                    { label: 'FII Net', val: fiiDiiRow.fii_net, rolling: fii5d },
-                    { label: 'DII Net', val: fiiDiiRow.dii_net, rolling: dii5d },
-                  ].map(({ label, val, rolling }) => (
-                    <div key={label} className="rounded-xl px-3 py-2.5"
-                      style={{ background: val >= 0 ? 'var(--artha-teal-subtle)' : 'var(--artha-negative-bg)' }}>
-                      <div className="artha-label mb-1">{label}</div>
-                      <div className="font-display font-bold text-sm"
-                        style={{ color: val >= 0 ? 'var(--artha-teal)' : 'var(--artha-negative)' }}>
-                        {val >= 0 ? '+' : ''}{fmtCr(val)}
-                      </div>
-                      <div className="text-xs mt-0.5" style={{ color: 'var(--artha-text-muted)' }}>
-                        5d: <span style={{ color: rolling >= 0 ? 'var(--artha-teal)' : 'var(--artha-negative)' }}>
-                          {rolling >= 0 ? '+' : ''}{fmtCr(rolling)}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Tug-of-war bar */}
-                <TugOfWarBar fiiNet={fiiDiiRow.fii_net} diiNet={fiiDiiRow.dii_net} />
-
-                {/* Net Institutional */}
-                {(() => {
-                  const netInst = (fiiDiiRow.fii_net ?? 0) + (fiiDiiRow.dii_net ?? 0)
-                  const up = netInst >= 0
-                  return (
-                    <div className="flex items-center justify-between mt-3 px-3 py-2 rounded-lg"
-                      style={{ background: 'var(--artha-surface)' }}>
-                      <span className="text-xs" style={{ color: 'var(--artha-text-muted)' }}>Net Institutional</span>
-                      <span className="font-display font-bold text-sm"
-                        style={{ color: up ? 'var(--artha-teal)' : 'var(--artha-negative)' }}>
-                        {up ? '+' : ''}{fmtCr(netInst)}
-                      </span>
-                    </div>
-                  )
-                })()}
-
-                {/* Streak */}
-                {fiiStreakDir && fiiStreak >= 2 && (
-                  <div className="text-xs font-semibold px-3 py-1.5 rounded-lg mt-2"
-                    style={{
-                      background: fiiStreakDir === 'buying' ? 'var(--artha-teal-subtle)' : 'var(--artha-negative-bg)',
-                      color: fiiStreakDir === 'buying' ? 'var(--artha-teal)' : 'var(--artha-negative)',
-                    }}>
-                    FII {fiiStreakDir} for {fiiStreak} consecutive days
-                  </div>
-                )}
-
-              </div>
+              <MarketPulsePanel
+                fiiNet={fiiDiiRow.fii_net}
+                diiNet={fiiDiiRow.dii_net}
+                fii5d={fii5d}
+                dii5d={dii5d}
+                fiiStreak={fiiStreak}
+                fiiStreakDir={fiiStreakDir}
+                mfEqNet={mfRow?.eq_net ?? null}
+                mfDate={mfRow?.date ?? null}
+                mfCurrMonthEq={mfCurrMonthEq}
+                mfPrevMonthEq={mfPrevMonthEq}
+                mfLatestMonthLabel={mfMonthLabel(mfLatestMonth)}
+                mfPrevMonthLabel={mfMonthLabel(mfPrevMonth)}
+              />
             )}
 
-            {/* MF SEBI */}
-            {mfRow && (
-              <div className="artha-card px-4 py-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="artha-label">MF · SEBI Flows</div>
-                  <div className="text-xs" style={{ color: 'var(--artha-text-faint)' }}>
-                    {new Date(mfRow.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                  </div>
-                </div>
+            {/* Indian Markets widget */}
+            <div className="artha-card px-4 py-4">
+              <div className="artha-label mb-3">Indian Markets</div>
+              <GlobalMiniWidget />
+            </div>
 
-                {/* Latest day: Equity + Debt */}
-                <div className="grid grid-cols-2 gap-2 mb-3">
-                  {[
-                    { label: 'Equity', val: mfRow.eq_net ?? 0 },
-                    { label: 'Debt',   val: mfRow.dbt_net ?? 0 },
-                  ].map(({ label, val }) => (
-                    <div key={label} className="rounded-xl px-3 py-2.5" style={{ background: val >= 0 ? 'var(--artha-teal-subtle)' : 'var(--artha-negative-bg)' }}>
-                      <div className="artha-label mb-1">{label}</div>
-                      <div className="font-display font-bold text-sm" style={{ color: val >= 0 ? 'var(--artha-teal)' : 'var(--artha-negative)' }}>
-                        {val >= 0 ? '+' : ''}{fmtCr(val)}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Month-over-month equity comparison */}
-                {mfLatestMonth && mfPrevMonth && (
-                  <div className="rounded-xl px-3 py-2.5" style={{ background: 'var(--artha-surface)' }}>
-                    <div className="artha-label mb-2">Equity Net · Month Comparison</div>
-                    <div className="space-y-1.5">
-                      {[
-                        { month: mfLatestMonth, label: mfMonthLabel(mfLatestMonth), val: mfCurrMonthEq, isCurrent: true },
-                        { month: mfPrevMonth,   label: mfMonthLabel(mfPrevMonth),   val: mfPrevMonthEq, isCurrent: false },
-                      ].map(({ label, val, isCurrent }) => (
-                        <div key={label} className="flex items-center justify-between">
-                          <span className="text-xs font-medium" style={{ color: isCurrent ? 'var(--artha-text)' : 'var(--artha-text-muted)' }}>
-                            {label}{isCurrent ? ' (MTD)' : ''}
-                          </span>
-                          <span className="font-mono font-bold text-xs" style={{ color: val >= 0 ? 'var(--artha-teal)' : 'var(--artha-negative)' }}>
-                            {val >= 0 ? '+' : ''}{fmtCr(val)}
-                          </span>
-                        </div>
-                      ))}
-                      {mfPrevMonthEq !== 0 && (
-                        <div className="flex items-center justify-between pt-1 border-t" style={{ borderColor: 'var(--artha-border)' }}>
-                          <span className="text-[10px]" style={{ color: 'var(--artha-text-faint)' }}>MoM</span>
-                          <span className="font-mono font-bold text-xs" style={{
-                            color: mfCurrMonthEq >= mfPrevMonthEq ? 'var(--artha-teal)' : 'var(--artha-negative)'
-                          }}>
-                            {mfCurrMonthEq >= mfPrevMonthEq ? '↑' : '↓'}{' '}
-                            {Math.abs(Math.round((mfCurrMonthEq - mfPrevMonthEq) / Math.abs(mfPrevMonthEq) * 100))}%
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
+            {/* ETF Spotlight */}
+            <div className="artha-card px-4 py-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="artha-label">ETF Spotlight</div>
+                <Link
+                  href="/etf"
+                  className="text-xs transition-colors hover:opacity-70"
+                  style={{ color: 'var(--artha-text-faint)' }}
+                >
+                  All ETFs →
+                </Link>
               </div>
-            )}
+              <EtfSpotlight etfs={topEtfs} />
+            </div>
 
-            {/* Sector Exposure vs FII */}
+            {/* Sectors vs FII — collapsible, closed by default */}
             {sectorExposure.length > 0 && (
-              <div className="artha-card px-4 py-4">
-                <div className="flex items-center justify-between mb-1">
-                  <div className="artha-label">Your Sectors vs FII</div>
-                </div>
-                <p className="text-[11px] mb-3" style={{ color: 'var(--artha-text-muted)' }}>
-                  Portfolio allocation · FII fortnight flow
-                </p>
-                <div className="space-y-2">
-                  {sectorExposure.map(({ industry, count, pct, tickers }) => {
-                    const fiiFlow = fiiFlowMap[industry] ?? null
-                    const short   = SHORT_SECTOR[industry] ?? industry
-                    const buying  = fiiFlow != null && fiiFlow > 1000
-                    const selling = fiiFlow != null && fiiFlow < -1000
-                    const neutral = fiiFlow != null && !buying && !selling
-                    const noData  = fiiFlow == null
+              <div className="artha-card overflow-hidden">
+                <CollapsibleSection
+                  label="Your Sectors vs FII"
+                  defaultOpen={false}
+                >
+                  <div className="px-4 pb-4 pt-3 space-y-2">
+                    <p className="text-[11px] mb-3" style={{ color: 'var(--artha-text-muted)' }}>
+                      Portfolio allocation · FII fortnight flow
+                    </p>
+                    {sectorExposure.map(({ industry, count, pct, tickers }) => {
+                      const fiiFlow = fiiFlowMap[industry] ?? null
+                      const short   = SHORT_SECTOR[industry] ?? industry
+                      const buying  = fiiFlow != null && fiiFlow > 1000
+                      const selling = fiiFlow != null && fiiFlow < -1000
+                      const neutral = fiiFlow != null && !buying && !selling
+                      const noData  = fiiFlow == null
 
-                    const rowBg    = buying  ? 'rgba(0,106,97,0.06)'  : selling ? 'rgba(192,57,43,0.06)' : 'var(--artha-surface)'
-                    const barColor = buying  ? 'var(--artha-teal)'    : selling ? 'var(--artha-negative)' : 'var(--artha-text-faint)'
-                    const fiiColor = buying  ? 'var(--artha-teal)'    : selling ? 'var(--artha-negative)' : 'var(--artha-text-muted)'
-                    const fiiLabel = buying  ? '↑ FII buying'         : selling ? '↓ FII selling'         : neutral ? 'Neutral' : '—'
+                      const rowBg    = buying  ? 'rgba(0,106,97,0.06)'  : selling ? 'rgba(192,57,43,0.06)' : 'var(--artha-surface)'
+                      const barColor = buying  ? 'var(--artha-teal)'    : selling ? 'var(--artha-negative)' : 'var(--artha-text-faint)'
+                      const fiiColor = buying  ? 'var(--artha-teal)'    : selling ? 'var(--artha-negative)' : 'var(--artha-text-muted)'
+                      const fiiLabel = buying  ? '↑ FII buying'         : selling ? '↓ FII selling'         : neutral ? 'Neutral' : '—'
 
-                    return (
-                      <div
-                        key={industry}
-                        className="rounded-xl px-3 py-2.5"
-                        style={{ background: rowBg }}
-                      >
-                        {/* Row: sector · stocks pill · [spacer] · % · FII badge */}
-                        <div className="flex items-center gap-2 mb-1.5">
-                          {/* Sector name — takes all remaining space */}
-                          <span className="text-xs font-semibold flex-1 truncate" style={{ color: 'var(--artha-text)' }}>{short}</span>
-
-                          {/* Stock count pill with hover tooltip */}
-                          <span
-                            className="relative group text-[10px] px-1.5 py-0.5 rounded font-mono shrink-0 cursor-default"
-                            style={{ background: 'rgba(11,28,48,0.06)', color: 'var(--artha-text-muted)' }}
-                          >
-                            {count}×
-                            <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-10 hidden group-hover:flex flex-col gap-0.5 rounded-lg px-2.5 py-2 shadow-lg whitespace-nowrap"
-                              style={{ background: 'var(--artha-navy)' }}>
-                              {tickers.map(t => (
-                                <span key={t} className="font-mono font-bold text-[11px]" style={{ color: '#fff' }}>{t}</span>
-                              ))}
-                              <span className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent" style={{ borderTopColor: 'var(--artha-navy)' }} />
+                      return (
+                        <div key={industry} className="rounded-xl px-3 py-2.5" style={{ background: rowBg }}>
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <span className="text-xs font-semibold flex-1 truncate" style={{ color: 'var(--artha-text)' }}>{short}</span>
+                            <span
+                              className="relative group text-[10px] px-1.5 py-0.5 rounded font-mono shrink-0 cursor-default"
+                              style={{ background: 'rgba(11,28,48,0.06)', color: 'var(--artha-text-muted)' }}
+                            >
+                              {count}×
+                              <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-10 hidden group-hover:flex flex-col gap-0.5 rounded-lg px-2.5 py-2 shadow-lg whitespace-nowrap"
+                                style={{ background: 'var(--artha-navy)' }}>
+                                {tickers.map(t => (
+                                  <span key={t} className="font-mono font-bold text-[11px]" style={{ color: '#fff' }}>{t}</span>
+                                ))}
+                                <span className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent" style={{ borderTopColor: 'var(--artha-navy)' }} />
+                              </span>
                             </span>
-                          </span>
-
-                          {/* Allocation % — fixed width, right-aligned */}
-                          <span className="font-mono font-bold text-xs w-8 text-right shrink-0" style={{ color: 'var(--artha-text)' }}>{pct}%</span>
-
-                          {/* FII badge — fixed width, centered */}
-                          <span
-                            className="text-[10px] font-semibold px-0 py-0.5 rounded text-center shrink-0"
-                            style={{
-                              width: '76px',
-                              background: buying ? 'var(--artha-teal-subtle)' : selling ? 'var(--artha-negative-bg)' : 'rgba(11,28,48,0.06)',
-                              color: noData ? 'transparent' : fiiColor,
-                            }}
-                          >
-                            {noData ? '—' : fiiLabel}
-                          </span>
-                        </div>
-
-                        {/* Progress bar */}
-                        <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(11,28,48,0.08)' }}>
-                          <div className="h-full rounded-full" style={{ width: `${pct}%`, background: barColor }} />
-                        </div>
-
-                        {/* FII flow amount */}
-                        {fiiFlow != null && (
-                          <div className="text-[10px] mt-1 text-right" style={{ color: fiiColor }}>
-                            {fiiFlow >= 0 ? '+' : ''}{fmtCr(fiiFlow)} fortnight
+                            <span className="font-mono font-bold text-xs w-8 text-right shrink-0" style={{ color: 'var(--artha-text)' }}>{pct}%</span>
+                            <span
+                              className="text-[10px] font-semibold px-0 py-0.5 rounded text-center shrink-0"
+                              style={{
+                                width: '76px',
+                                background: buying ? 'var(--artha-teal-subtle)' : selling ? 'var(--artha-negative-bg)' : 'rgba(11,28,48,0.06)',
+                                color: noData ? 'transparent' : fiiColor,
+                              }}
+                            >
+                              {noData ? '—' : fiiLabel}
+                            </span>
                           </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* FII sector flows — diverging bar chart */}
-            {validSectors.length > 0 && (
-              <div className="artha-card px-4 py-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="artha-label">FII Sector Flows</div>
-                  <div className="text-xs" style={{ color: 'var(--artha-text-faint)' }}>Fortnight · {sectorBuyCount}↑ {sectorSellCount}↓</div>
-                </div>
-                <SectorFlowBars
-                  sectors={validSectors}
-                  userSectors={uniqueUserSectors}
-                  formatCr={fmtCr}
-                  shortSector={SHORT_SECTOR}
-                />
+                          <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(11,28,48,0.08)' }}>
+                            <div className="h-full rounded-full" style={{ width: `${pct}%`, background: barColor }} />
+                          </div>
+                          {fiiFlow != null && (
+                            <div className="text-[10px] mt-1 text-right" style={{ color: fiiColor }}>
+                              {fiiFlow >= 0 ? '+' : ''}{fmtCr(fiiFlow)} fortnight
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </CollapsibleSection>
               </div>
             )}
           </div>
@@ -914,123 +748,3 @@ export default async function DashboardPage() {
     </AppShell>
   )
 }
-
-// ─── helper components ───────────────────────────────────────────────────────
-
-function TugOfWarBar({ fiiNet, diiNet }: { fiiNet: number; diiNet: number }) {
-  const fiiAbs = Math.abs(fiiNet)
-  const diiAbs = Math.abs(diiNet)
-  const total  = fiiAbs + diiAbs
-  if (total === 0) return null
-  const fiiPct = Math.round((fiiAbs / total) * 100)
-  const diiPct = 100 - fiiPct
-  const fiiColor = fiiNet >= 0 ? '#006a61' : '#c0392b'
-  const diiColor = diiNet >= 0 ? '#003d9b' : '#9a3412'
-
-  return (
-    <div>
-      <div className="flex items-center justify-between text-[9px] mb-1.5">
-        <span className="font-semibold" style={{ color: fiiColor }}>
-          {fiiNet >= 0 ? '▲' : '▼'} FII {fiiPct}%
-        </span>
-        <span className="uppercase tracking-wider" style={{ color: 'var(--artha-text-faint)' }}>flow weight</span>
-        <span className="font-semibold" style={{ color: diiColor }}>
-          DII {diiPct}% {diiNet >= 0 ? '▲' : '▼'}
-        </span>
-      </div>
-      <div className="flex h-3 rounded-full overflow-hidden gap-px">
-        <div style={{ width: `${fiiPct}%`, background: fiiColor, opacity: 0.85 }} />
-        <div style={{ width: '2px', background: 'white', flexShrink: 0 }} />
-        <div style={{ width: `${diiPct}%`, background: diiColor, opacity: 0.85 }} />
-      </div>
-      <div className="flex items-center justify-between text-[9px] mt-1">
-        <span style={{ color: 'var(--artha-text-faint)' }}>
-          {fiiNet >= 0 ? 'Buying' : 'Selling'}
-        </span>
-        {fiiNet >= 0 !== diiNet >= 0 && (
-          <span className="font-semibold" style={{ color: 'var(--artha-warning)' }}>↔ Diverging</span>
-        )}
-        {fiiNet >= 0 === diiNet >= 0 && (
-          <span className="font-semibold" style={{ color: fiiColor }}>↕ Aligned</span>
-        )}
-        <span style={{ color: 'var(--artha-text-faint)' }}>
-          {diiNet >= 0 ? 'Buying' : 'Selling'}
-        </span>
-      </div>
-    </div>
-  )
-}
-
-function SectorFlowBars({ sectors, userSectors, formatCr, shortSector }: {
-  sectors:     { name: string; flow: number }[]
-  userSectors: string[]
-  formatCr:    (n: number) => string
-  shortSector: Record<string, string>
-}) {
-  // Top 4 buying + top 4 selling, sorted by absolute flow
-  const buying  = sectors.filter(s => s.flow > 0).slice(0, 4)
-  const selling = sectors.filter(s => s.flow < 0).slice(-4).reverse()
-  const maxAbs  = Math.max(...sectors.map(s => Math.abs(s.flow)), 1)
-  const userSet = new Set(userSectors)
-
-  function Row({ s, color, bg }: { s: { name: string; flow: number }; color: string; bg: string }) {
-    const barPct  = Math.round((Math.abs(s.flow) / maxAbs) * 100)
-    const short   = shortSector[s.name] ?? s.name
-    const isMine  = userSet.has(s.name)
-    return (
-      <div className="flex items-center gap-2 py-1">
-        <div className="flex items-center gap-1 shrink-0" style={{ width: '80px' }}>
-          {isMine && (
-            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: '#003d9b' }} />
-          )}
-          <span
-            className="text-[11px] truncate"
-            style={{ color: isMine ? '#003d9b' : 'var(--artha-text-secondary)', fontWeight: isMine ? 600 : 400 }}
-            title={s.name}
-          >
-            {short}
-          </span>
-        </div>
-        <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(11,28,48,0.06)' }}>
-          <div
-            className="h-full rounded-full transition-all"
-            style={{ width: `${barPct}%`, background: color }}
-          />
-        </div>
-        <span className="font-mono font-bold text-[10px] shrink-0 w-16 text-right" style={{ color }}>
-          {s.flow >= 0 ? '+' : ''}{formatCr(s.flow)}
-        </span>
-      </div>
-    )
-  }
-
-  return (
-    <div>
-      {buying.length > 0 && (
-        <div className="mb-3">
-          <div className="flex items-center gap-1.5 mb-1.5">
-            <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: '#006a61' }}>Buying</span>
-            <span className="text-[9px]" style={{ color: 'var(--artha-text-faint)' }}>({buying.length} sectors)</span>
-          </div>
-          {buying.map(s => <Row key={s.name} s={s} color="#006a61" bg="rgba(0,106,97,0.15)" />)}
-        </div>
-      )}
-      {selling.length > 0 && (
-        <div>
-          <div className="flex items-center gap-1.5 mb-1.5">
-            <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: '#c0392b' }}>Selling</span>
-            <span className="text-[9px]" style={{ color: 'var(--artha-text-faint)' }}>({selling.length} sectors)</span>
-          </div>
-          {selling.map(s => <Row key={s.name} s={s} color="#c0392b" bg="rgba(192,57,43,0.12)" />)}
-        </div>
-      )}
-      {userSectors.length > 0 && (
-        <div className="mt-2 pt-2 text-[9px]" style={{ borderTop: '1px solid var(--artha-surface-low)', color: 'var(--artha-text-faint)' }}>
-          <span className="inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle" style={{ background: '#003d9b' }} />
-          = your sectors
-        </div>
-      )}
-    </div>
-  )
-}
-
