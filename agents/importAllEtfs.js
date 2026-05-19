@@ -64,10 +64,16 @@ function detectCategory(ticker, name) {
   if (/LIQUID/.test(t) || /LIQUID/.test(n))             return 'liquid';
   if (/GILT|GSEC|G.SEC|SDL|BOND/.test(t) || /GILT|G-SEC|GSEC|SDL|BHARAT BOND/.test(n)) return 'debt';
   if (/NASDAQ|FANG|HANG.?SENG|MSCI|S.?P.?500|NYSE|WORLD|GLOBAL/.test(t+n)) return 'international';
-  if (/MIDCAP|MID150|MID100|MOM100|MOM50|MID15/.test(t)) return 'equity_midcap';
+  // Midcap — name check covers MIDQ50ADD, MIDSELIETF, GROWWMC150, MOMIDMTM etc.
+  if (/MIDCAP|MID150|MID100|MOM100|MOM50|MID15|MIDQ|MIDSEL|MC150|MIDMTM/.test(t)) return 'equity_midcap';
+  if (/MIDCAP/.test(n)) return 'equity_midcap';
   if (/SMALLCAP|SMALL/.test(t) || /SMALLCAP|SMALL.?CAP/.test(n)) return 'equity_smallcap';
-  if (/BANK|IT\b|TECH|PHARMA|AUTO|FMCG|CONSUM|INFRA|PSU|CPSE|ENERGY|METAL|REALTY|HEALTH|DEFENCE|SERV|TOURISM|ALPHA|VALUE|QUALITY|MOMENTUM|DIVIDEND|ESG|LOW.?VOL/.test(t)) return 'equity_sector';
-  if (/BANK|INFORMATION TECH|PHARMA|AUTOMOBI|FMCG|CONSUM|INFRA|PSU|CPSE|ENERGY|METAL|REALTY|HEALTH|DEFENCE|SERVICES|TOURISM/.test(n)) return 'equity_sector';
+  // Sector/thematic — ticker patterns
+  // Note: /IT\b/ fails on ITBEES/ITADD because no word boundary inside all-caps ticker;
+  // instead catch IT ETFs via name check below.
+  if (/BANK|TECH|PHARMA|AUTO|FMCG|CONSUM|INFRA|PSU|PSE|CPSE|ENERGY|METAL|REALTY|HEALTH|DEFENCE|SERV|TOURISM|DIVIDEND|ESG|CHEM|MEDIA|AGRI|FERTIL|OIL|MNC|POWER|CAPM|COMMO|INSURE|IPO|SHARIAH|QLITY|QUAL|MOMENT|NV20|ALPHA|BHARAT22|B22|MANU/.test(t)) return 'equity_sector';
+  // Sector/thematic — name patterns (catches IT ETFs, LOW VOLATILITY, EV, INTERNET, MANUFACTURING etc.)
+  if (/BANK|INFORMATION TECH| IT | IT$|PHARMA|AUTOMOBI|FMCG|CONSUM|INFRA|PSU|PSE|CPSE|ENERGY|METAL|REALTY|HEALTH|DEFENCE|SERVICES|TOURISM|CHEMICAL|MEDIA|AGRI|FERTILISER|OIL & GAS|COMMODIT|MNC|CAPITAL MARKET|INTERNET|EV |EV$|POWER ETF|POWER |GROWTH SECTOR|QUALITY|VALUE |MOMENTUM|LOW VOLAT|INSURANCE|SELECT IPO|SHARIAH|BHARAT 22|MANUFACTUR|DIVIDEND OPPORT/.test(n)) return 'equity_sector';
   return 'equity_broad';
 }
 
