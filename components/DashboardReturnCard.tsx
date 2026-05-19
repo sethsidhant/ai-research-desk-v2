@@ -236,7 +236,7 @@ function GainInline({ label, gain, pct, dim }: { label: string; gain: number; pc
   )
 }
 
-export function WatchlistReturnCard({ rows, watchlistCount }: { rows: WatchRow[]; watchlistCount: number }) {
+export function WatchlistReturnCard({ rows, watchlistCount, flat }: { rows: WatchRow[]; watchlistCount: number; flat?: boolean }) {
   const [prices, setPrices]   = useState<LivePrices | null>(null)
   const [briefOpen, setBriefOpen] = useState(false)
 
@@ -274,10 +274,14 @@ export function WatchlistReturnCard({ rows, watchlistCount }: { rows: WatchRow[]
   const positive   = totalPnl >= 0
   const accentColor = hasData ? (positive ? 'var(--artha-teal)' : 'var(--artha-negative)') : 'var(--artha-surface-low)'
 
+  const Inner = flat
+    ? ({ children }: { children: React.ReactNode }) => <div className="block overflow-hidden">{children}</div>
+    : ({ children }: { children: React.ReactNode }) => <Link href="/watchlist" className="artha-card artha-card-hover block overflow-hidden" style={{ padding: 0 }}>{children}</Link>
+
   return (
     <>
     {briefOpen && <OverviewBriefModal type="watchlist" title="Watchlist" onClose={() => setBriefOpen(false)} />}
-    <Link href="/watchlist" className="artha-card artha-card-hover block overflow-hidden" style={{ padding: 0 }}>
+    <Inner>
       <div className="h-1 w-full" style={{ background: hasData ? accentColor : 'var(--artha-surface-low)' }} />
       <div className="px-5 py-4">
         <div className="flex items-center justify-between mb-3">
@@ -325,12 +329,12 @@ export function WatchlistReturnCard({ rows, watchlistCount }: { rows: WatchRow[]
           </div>
         )}
       </div>
-    </Link>
+    </Inner>
     </>
   )
 }
 
-export function PortfolioReturnCard({ rows }: { rows: PortRow[] }) {
+export function PortfolioReturnCard({ rows, flat }: { rows: PortRow[]; flat?: boolean }) {
   const [prices, setPrices]       = useState<LivePrices | null>(null)
   const [briefOpen, setBriefOpen] = useState(false)
 
@@ -370,10 +374,14 @@ export function PortfolioReturnCard({ rows }: { rows: PortRow[] }) {
   const positive    = portPnl >= 0
   const accentColor = hasHoldings ? (positive ? 'var(--artha-teal)' : 'var(--artha-negative)') : 'var(--artha-text-faint)'
 
+  const Inner = flat
+    ? ({ children }: { children: React.ReactNode }) => <div className="block overflow-hidden">{children}</div>
+    : ({ children }: { children: React.ReactNode }) => <Link href="/portfolio" className="artha-card artha-card-hover block overflow-hidden" style={{ padding: 0 }}>{children}</Link>
+
   return (
     <>
     {briefOpen && <OverviewBriefModal type="portfolio" title="Portfolio" onClose={() => setBriefOpen(false)} />}
-    <Link href="/portfolio" className="artha-card artha-card-hover block overflow-hidden" style={{ padding: 0 }}>
+    <Inner>
       <div className="h-1 w-full" style={{ background: hasHoldings ? accentColor : 'var(--artha-surface-low)' }} />
       <div className="px-5 py-4">
         <div className="flex items-center justify-between mb-3">
@@ -420,7 +428,7 @@ export function PortfolioReturnCard({ rows }: { rows: PortRow[] }) {
           <div className="text-sm py-2" style={{ color: 'var(--artha-text-muted)' }}>No holdings yet</div>
         )}
       </div>
-    </Link>
+    </Inner>
     </>
   )
 }

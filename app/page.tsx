@@ -556,68 +556,56 @@ export default async function DashboardPage() {
           <MarketIndicesBar />
         </div>
 
-        {/* ── KPI row ─────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-5 items-start">
-          <WatchlistReturnCard
-            rows={allRows
-              .filter((w: any) => w.invested_amount && w.entry_price)
-              .map((w: any) => ({ ticker: w.stock.ticker, invested: w.invested_amount, entryPrice: w.entry_price }))}
-            watchlistCount={watchlistCount}
-          />
-          <PortfolioReturnCard
-            rows={portRowsAll.map((h: any) => ({
-              ticker:     h.stock.ticker,
-              quantity:   h.quantity,
-              avgPrice:   h.avg_price,
-              price5dAgo: price5dMap[h.stock_id] ?? null,
-            }))}
-          />
-          <MarketBreadthCard
-            above200={breadthAbove200}
-            below200={breadthBelow200}
-            totalScored={stocksWithScores.length}
-            totalStocks={allStockIds.length}
-            oversold={breadthOversold}
-            overbought={breadthOverbought}
-            signals={breadthSignals}
-            volumeBreakouts={volumeAlerts.slice(0, 6).map((v: any) => ({
-              ticker: v.ticker,
-              ratio: v.ratio,
-              isPortfolio: v.isPortfolio,
-            }))}
-          />
-        </div>
-
         {/* ── Main grid ───────────────────────────────────────────────── */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
 
           {/* ── Left: xl:col-span-2 ───────────────────────────────────── */}
           <div className="xl:col-span-2 space-y-4">
 
-            {/* Watchlist mini — collapsible */}
-            <div className="artha-card overflow-hidden">
-              <CollapsibleSection
-                label="My Watchlist"
-                badge={`${watchlistCount} stocks`}
-                defaultOpen
-                linkHref="/watchlist"
-                linkLabel="Watchlist"
-              >
-                <WatchlistMiniSection rows={watchlistMiniRows} />
-              </CollapsibleSection>
+            {/* Combined Watchlist — return summary + stock list in one card */}
+            <div className="artha-card overflow-hidden" style={{ padding: 0 }}>
+              <WatchlistReturnCard
+                flat
+                rows={allRows
+                  .filter((w: any) => w.invested_amount && w.entry_price)
+                  .map((w: any) => ({ ticker: w.stock.ticker, invested: w.invested_amount, entryPrice: w.entry_price }))}
+                watchlistCount={watchlistCount}
+              />
+              <div style={{ borderTop: '1px solid var(--artha-surface-low)' }}>
+                <CollapsibleSection
+                  label="My Watchlist"
+                  badge={`${watchlistCount} stocks`}
+                  defaultOpen
+                  linkHref="/watchlist"
+                  linkLabel="Watchlist"
+                >
+                  <WatchlistMiniSection rows={watchlistMiniRows} />
+                </CollapsibleSection>
+              </div>
             </div>
 
-            {/* Portfolio mini — collapsible */}
-            <div className="artha-card overflow-hidden">
-              <CollapsibleSection
-                label="Portfolio"
-                badge={`${portfolioMiniRows.length} holdings`}
-                defaultOpen
-                linkHref="/portfolio"
-                linkLabel="Portfolio"
-              >
-                <PortfolioMiniSection rows={portfolioMiniRows} />
-              </CollapsibleSection>
+            {/* Combined Portfolio — return summary + holdings in one card */}
+            <div className="artha-card overflow-hidden" style={{ padding: 0 }}>
+              <PortfolioReturnCard
+                flat
+                rows={portRowsAll.map((h: any) => ({
+                  ticker:     h.stock.ticker,
+                  quantity:   h.quantity,
+                  avgPrice:   h.avg_price,
+                  price5dAgo: price5dMap[h.stock_id] ?? null,
+                }))}
+              />
+              <div style={{ borderTop: '1px solid var(--artha-surface-low)' }}>
+                <CollapsibleSection
+                  label="Portfolio"
+                  badge={`${portfolioMiniRows.length} holdings`}
+                  defaultOpen
+                  linkHref="/portfolio"
+                  linkLabel="Portfolio"
+                >
+                  <PortfolioMiniSection rows={portfolioMiniRows} />
+                </CollapsibleSection>
+              </div>
             </div>
 
             {/* News + Macro — tabs */}
@@ -642,7 +630,23 @@ export default async function DashboardPage() {
           {/* ── Right: xl:col-span-1 ──────────────────────────────────── */}
           <div className="space-y-4">
 
-            {/* ETF Spotlight — top of sidebar */}
+            {/* Signals / Market Breadth */}
+            <MarketBreadthCard
+              above200={breadthAbove200}
+              below200={breadthBelow200}
+              totalScored={stocksWithScores.length}
+              totalStocks={allStockIds.length}
+              oversold={breadthOversold}
+              overbought={breadthOverbought}
+              signals={breadthSignals}
+              volumeBreakouts={volumeAlerts.slice(0, 6).map((v: any) => ({
+                ticker: v.ticker,
+                ratio: v.ratio,
+                isPortfolio: v.isPortfolio,
+              }))}
+            />
+
+            {/* ETF Spotlight */}
             <div className="artha-card px-4 py-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="artha-label">ETF Spotlight</div>
