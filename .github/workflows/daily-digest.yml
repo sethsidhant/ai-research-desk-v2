@@ -93,18 +93,6 @@ jobs:
         working-directory: agents
         continue-on-error: true  # Screener/NSE may block GH Actions IPs — digest still sends
 
-      - name: Fetch Forex Reserves (Fridays only — RBI publishes Friday evenings)
-        run: |
-          DAY=$(TZ='Asia/Kolkata' date +%u)
-          if [ "$DAY" = "5" ]; then
-            echo "Friday — running forexAgent"
-            node forexAgent.js
-          else
-            echo "Not Friday (day=$DAY) — skipping forexAgent"
-          fi
-        working-directory: agents
-        continue-on-error: true
-
       - name: Send evening digest
         run: node telegramNotifier.js
         working-directory: agents

@@ -210,12 +210,13 @@ async function sendAlert(row) {
       : wow < 0 && fiiWeekly >= 0              ? ' — reserves dipped despite FII inflows'
       : wow >= 0 && fiiWeekly < 0             ? ' — reserves rose despite FII outflows'
       :                                          ' — FII inflows supporting reserves';
-    fiiLine = `\n${fiiEmoji} FII ${fiiDir} ₹${fiiAmt}cr same week${insight}`;
+    const fiiWeekLabel = new Date(row.date + ' UTC').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+    fiiLine = `\n${fiiEmoji} FII ${fiiDir} ₹${fiiAmt}cr (wk ending ${fiiWeekLabel})${insight}`;
   }
 
   const goldLine = goldSignal ? `\n${goldSignal}` : '';
 
-  const msg = `${emoji} 🏦 *Forex Reserves — ${date}*
+  const msg = `${emoji} 🏦 *Forex Reserves — ${date}* _(RBI publishes with ~1 week lag)_
 Total: *$${total}B* ${wowDir} $${wowAbs}B WoW
 
 💵 FCA: $${(row.fca_usd_mn/1000).toFixed(1)}B

@@ -107,7 +107,8 @@ async function main() {
   const { data: alertPrefs } = await supabase
     .from('user_alert_preferences')
     .select('user_id, telegram_chat_id')
-    .not('telegram_chat_id', 'is', null);
+    .not('telegram_chat_id', 'is', null)
+    .eq('new_filing_alert', true);  // mirrors BSE filing — only opted-in users
 
   const chatIdByUser = Object.fromEntries(
     (alertPrefs ?? []).map(p => [p.user_id, p.telegram_chat_id])

@@ -39,6 +39,42 @@ function isEarningsSeason() {
   });
 }
 
+// ── Forex Reserves scheduler (Fridays 7–11 PM IST — RBI blocks GH Actions IPs) ─
+let forexAgentRunning = false;
+
+async function maybeRunForexAgent(supabase) {
+  const now  = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+  const day  = now.getDay();   // 5 = Friday
+  const hour = now.getHours(); // 0–23 IST
+
+  if (day !== 5)              return; // Fridays only
+  if (hour < 19 || hour > 23) return; // 7–11 PM IST window
+  if (forexAgentRunning)      { console.log('[forexScheduler] Previous run still in progress — skipping.'); return; }
+
+  const todayIST = now.toISOString().slice(0, 10);
+  const { data } = await supabase
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'forex_agent_last_run')
+    .single();
+
+  if (data?.value && data.value.slice(0, 10) === todayIST) {
+    console.log('[forexScheduler] Already ran today — skipping.');
+    return;
+  }
+
+  forexAgentRunning = true;
+  console.log('[forexScheduler] Friday evening — spawning forexAgent...');
+  const child = spawn('node', [path.join(__dirname, 'forexAgent.js')], {
+    stdio: 'inherit',
+    env: process.env,
+  });
+  child.on('exit', code => {
+    console.log(`[forexScheduler] forexAgent exited with code ${code}`);
+    forexAgentRunning = false;
+  });
+}
+
 // ── Earnings alert scheduler (every 4h, earnings season only, incl. Saturdays) ─
 let earningsAlertRunning = false;
 
@@ -131,6 +167,10 @@ async function main() {
     maybeRunEarningsAlert();
     setInterval(maybeRunEarningsAlert, 4 * 60 * 60 * 1000);
   }, 2 * 60 * 1000);
+
+  // Forex: check every 30 min — runs only Friday 7–11 PM IST (RBI blocks GH Actions IPs)
+  maybeRunForexAgent(supabase);
+  setInterval(() => maybeRunForexAgent(supabase), 30 * 60 * 1000);
 }
 
 process.on('uncaughtException',  err => console.error('[main] Uncaught exception:', err.message));

@@ -1,8 +1,18 @@
-// seedUniverse.js — Seeds expanded stock universe (Nifty 50 + popular mid-caps)
-// Safe to re-run: uses upsert on ticker, skips existing rows.
+// seedUniverse.js — Bulk-seed all NSE EQ stocks with Screener fundamentals + history.
+// No live prices, no technicals, no AI calls — zero Anthropic cost.
+//
+// When a user adds a seeded stock → onboardStock.js skips steps 1 + 1.5
+// (already done) and only fetches news — near-instant onboarding.
+//
+// Usage (from agents/ dir):
+//   node seedUniverse.js              — seed all, skip recently updated
+//   node seedUniverse.js --force      — re-seed even if recently updated
+//   node seedUniverse.js --limit 20   — seed only first 20 (for testing)
+//   node seedUniverse.js --ticker BEL — seed a single stock
 
-require("dotenv").config({ path: "../.env.local" });
-const { createClient } = require("@supabase/supabase-js");
+require('dotenv').config({ path: '../.env.local' });
+const { execFileSync }  = require('child_process');
+const { createClient }  = require('@supabase/supabase-js');
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -10,114 +20,202 @@ const supabase = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
 
-const STOCKS = [
-  // ── Nifty 50 ──────────────────────────────────────────────────────────────
-  { ticker: "RELIANCE",    stock_name: "Reliance Industries",      bse_code: "500325" },
-  { ticker: "TCS",         stock_name: "Tata Consultancy Services", bse_code: "532540" },
-  { ticker: "HDFCBANK",    stock_name: "HDFC Bank",                bse_code: "500180" },
-  { ticker: "INFY",        stock_name: "Infosys",                  bse_code: "500209" },
-  { ticker: "ICICIBANK",   stock_name: "ICICI Bank",               bse_code: "532174" },
-  { ticker: "HINDUNILVR",  stock_name: "Hindustan Unilever",       bse_code: "500696" },
-  { ticker: "ITC",         stock_name: "ITC",                      bse_code: "500875" },
-  { ticker: "SBIN",        stock_name: "State Bank of India",      bse_code: "500112" },
-  { ticker: "BHARTIARTL",  stock_name: "Bharti Airtel",            bse_code: "532454" },
-  { ticker: "KOTAKBANK",   stock_name: "Kotak Mahindra Bank",      bse_code: "500247" },
-  { ticker: "LT",          stock_name: "Larsen & Toubro",          bse_code: "500510" },
-  { ticker: "AXISBANK",    stock_name: "Axis Bank",                bse_code: "532215" },
-  { ticker: "ASIANPAINT",  stock_name: "Asian Paints",             bse_code: "500820" },
-  { ticker: "MARUTI",      stock_name: "Maruti Suzuki",            bse_code: "532500" },
-  { ticker: "ULTRACEMCO",  stock_name: "UltraTech Cement",         bse_code: "532538" },
-  { ticker: "TITAN",       stock_name: "Titan Company",            bse_code: "500114" },
-  { ticker: "SUNPHARMA",   stock_name: "Sun Pharmaceutical",       bse_code: "524715" },
-  { ticker: "WIPRO",       stock_name: "Wipro",                    bse_code: "507685" },
-  { ticker: "NESTLEIND",   stock_name: "Nestle India",             bse_code: "500790" },
-  { ticker: "HCLTECH",     stock_name: "HCL Technologies",         bse_code: "532281" },
-  { ticker: "BAJFINANCE",  stock_name: "Bajaj Finance",            bse_code: "500034" },
-  { ticker: "BAJAJFINSV",  stock_name: "Bajaj Finserv",            bse_code: "532978" },
-  { ticker: "POWERGRID",   stock_name: "Power Grid Corporation",   bse_code: "532898" },
-  { ticker: "NTPC",        stock_name: "NTPC",                     bse_code: "532555" },
-  { ticker: "COALINDIA",   stock_name: "Coal India",               bse_code: "533278" },
-  { ticker: "TECHM",       stock_name: "Tech Mahindra",            bse_code: "532755" },
-  { ticker: "INDUSINDBK",  stock_name: "IndusInd Bank",            bse_code: "532187" },
-  { ticker: "HDFCLIFE",    stock_name: "HDFC Life Insurance",      bse_code: "540777" },
-  { ticker: "SBILIFE",     stock_name: "SBI Life Insurance",       bse_code: "540719" },
-  { ticker: "TATAMOTORS",  stock_name: "Tata Motors",              bse_code: "500570" },
-  { ticker: "TATASTEEL",   stock_name: "Tata Steel",               bse_code: "500470" },
-  { ticker: "JSWSTEEL",    stock_name: "JSW Steel",                bse_code: "500228" },
-  { ticker: "HINDALCO",    stock_name: "Hindalco Industries",      bse_code: "500440" },
-  { ticker: "CIPLA",       stock_name: "Cipla",                    bse_code: "500087" },
-  { ticker: "DRREDDY",     stock_name: "Dr. Reddy's Laboratories", bse_code: "500124" },
-  { ticker: "DIVISLAB",    stock_name: "Divi's Laboratories",      bse_code: "532488" },
-  { ticker: "EICHERMOT",   stock_name: "Eicher Motors",            bse_code: "505200" },
-  { ticker: "HEROMOTOCO",  stock_name: "Hero MotoCorp",            bse_code: "500182" },
-  { ticker: "BRITANNIA",   stock_name: "Britannia Industries",     bse_code: "500825" },
-  { ticker: "APOLLOHOSP",  stock_name: "Apollo Hospitals",         bse_code: "508869" },
-  { ticker: "ADANIENT",    stock_name: "Adani Enterprises",        bse_code: "512599" },
-  { ticker: "ADANIPORTS",  stock_name: "Adani Ports & SEZ",        bse_code: "532921" },
-  { ticker: "BAJAJ-AUTO",  stock_name: "Bajaj Auto",               bse_code: "532977" },
-  { ticker: "M&M",         stock_name: "Mahindra & Mahindra",      bse_code: "500520" },
-  { ticker: "ONGC",        stock_name: "Oil & Natural Gas Corp",   bse_code: "500312" },
-  { ticker: "GRASIM",      stock_name: "Grasim Industries",        bse_code: "500300" },
-  { ticker: "BPCL",        stock_name: "Bharat Petroleum",         bse_code: "500547" },
-  { ticker: "UPL",         stock_name: "UPL",                      bse_code: "512070" },
-  { ticker: "TATACONSUM",  stock_name: "Tata Consumer Products",   bse_code: "500800" },
-  { ticker: "SHRIRAMFIN",  stock_name: "Shriram Finance",          bse_code: "511218" },
+const args   = process.argv.slice(2);
+const FORCE  = args.includes('--force');
+const LIMIT  = args.includes('--limit')  ? parseInt(args[args.indexOf('--limit')  + 1]) : null;
+const SINGLE = args.includes('--ticker') ? args[args.indexOf('--ticker') + 1].toUpperCase() : null;
 
-  // ── Popular Mid-caps & Others ─────────────────────────────────────────────
-  { ticker: "NCC",         stock_name: "NCC",                      bse_code: "500294" },
-  { ticker: "JIOFIN",      stock_name: "Jio Financial Services",   bse_code: "543940" },
-  { ticker: "ZOMATO",      stock_name: "Zomato",                   bse_code: "543320" },
-  { ticker: "IRCTC",       stock_name: "IRCTC",                    bse_code: "542830" },
-  { ticker: "DMART",       stock_name: "Avenue Supermarts (DMart)", bse_code: "540376" },
-  { ticker: "PIDILITIND",  stock_name: "Pidilite Industries",      bse_code: "500331" },
-  { ticker: "HAVELLS",     stock_name: "Havells India",            bse_code: "517354" },
-  { ticker: "VOLTAS",      stock_name: "Voltas",                   bse_code: "500575" },
-  { ticker: "GODREJCP",    stock_name: "Godrej Consumer Products", bse_code: "532424" },
-  { ticker: "JUBLFOOD",    stock_name: "Jubilant FoodWorks",       bse_code: "533155" },
-  { ticker: "INDIGO",      stock_name: "IndiGo (InterGlobe Aviation)", bse_code: "521228" },
-  { ticker: "TRENT",       stock_name: "Trent",                    bse_code: "500251" },
-  { ticker: "BERGERPAINTS",stock_name: "Berger Paints",            bse_code: "509480" },
-  { ticker: "MUTHOOTFIN",  stock_name: "Muthoot Finance",          bse_code: "533398" },
-  { ticker: "CHOLAFIN",    stock_name: "Cholamandalam Investment",  bse_code: "511243" },
-  { ticker: "PAGEIND",     stock_name: "Page Industries",          bse_code: "532827" },
-  { ticker: "ABBOTINDIA",  stock_name: "Abbott India",             bse_code: "500488" },
-  { ticker: "TORNTPHARM", stock_name: "Torrent Pharmaceuticals",   bse_code: "500420" },
-  { ticker: "ALKEM",       stock_name: "Alkem Laboratories",       bse_code: "539523" },
-  { ticker: "AUROPHARMA",  stock_name: "Aurobindo Pharma",         bse_code: "524804" },
-  { ticker: "IDFCFIRSTB",  stock_name: "IDFC First Bank",          bse_code: "539437" },
-  { ticker: "FEDERALBNK",  stock_name: "Federal Bank",             bse_code: "500469" },
-  { ticker: "BANDHANBNK",  stock_name: "Bandhan Bank",             bse_code: "541153" },
-  { ticker: "PERSISTENT",  stock_name: "Persistent Systems",       bse_code: "533179" },
-  { ticker: "COFORGE",     stock_name: "Coforge",                  bse_code: "532541" },
-  { ticker: "MPHASIS",     stock_name: "Mphasis",                  bse_code: "526299" },
-  { ticker: "LTIM",        stock_name: "LTIMindtree",              bse_code: "540005" },
-  { ticker: "OFSS",        stock_name: "Oracle Financial Services", bse_code: "532466" },
-  { ticker: "DIXON",       stock_name: "Dixon Technologies",       bse_code: "541987" },
-  { ticker: "POLYCAB",     stock_name: "Polycab India",            bse_code: "542652" },
-  { ticker: "SUPREMEIND",  stock_name: "Supreme Industries",       bse_code: "509930" },
-];
+const DELAY_MS   = 1500; // 1.5s between stocks — Screener-safe
+const STALE_DAYS = 30;   // re-seed if fundamentals older than 30 days
 
-async function main() {
-  console.log(`Seeding ${STOCKS.length} stocks...\n`);
-  let inserted = 0, skipped = 0;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-  for (const stock of STOCKS) {
-    const { error } = await supabase
-      .from("stocks")
-      .upsert(
-        { ticker: stock.ticker, stock_name: stock.stock_name, bse_code: stock.bse_code },
-        { onConflict: "ticker", ignoreDuplicates: true }
-      );
+// ── Kite instruments ──────────────────────────────────────────────────────────
 
-    if (error) {
-      console.log(`  ✗ ${stock.ticker}: ${error.message}`);
-    } else {
-      console.log(`  ✓ ${stock.ticker} — ${stock.stock_name}`);
-      inserted++;
+async function getKiteInstruments() {
+  const { data: tokenRow } = await supabase
+    .from('app_settings').select('value').eq('key', 'kite_access_token').single();
+  const token = tokenRow?.value || process.env.KITE_ACCESS_TOKEN;
+  if (!token) throw new Error('No Kite token — run refreshKiteToken.js first');
+
+  const res = await fetch('https://api.kite.trade/instruments', {
+    headers: {
+      'X-Kite-Version': '3',
+      'Authorization': `token ${process.env.KITE_API_KEY}:${token}`,
+    },
+  });
+  if (!res.ok) throw new Error(`Kite instruments: HTTP ${res.status}`);
+
+  const csv     = await res.text();
+  const lines   = csv.trim().split('\n');
+  const headers = lines[0].split(',').map(h => h.trim());
+
+  return lines.slice(1)
+    .map(line => {
+      const cols = line.split(',');
+      const row  = {};
+      headers.forEach((h, j) => { row[h] = cols[j]?.trim() ?? ''; });
+      return row;
+    })
+    .filter(r => r.exchange === 'NSE' && r.instrument_type === 'EQ')
+    .map(r => ({
+      ticker:           r.tradingsymbol,
+      instrument_token: parseInt(r.instrument_token) || null,
+      stock_name:       r.name || r.tradingsymbol,
+    }));
+}
+
+// ── Per-stock seeding ─────────────────────────────────────────────────────────
+
+function runPython(script, ticker) {
+  return execFileSync('python3', [script, ticker], {
+    encoding: 'utf8', cwd: __dirname, timeout: 30000,
+    env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+  });
+}
+
+async function seedStock({ ticker, instrument_token, stock_name }) {
+  // Ensure row exists (no-op if ticker already present)
+  await supabase.from('stocks').upsert(
+    { ticker, instrument_token, stock_name: stock_name || ticker },
+    { onConflict: 'ticker', ignoreDuplicates: true }
+  );
+
+  const { data: row } = await supabase
+    .from('stocks')
+    .select('id, fundamentals_updated_at, earnings_history')
+    .eq('ticker', ticker)
+    .single();
+
+  if (!row) return { status: 'failed', reason: 'row missing after upsert' };
+
+  const staleThreshold    = new Date(Date.now() - STALE_DAYS * 86400000).toISOString();
+  const fundamentalsFresh = !FORCE && !!row.fundamentals_updated_at && row.fundamentals_updated_at > staleThreshold;
+  const historyFresh      = !FORCE && !!row.earnings_history;
+
+  if (fundamentalsFresh && historyFresh) return { status: 'skipped' };
+
+  // ── Screener fundamentals ──────────────────────────────────────────────────
+  if (!fundamentalsFresh) {
+    try {
+      const f = JSON.parse(runPython('fetchScreenerFundamentals.py', ticker));
+
+      await supabase.from('stocks').update({
+        stock_name:          f.name              || stock_name || ticker,
+        stock_pe:            f.pe                ?? null,
+        roe:                 f.roe               ?? null,
+        roce:                f.roce              ?? null,
+        market_cap:          f.market_cap        ?? null,
+        industry:            f.industry_hierarchy ?? null,
+        current_price:       f.current_price     ?? null,
+        high_52w:            f.high_52w          ?? null,
+        low_52w:             f.low_52w           ?? null,
+        pct_from_52w_high:   f.pct_from_52w_high ?? null,
+        pb:                  f.pb                ?? null,
+        dividend_yield:      f.dividend_yield    ?? null,
+        eps:                 f.eps               ?? null,
+        debt_to_equity:      f.debt_to_equity    ?? null,
+        promoter_holding:    f.promoter_holding  ?? null,
+        fii_holding:         f.fii_holding       ?? null,
+        dii_holding:         f.dii_holding       ?? null,
+        pledged_pct:         f.pledged_pct       ?? null,
+        reserves:            f.reserves          ?? null,
+        borrowings:          f.borrowings        ?? null,
+        revenue_growth_1y:   f.revenue_growth_1y ?? null,
+        revenue_growth_3y:   f.revenue_growth_3y ?? null,
+        revenue_growth_5y:   f.revenue_growth_5y ?? null,
+        profit_growth_1y:    f.profit_growth_1y  ?? null,
+        profit_growth_3y:    f.profit_growth_3y  ?? null,
+        profit_growth_5y:    f.profit_growth_5y  ?? null,
+        operating_cash_flow: f.operating_cash_flow ?? null,
+        free_cash_flow:      f.free_cash_flow      ?? null,
+        total_debt:          f.total_debt          ?? null,
+        current_ratio:       f.current_ratio       ?? null,
+        interest_coverage:   f.interest_coverage   ?? null,
+        ...(f.bse_code ? { bse_code: f.bse_code } : {}),
+        fundamentals_updated_at: new Date().toISOString(),
+      }).eq('id', row.id);
+
+    } catch {
+      // ETF, SME, or not on Screener — stamp so listener doesn't loop on this stock
+      await supabase.from('stocks')
+        .update({ fundamentals_updated_at: new Date().toISOString() })
+        .eq('id', row.id);
+      return { status: 'no_screener' };
     }
   }
 
-  console.log(`\nDone. ${inserted} stocks upserted.`);
+  // ── Screener history ───────────────────────────────────────────────────────
+  if (!historyFresh) {
+    try {
+      const h = JSON.parse(runPython('fetchScreenerHistory.py', ticker));
+      await supabase.from('stocks').update({
+        earnings_history: {
+          quarterly:     h.quarterly     ?? null,
+          annual_pl:     h.annual_pl     ?? null,
+          balance_sheet: h.balance_sheet ?? null,
+          cash_flow:     h.cash_flow     ?? null,
+          ratios:        h.ratios        ?? null,
+          shareholding:  h.shareholding  ?? null,
+        },
+      }).eq('id', row.id);
+    } catch {
+      // History is optional — don't fail the whole stock
+    }
+  }
+
+  return { status: 'seeded' };
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+// ── Main ──────────────────────────────────────────────────────────────────────
+
+async function main() {
+  console.log(`[seedUniverse] ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST`);
+  console.log(`[seedUniverse] force=${FORCE} | limit=${LIMIT ?? 'all'} | ticker=${SINGLE ?? 'all NSE EQ'}\n`);
+
+  let instruments;
+
+  if (SINGLE) {
+    instruments = [{ ticker: SINGLE, instrument_token: null, stock_name: SINGLE }];
+  } else {
+    process.stdout.write('[seedUniverse] Fetching Kite instruments... ');
+    try {
+      instruments = await getKiteInstruments();
+      console.log(`${instruments.length} NSE EQ stocks found\n`);
+    } catch (e) {
+      console.error(`\n[seedUniverse] Failed: ${e.message}`);
+      process.exit(1);
+    }
+  }
+
+  if (LIMIT) instruments = instruments.slice(0, LIMIT);
+
+  const counts  = { seeded: 0, skipped: 0, no_screener: 0, failed: 0 };
+  const startMs = Date.now();
+
+  for (let i = 0; i < instruments.length; i++) {
+    const inst   = instruments[i];
+    const prefix = `[${String(i + 1).padStart(4)}/${instruments.length}] ${inst.ticker.padEnd(15)}`;
+
+    try {
+      const { status, reason } = await seedStock(inst);
+      counts[status] = (counts[status] ?? 0) + 1;
+
+      if      (status === 'seeded')      console.log(`${prefix} ✓`);
+      else if (status === 'skipped')     process.stdout.write('.');
+      else if (status === 'no_screener') console.log(`${prefix} — not on Screener`);
+      else                               console.log(`${prefix} ✗ ${reason ?? 'failed'}`);
+
+      if (status !== 'skipped') await sleep(DELAY_MS);
+    } catch (e) {
+      counts.failed++;
+      console.log(`${prefix} ✗ ${e.message}`);
+    }
+  }
+
+  const elapsed = Math.round((Date.now() - startMs) / 1000);
+  console.log(`\n\n[seedUniverse] Done in ${elapsed}s`);
+  console.log(`  Seeded: ${counts.seeded} | Skipped: ${counts.skipped} | No Screener: ${counts.no_screener} | Failed: ${counts.failed}`);
+}
+
+main().catch(e => { console.error('[seedUniverse]', e.message); process.exit(1); });

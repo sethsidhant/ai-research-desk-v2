@@ -259,49 +259,46 @@ function parseMessages(html) {
   return messages.sort((a, b) => b.id - a.id); // newest first
 }
 
-// ── Poll one channel ───────────────────────────────────────────────────────────
+// ── Poll one channel (all usernames independently, each with own watermark) ────
 
 async function pollChannel(channel, lastIdMap, isFirstPoll) {
-  let messages = null;
-  let usedUsername = null;
+  const catchupMs = channel.id === 'trump' ? 15 * 60 * 1000 : 2 * 60 * 60 * 1000;
 
   for (const username of channel.usernames) {
+    const mapKey = `${channel.id}::${username}`;
+    let messages;
     try {
       const html = await get(`https://t.me/s/${username}`);
-      const parsed = parseMessages(html);
-      if (parsed.length) { messages = parsed; usedUsername = username; break; }
+      messages = parseMessages(html);
     } catch (e) {
       console.warn(`[telegramWatcher] @${username} (${channel.label}): ${e.message}`);
+      continue;
     }
-  }
 
-  if (!messages?.length) return;
+    if (!messages?.length) continue;
 
-  const mapKey    = channel.id;
-  const lastKnown = lastIdMap.get(mapKey) ?? 0;
-  const newest    = messages[0].id;
+    const lastKnown = lastIdMap.get(mapKey) ?? 0;
+    const newest    = messages[0].id;
 
-  // On first poll, seed watermark and process recent messages not yet in DB
-  // Trump: 15 min (high-volume); financial channels: 2 hours (catch up after outages)
-  if (isFirstPoll) {
+    if (isFirstPoll) {
+      lastIdMap.set(mapKey, newest);
+      const cutoff = Date.now() - catchupMs;
+      const fresh  = messages.filter(m => m.date * 1000 >= cutoff);
+      if (fresh.length) {
+        console.log(`[telegramWatcher] ${channel.label} @${username}: ${fresh.length} startup message(s)`);
+        for (const m of fresh.reverse()) await processMessage(m, channel);
+      } else {
+        console.log(`[telegramWatcher] ${channel.label} @${username}: seeded at msg ${newest}`);
+      }
+      continue;
+    }
+
+    if (newest <= lastKnown) continue;
+
+    const newMsgs = messages.filter(m => m.id > lastKnown).reverse();
     lastIdMap.set(mapKey, newest);
-    const catchupMs = channel.id === 'trump' ? 15 * 60 * 1000 : 2 * 60 * 60 * 1000;
-    const cutoff    = Date.now() - catchupMs;
-    const fresh     = messages.filter(m => m.date * 1000 >= cutoff);
-    if (fresh.length) {
-      console.log(`[telegramWatcher] ${channel.label}: ${fresh.length} startup message(s) via @${usedUsername}`);
-      for (const m of fresh.reverse()) await processMessage(m, channel);
-    } else {
-      console.log(`[telegramWatcher] ${channel.label}: seeded at msg ${newest} via @${usedUsername}`);
-    }
-    return;
+    for (const m of newMsgs) await processMessage(m, channel);
   }
-
-  if (newest <= lastKnown) return;
-
-  const newMsgs = messages.filter(m => m.id > lastKnown).reverse();
-  lastIdMap.set(mapKey, newest);
-  for (const m of newMsgs) await processMessage(m, channel);
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
