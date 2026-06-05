@@ -52,11 +52,13 @@ async function loadClosesCache() {
   const stockIds = tickers.map(t => watchlist[t]?.stockId).filter(Boolean);
   if (!stockIds.length) return;
 
+  const cutoff45d = new Date(Date.now() - 45 * 86400000).toISOString().slice(0, 10);
   const { data } = await supabase
     .from('daily_history')
     .select('stock_id, date, closing_price')
     .in('stock_id', stockIds)
     .not('closing_price', 'is', null)
+    .gte('date', cutoff45d)
     .order('date', { ascending: false })
     .limit(30 * stockIds.length);
 

@@ -62,11 +62,14 @@ export async function POST(request: Request) {
     if (!holdings?.length) return NextResponse.json({ error: 'No portfolio holdings found' }, { status: 400 })
 
     const stockIds = holdings.map(h => h.stock_id)
+    const scoresCutoff = new Date(Date.now() - 10 * 86400000).toISOString().slice(0, 10)
     const { data: scores } = await admin
       .from('daily_scores')
       .select('stock_id, rsi, rsi_signal, composite_score, classification, above_200_dma')
       .in('stock_id', stockIds)
+      .gte('date', scoresCutoff)
       .order('date', { ascending: false })
+      .limit(stockIds.length * 2)
 
     // Keep only latest score per stock
     const latestScore: Record<string, NonNullable<typeof scores>[0]> = {}
@@ -96,11 +99,14 @@ export async function POST(request: Request) {
     if (!watchlist?.length) return NextResponse.json({ error: 'No watchlist stocks found' }, { status: 400 })
 
     const stockIds = watchlist.map(w => w.stock_id)
+    const scoresCutoff2 = new Date(Date.now() - 10 * 86400000).toISOString().slice(0, 10)
     const { data: scores } = await admin
       .from('daily_scores')
       .select('stock_id, rsi, rsi_signal, composite_score, classification, above_200_dma')
       .in('stock_id', stockIds)
+      .gte('date', scoresCutoff2)
       .order('date', { ascending: false })
+      .limit(stockIds.length * 2)
 
     const latestScore: Record<string, NonNullable<typeof scores>[0]> = {}
     for (const s of (scores ?? [])) {

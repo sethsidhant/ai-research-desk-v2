@@ -67,6 +67,16 @@ export type AlertPrefs = {
 
 const DEFAULT_INVESTED = 50000
 
+async function signalOnboardingNeeded() {
+  try {
+    const admin = createAdminClient()
+    await admin.from('app_settings').upsert(
+      { key: 'onboarding_needed_at', value: new Date().toISOString() },
+      { onConflict: 'key' }
+    )
+  } catch {} // non-critical — listener still does maintenance sweeps every 10 min
+}
+
 export async function addToWatchlist(stockId: string, alerts: AlertPrefs, investedAmount?: number, entryPrice?: number) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -124,6 +134,9 @@ export async function addToWatchlist(stockId: string, alerts: AlertPrefs, invest
     })
 
   if (error) return { error: error.message }
+
+  // Signal listener.js to run onboarding check within the next 30s
+  signalOnboardingNeeded()
 
   // Trigger on-demand scoring in background (fire-and-forget)
 

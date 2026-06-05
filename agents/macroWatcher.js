@@ -167,18 +167,15 @@ function keyWords(text) {
   return text.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w.length > 4 && !stop.has(w));
 }
 
-async function isDuplicateStory(summary, channelId) {
-  const since = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(); // 4h: catches cross-source same-story within a trading session
-  // Check ALL recent entries (same source included) — multiple trump mirror URLs can carry the
-  // same story under different GUIDs, so intra-source dedup is needed too.
-  const { data } = await supabase.from('macro_alerts').select('summary').gte('created_at', since);
-  if (!data?.length) return false;
+function isDuplicateStory(summary, channelId, recentSummaries) {
+  // recentSummaries: pre-fetched array of summary strings from the last 4h (passed in from processSource)
+  if (!recentSummaries?.length) return false;
   const newWords = new Set(keyWords(summary));
   if (newWords.size < 3) return false;
-  for (const row of data) {
-    const existing = keyWords(row.summary);
-    const overlap  = existing.filter(w => newWords.has(w)).length;
-    if (overlap / Math.min(newWords.size, existing.length || 1) >= 0.5) return true;
+  for (const existing of recentSummaries) {
+    const existingWords = keyWords(existing);
+    const overlap = existingWords.filter(w => newWords.has(w)).length;
+    if (overlap / Math.min(newWords.size, existingWords.length || 1) >= 0.5) return true;
   }
   return false;
 }
@@ -356,6 +353,11 @@ async function processSource(source) {
 
   if (!toProcess.length) return;
 
+  // Pre-fetch recent summaries once for the whole cycle (used by isDuplicateStory below)
+  const since4h = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
+  const { data: recentAlerts } = await supabase.from('macro_alerts').select('summary').gte('created_at', since4h);
+  const recentSummaries = (recentAlerts ?? []).map(r => r.summary);
+
   // Dedup: skip items whose post_id already exists in macro_alerts (avoids paying for re-processed items)
   const guids = toProcess.map(i => i.guid).filter(Boolean);
   const { data: existing } = guids.length
@@ -398,7 +400,7 @@ async function processSource(source) {
       const { summary, important, sentiment, sectors, forward_looking } = result;
 
       // Cross-source dedup: skip if a similar story already stored in last 4h
-      const isDupe = await isDuplicateStory(summary, id);
+      const isDupe = isDuplicateStory(summary, id, recentSummaries);
       if (isDupe) {
         console.log(`[macroWatcher] ${label}: cross-source dupe skipped — ${summary.slice(0, 60)}`);
         await setLastGuid(id, item.guid);
@@ -422,6 +424,7 @@ async function processSource(source) {
           console.error(`[macroWatcher] DB insert error: ${error.message}`);
         }
       } else {
+        recentSummaries.push(summary); // keep in-memory list fresh for within-batch dedup
         console.log(`[macroWatcher] ${label}${important ? ' 🚨' : ''}: ${summary.slice(0, 90)}…`);
         const ageMs   = item.pubDate ? Date.now() - new Date(item.pubDate).getTime() : Infinity;
         const isFresh = ageMs < 30 * 60 * 1000; // posted within last 30min — alerts even on restart

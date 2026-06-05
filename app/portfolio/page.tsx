@@ -88,13 +88,15 @@ export default async function PortfolioPage() {
   const stockIds = holdings.map((h: any) => h.stock_id)
 
   // Latest daily_score per stock for analysis signals
+  const scoresCutoff = new Date(Date.now() - 10 * 86400000).toISOString().slice(0, 10)
   const { data: scores } = stockIds.length > 0
     ? await supabase
         .from('daily_scores')
         .select('stock_id, pe_deviation, rsi, rsi_signal, composite_score, classification, suggested_action, above_200_dma, above_50_dma, date, dma_50, dma_200, stock_6m, stock_1y, nifty50_6m, nifty50_1y, nifty500_6m, nifty500_1y')
         .in('stock_id', stockIds)
+        .gte('date', scoresCutoff)
         .order('date', { ascending: false })
-        .limit(stockIds.length * 10)
+        .limit(stockIds.length * 2)
     : { data: [] }
 
   const latestScore: Record<string, any> = {}

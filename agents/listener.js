@@ -14,9 +14,12 @@ const supabase = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
 
-const POLL_INTERVAL_MS     = 30000;
-const BOT_POLL_INTERVAL_MS = 10000;
+const POLL_INTERVAL_MS        = 30000;
+const BOT_POLL_INTERVAL_MS    = 10000;
+const FULL_CHECK_INTERVAL_MS  = 10 * 60 * 1000; // maintenance sweep every 10 min
 const processing = new Set();
+
+let lastFullCheckTime = 0; // tracks when we last ran the 4-query full check
 
 // ── Onboarding ────────────────────────────────────────────────────────────────
 
@@ -43,7 +46,23 @@ function onboard(ticker) {
 
 async function poll() {
   try {
-    // Only onboard stocks that someone actually tracks (watchlist or portfolio).
+    const now = Date.now();
+    const maintenanceDue = (now - lastFullCheckTime) >= FULL_CHECK_INTERVAL_MS;
+
+    if (!maintenanceDue) {
+      // Fast path: only check the dirty flag (1 cheap app_settings read instead of 4 heavy scans)
+      const { data: flag } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'onboarding_needed_at')
+        .maybeSingle();
+      const flagTime = flag?.value ? (new Date(flag.value).getTime() || 0) : 0;
+      if (flagTime <= lastFullCheckTime) return; // nothing added since last full check
+    }
+
+    lastFullCheckTime = Date.now();
+
+    // Full check: only onboard stocks that someone actually tracks (watchlist or portfolio).
     // Avoids mass-onboarding orphaned rows in the stocks table.
     const [{ data: wsIds }, { data: phIds }] = await Promise.all([
       supabase.from('user_stocks').select('stock_id'),

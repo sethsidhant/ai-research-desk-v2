@@ -106,13 +106,15 @@ export default async function DashboardPage() {
   for (const w of allRows)     stockTickerMap[w.stock_id]  = w.stock?.ticker ?? ''
   for (const h of portRowsAll) stockTickerMap[h.stock_id]  = h.stock?.ticker ?? ''
 
+  const scoresCutoff = new Date(Date.now() - 10 * 86400000).toISOString().slice(0, 10)
   const { data: scores } = allStockIds.length > 0
     ? await supabase
         .from('daily_scores')
         .select('stock_id, rsi, above_200_dma, above_50_dma')
         .in('stock_id', allStockIds)
+        .gte('date', scoresCutoff)
         .order('date', { ascending: false })
-        .limit(allStockIds.length * 10)
+        .limit(allStockIds.length * 2)
     : { data: [] }
 
   const latestScore: Record<string, any> = {}

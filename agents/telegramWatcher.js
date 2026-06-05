@@ -126,23 +126,22 @@ function keyWords(text) {
   return text.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w.length > 4 && !stop.has(w));
 }
 
-async function isDuplicateStory(summary) {
-  const since = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
-  const { data } = await supabase.from('macro_alerts').select('summary').gte('created_at', since);
-  if (!data?.length) return false;
+function isDuplicateStory(summary, recentSummaries) {
+  // recentSummaries: pre-fetched array passed in from pollChannel
+  if (!recentSummaries?.length) return false;
   const newWords = new Set(keyWords(summary));
   if (newWords.size < 3) return false;
-  for (const row of data) {
-    const existing = keyWords(row.summary);
-    const overlap  = existing.filter(w => newWords.has(w)).length;
-    if (overlap / Math.min(newWords.size, existing.length || 1) >= 0.5) return true;
+  for (const existing of recentSummaries) {
+    const existingWords = keyWords(existing);
+    const overlap = existingWords.filter(w => newWords.has(w)).length;
+    if (overlap / Math.min(newWords.size, existingWords.length || 1) >= 0.5) return true;
   }
   return false;
 }
 
 // ── Process a single message ───────────────────────────────────────────────────
 
-async function processMessage(msg, channel) {
+async function processMessage(msg, channel, recentSummaries) {
   try {
     const text = msg.message?.replace(/\s+/g, ' ').trim();
     if (!text || text.length < 15) return;
@@ -163,7 +162,7 @@ async function processMessage(msg, channel) {
 
     const { summary, important, sentiment, sectors, forward_looking } = result;
 
-    const isDupe = await isDuplicateStory(summary);
+    const isDupe = isDuplicateStory(summary, recentSummaries);
     if (isDupe) {
       console.log(`[telegramWatcher] ${channel.label}: dupe skipped — ${summary.slice(0, 60)}`);
       return;
@@ -188,6 +187,7 @@ async function processMessage(msg, channel) {
       return;
     }
 
+    if (recentSummaries) recentSummaries.push(summary); // keep list fresh for within-poll dedup
     console.log(`[telegramWatcher] ${channel.label}${important ? ' 🚨' : ''}: ${summary.slice(0, 90)}…`);
     const sentimentEmoji = sentiment === 'bull' ? '🟢' : sentiment === 'bear' ? '🔴' : '⚪';
     const tag  = forward_looking ? ' _(forward outlook)_' : '';
@@ -264,6 +264,11 @@ function parseMessages(html) {
 async function pollChannel(channel, lastIdMap, isFirstPoll) {
   const catchupMs = channel.id === 'trump' ? 15 * 60 * 1000 : 2 * 60 * 60 * 1000;
 
+  // Pre-fetch recent summaries once per poll cycle for cross-message dedup
+  const since4h = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
+  const { data: recentAlerts } = await supabase.from('macro_alerts').select('summary').gte('created_at', since4h);
+  const recentSummaries = (recentAlerts ?? []).map(r => r.summary);
+
   for (const username of channel.usernames) {
     const mapKey = `${channel.id}::${username}`;
     let messages;
@@ -286,7 +291,7 @@ async function pollChannel(channel, lastIdMap, isFirstPoll) {
       const fresh  = messages.filter(m => m.date * 1000 >= cutoff);
       if (fresh.length) {
         console.log(`[telegramWatcher] ${channel.label} @${username}: ${fresh.length} startup message(s)`);
-        for (const m of fresh.reverse()) await processMessage(m, channel);
+        for (const m of fresh.reverse()) await processMessage(m, channel, recentSummaries);
       } else {
         console.log(`[telegramWatcher] ${channel.label} @${username}: seeded at msg ${newest}`);
       }
@@ -297,7 +302,7 @@ async function pollChannel(channel, lastIdMap, isFirstPoll) {
 
     const newMsgs = messages.filter(m => m.id > lastKnown).reverse();
     lastIdMap.set(mapKey, newest);
-    for (const m of newMsgs) await processMessage(m, channel);
+    for (const m of newMsgs) await processMessage(m, channel, recentSummaries);
   }
 }
 

@@ -49,13 +49,15 @@ export async function GET() {
   const idToTicker: Record<string, string> = {}
   for (const s of (stocks ?? [])) idToTicker[s.id] = s.ticker
 
-  // Latest score per stock (order by date desc, take first per stock_id)
+  // Latest score per stock (last 10 days bounds the scan; 2 rows per stock is enough)
+  const scoresCutoff = new Date(Date.now() - 10 * 86400000).toISOString().slice(0, 10)
   const { data: scoreRows } = await supabase
     .from('daily_scores')
     .select('stock_id, date, rsi, rsi_signal, dma_50, dma_200, above_50_dma, above_200_dma, composite_score, classification, suggested_action')
     .in('stock_id', stockIds)
+    .gte('date', scoresCutoff)
     .order('date', { ascending: false })
-    .limit(stockIds.length * 5)
+    .limit(stockIds.length * 2)
 
   const latestByStock: Record<string, typeof scoreRows extends (infer T)[] | null ? T : never> = {}
   for (const row of (scoreRows ?? [])) {

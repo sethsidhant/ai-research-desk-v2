@@ -72,13 +72,15 @@ export default async function WatchlistPage() {
   const stockIds = (watchlist ?? []).map((w: any) => w.stock_id)
 
   // Latest daily_score per stock
+  const scoresCutoff = new Date(Date.now() - 10 * 86400000).toISOString().slice(0, 10)
   const { data: scores } = stockIds.length > 0
     ? await supabase
         .from('daily_scores')
         .select('stock_id, pe_deviation, rsi, rsi_signal, dma_50, dma_200, above_50_dma, above_200_dma, composite_score, classification, suggested_action, stock_6m, stock_1y, nifty50_6m, nifty50_1y, nifty500_6m, nifty500_1y, date')
         .in('stock_id', stockIds)
+        .gte('date', scoresCutoff)
         .order('date', { ascending: false })
-        .limit(stockIds.length * 10)
+        .limit(stockIds.length * 2)
     : { data: [] }
 
   const latestScore: Record<string, any> = {}

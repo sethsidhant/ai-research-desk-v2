@@ -35,6 +35,13 @@ export async function POST(request: Request) {
     }, { onConflict: 'user_id,stock_id' })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Signal listener.js to run onboarding check within the next 30s
+  admin.from('app_settings').upsert(
+    { key: 'onboarding_needed_at', value: new Date().toISOString() },
+    { onConflict: 'key' }
+  ).then().catch(() => {})
+
   return NextResponse.json({ success: true })
 }
 
