@@ -264,10 +264,15 @@ function parseMessages(html) {
 async function pollChannel(channel, lastIdMap, isFirstPoll) {
   const catchupMs = channel.id === 'trump' ? 15 * 60 * 1000 : 2 * 60 * 60 * 1000;
 
-  // Pre-fetch recent summaries once per poll cycle for cross-message dedup
-  const since4h = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
-  const { data: recentAlerts } = await supabase.from('macro_alerts').select('summary').gte('created_at', since4h);
-  const recentSummaries = (recentAlerts ?? []).map(r => r.summary);
+  // Lazy: only fetch recent summaries when we actually have new messages to dedup
+  let recentSummaries = null;
+  async function getRecentSummaries() {
+    if (recentSummaries) return recentSummaries;
+    const since4h = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
+    const { data } = await supabase.from('macro_alerts').select('summary').gte('created_at', since4h);
+    recentSummaries = (data ?? []).map(r => r.summary);
+    return recentSummaries;
+  }
 
   for (const username of channel.usernames) {
     const mapKey = `${channel.id}::${username}`;
@@ -291,7 +296,8 @@ async function pollChannel(channel, lastIdMap, isFirstPoll) {
       const fresh  = messages.filter(m => m.date * 1000 >= cutoff);
       if (fresh.length) {
         console.log(`[telegramWatcher] ${channel.label} @${username}: ${fresh.length} startup message(s)`);
-        for (const m of fresh.reverse()) await processMessage(m, channel, recentSummaries);
+        const summaries = await getRecentSummaries();
+        for (const m of fresh.reverse()) await processMessage(m, channel, summaries);
       } else {
         console.log(`[telegramWatcher] ${channel.label} @${username}: seeded at msg ${newest}`);
       }
@@ -302,7 +308,8 @@ async function pollChannel(channel, lastIdMap, isFirstPoll) {
 
     const newMsgs = messages.filter(m => m.id > lastKnown).reverse();
     lastIdMap.set(mapKey, newest);
-    for (const m of newMsgs) await processMessage(m, channel, recentSummaries);
+    const summaries = await getRecentSummaries();
+    for (const m of newMsgs) await processMessage(m, channel, summaries);
   }
 }
 
