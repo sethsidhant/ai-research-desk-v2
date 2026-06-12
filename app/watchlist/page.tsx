@@ -194,16 +194,19 @@ export default async function WatchlistPage() {
       addedAtMap[us.stock_id] = us.added_at?.slice(0, 10) ?? '2000-01-01'
     }
 
-    const earliestDate = Object.values(addedAtMap).sort()[0] ?? '2000-01-01'
+    const twoYearsAgo = new Date(Date.now() - 730 * 86400000).toISOString().slice(0, 10)
+    const earliestDate = [Object.values(addedAtMap).sort()[0] ?? twoYearsAgo, twoYearsAgo].sort().reverse()[0]
+    const chartStockIds = portfolioRowsWithHistory.map(r => r.stock_id)
 
     const [{ data: history }, { data: indexHistory }] = await Promise.all([
       supabase
         .from('daily_history')
         .select('stock_id, date, closing_price')
-        .in('stock_id', portfolioRowsWithHistory.map(r => r.stock_id))
+        .in('stock_id', chartStockIds)
         .not('closing_price', 'is', null)
         .gte('date', earliestDate)
-        .order('date', { ascending: true }),
+        .order('date', { ascending: true })
+        .limit(chartStockIds.length * 520),
       adminSupabase
         .from('index_history')
         .select('date, nifty50_close, nifty500_close')

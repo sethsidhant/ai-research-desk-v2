@@ -125,6 +125,7 @@ export default async function PortfolioPage() {
         .gt('volume', 0)
         .gte('date', volCutoff)
         .order('date', { ascending: false })
+        .limit(stockIds.length * 23)
     : { data: [] }
 
   const volByStock: Record<string, number[]> = {}
@@ -268,7 +269,8 @@ export default async function PortfolioPage() {
         .in('stock_id', stockIds)
         .not('closing_price', 'is', null)
         .gte('date', earliestDate)
-        .order('date', { ascending: true }),
+        .order('date', { ascending: true })
+        .limit(stockIds.length * 270),
       admin
         .from('index_history')
         .select('date, nifty50_close, nifty500_close')

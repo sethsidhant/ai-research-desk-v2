@@ -16,7 +16,7 @@ const supabase = createClient(
 const THRESHOLD_PCT     = 5.0;
 const POLL_INTERVAL_MS  = 60000;
 const REFRESH_STOCKS_MS = 5 * 60 * 1000;
-const FLUSH_INTERVAL_MS = 5 * 60 * 1000;
+const FLUSH_INTERVAL_MS = 15 * 60 * 1000;
 
 // ── RSI (Wilder's smoothed, matches TradingView) ──────────────────────────────
 function calculateRSI(closes, period = 14) {
@@ -212,22 +212,20 @@ async function flushLiveData() {
     else console.log(`[stockWatcher] Volume flushed for ${volRows.length} stocks`);
   }
 
-  // RSI → daily_scores (UPDATE only — never overwrite composite_score / classification)
-  const rsiTickers = tickers.filter(t => watchlist[t]?.stockId && latestRsi[t] != null);
-  if (rsiTickers.length) {
-    let flushed = 0;
-    await Promise.all(rsiTickers.map(async t => {
+  // RSI → daily_scores (single batch upsert — only rsi + rsi_signal updated, other columns untouched on conflict)
+  const rsiRows = tickers
+    .filter(t => watchlist[t]?.stockId && latestRsi[t] != null)
+    .map(t => {
       const rsi    = latestRsi[t];
       const signal = rsi <= 30 ? 'Oversold' : rsi >= 70 ? 'Overbought' : null;
-      const { error } = await supabase
-        .from('daily_scores')
-        .update({ rsi, rsi_signal: signal })
-        .eq('stock_id', watchlist[t].stockId)
-        .eq('date', today);
-      if (error) console.error(`[stockWatcher] RSI flush error (${t}):`, error.message);
-      else flushed++;
-    }));
-    console.log(`[stockWatcher] RSI flushed for ${flushed} stocks`);
+      return { stock_id: watchlist[t].stockId, date: today, rsi, rsi_signal: signal };
+    });
+  if (rsiRows.length) {
+    const { error } = await supabase
+      .from('daily_scores')
+      .upsert(rsiRows, { onConflict: 'stock_id,date', ignoreDuplicates: false });
+    if (error) console.error('[stockWatcher] RSI flush error:', error.message);
+    else console.log(`[stockWatcher] RSI flushed for ${rsiRows.length} stocks`);
   }
 }
 
@@ -241,7 +239,7 @@ async function start() {
   poll();
   setInterval(poll, POLL_INTERVAL_MS);
   setInterval(flushLiveData, FLUSH_INTERVAL_MS);
-  console.log('[stockWatcher] Started — price alerts ±5%, volume + RSI flush every 5 min');
+  console.log('[stockWatcher] Started — price alerts ±5%, volume + RSI flush every 15 min');
 }
 
 module.exports = { start };

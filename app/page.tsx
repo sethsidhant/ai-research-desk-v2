@@ -219,6 +219,7 @@ export default async function DashboardPage() {
       .gt('volume', 0)
       .gte('date', cutoff)
       .order('date', { ascending: false })
+      .limit(allStockIds.length * 23)
 
     // Group by stock_id
     const volByStock: Record<string, { date: string; volume: number }[]> = {}

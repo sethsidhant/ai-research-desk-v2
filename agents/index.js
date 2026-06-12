@@ -140,6 +140,11 @@ async function heartbeat() {
 }
 
 async function main() {
+  if (process.env.AGENTS_PAUSED === 'true') {
+    console.log('[main] AGENTS_PAUSED=true — exiting immediately. Set AGENTS_PAUSED=false in Railway env to resume.');
+    process.exit(0);
+  }
+
   console.log('[main] Starting all watchers...');
   userCache.start(); // start shared cache refresh (5 min cycle)
   try {
@@ -156,7 +161,7 @@ async function main() {
   telegramWatcher.start();
   // listener.js starts itself on require
   heartbeat();
-  setInterval(heartbeat, 60 * 1000); // update every 60s
+  setInterval(heartbeat, 5 * 60 * 1000); // update every 5 min — reduce WAL write IO
 
   // Earnings season: run history refresh daily (check now + every 24h)
   await maybeRunHistoryRefresh(supabase);
