@@ -161,7 +161,7 @@ async function main() {
   telegramWatcher.start();
   // listener.js starts itself on require
   heartbeat();
-  setInterval(heartbeat, 5 * 60 * 1000); // update every 5 min — reduce WAL write IO
+  setInterval(heartbeat, 60 * 60 * 1000); // update every 60 min — purely for monitoring
 
   // Earnings season: run history refresh daily (check now + every 24h)
   await maybeRunHistoryRefresh(supabase);
