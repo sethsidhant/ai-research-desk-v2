@@ -128,17 +128,22 @@ const supabase = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
 
-async function pruneMacroAlerts() {
-  try {
-    const cutoff = new Date(Date.now() - 30 * 86400000).toISOString();
-    const { error, count } = await supabase
-      .from('macro_alerts')
-      .delete({ count: 'exact' })
-      .lt('created_at', cutoff);
-    if (error) console.error('[prune] macro_alerts error:', error.message);
-    else if (count > 0) console.log(`[prune] Deleted ${count} macro_alerts older than 30 days`);
-  } catch (err) {
-    console.error('[prune] Error:', err.message);
+async function pruneOldData() {
+  const tasks = [
+    { table: 'macro_alerts',  col: 'created_at', days: 30 },
+    { table: 'agent_reports', col: 'ran_at',     days: 60 },
+    { table: 'api_usage_log', col: 'created_at', days: 90 },
+  ];
+  for (const { table, col, days } of tasks) {
+    try {
+      const cutoff = new Date(Date.now() - days * 86400000).toISOString();
+      const { error, count } = await supabase
+        .from(table).delete({ count: 'exact' }).lt(col, cutoff);
+      if (error) console.error(`[prune] ${table} error:`, error.message);
+      else if (count > 0) console.log(`[prune] ${table}: deleted ${count} rows older than ${days}d`);
+    } catch (err) {
+      console.error(`[prune] ${table} exception:`, err.message);
+    }
   }
 }
 
@@ -191,9 +196,9 @@ async function main() {
   maybeRunForexAgent(supabase);
   setInterval(() => maybeRunForexAgent(supabase), 30 * 60 * 1000);
 
-  // Prune macro_alerts older than 30 days — keeps GIN index small, reduces insert WAL cost
-  pruneMacroAlerts();
-  setInterval(pruneMacroAlerts, 24 * 60 * 60 * 1000);
+  // Daily prune: macro_alerts 30d, notifications_sent 180d, agent_reports 60d, api_usage_log 90d
+  pruneOldData();
+  setInterval(pruneOldData, 24 * 60 * 60 * 1000);
 }
 
 process.on('uncaughtException',  err => console.error('[main] Uncaught exception:', err.message));
