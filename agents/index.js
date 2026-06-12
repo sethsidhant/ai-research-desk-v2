@@ -128,6 +128,20 @@ const supabase = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
 
+async function pruneMacroAlerts() {
+  try {
+    const cutoff = new Date(Date.now() - 30 * 86400000).toISOString();
+    const { error, count } = await supabase
+      .from('macro_alerts')
+      .delete({ count: 'exact' })
+      .lt('created_at', cutoff);
+    if (error) console.error('[prune] macro_alerts error:', error.message);
+    else if (count > 0) console.log(`[prune] Deleted ${count} macro_alerts older than 30 days`);
+  } catch (err) {
+    console.error('[prune] Error:', err.message);
+  }
+}
+
 async function heartbeat() {
   try {
     await supabase.from('app_settings').upsert(
@@ -176,6 +190,10 @@ async function main() {
   // Forex: check every 30 min — runs only Friday 7–11 PM IST (RBI blocks GH Actions IPs)
   maybeRunForexAgent(supabase);
   setInterval(() => maybeRunForexAgent(supabase), 30 * 60 * 1000);
+
+  // Prune macro_alerts older than 30 days — keeps GIN index small, reduces insert WAL cost
+  pruneMacroAlerts();
+  setInterval(pruneMacroAlerts, 24 * 60 * 60 * 1000);
 }
 
 process.on('uncaughtException',  err => console.error('[main] Uncaught exception:', err.message));
