@@ -15,10 +15,11 @@ function getTransporter() {
   if (!GMAIL_USER || !GMAIL_PASS) return null;
   if (!transporter) {
     transporter = nodemailer.createTransport({
-      host:   'smtp.gmail.com',
-      port:   465,
-      secure: true,
-      family: 4,  // force IPv4 — Railway IPv6 is unreachable
+      host:       'smtp.gmail.com',
+      port:       587,
+      secure:     false,
+      requireTLS: true,
+      family:     4,
       auth: { user: GMAIL_USER, pass: GMAIL_PASS },
     });
   }
