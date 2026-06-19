@@ -3,7 +3,10 @@
 // ALERT_EMAIL_TO is the destination (pseth2000@yahoo.com)
 require('dotenv').config({ path: '../.env.local' });
 
+const dns       = require('dns');
 const nodemailer = require('nodemailer');
+
+dns.setDefaultResultOrder('ipv4first');
 
 const GMAIL_USER     = process.env.GMAIL_USER;
 const GMAIL_PASS     = process.env.GMAIL_APP_PASSWORD;
